@@ -1,0 +1,37 @@
+{
+  "title": "PostSampleEntity",
+  "type": "object",
+  "properties": {
+    "hello": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "email": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    "document_number": {
+      "type": "string",
+      "pattern": "^\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}$"
+    },
+    "birthdate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    }
+  },
+  "required": [
+    "hello",
+    "name",
+    "email",
+    "document_number",
+    "birthdate"
+  ],
+  "additionalProperties": false
+}
