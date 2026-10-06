@@ -99,3 +99,102 @@ class InvalidBirthdate(QIException):
         description = f"The birthdate {birthdate} is not a real date."
         translation = "A data de nascimento informada não existe."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class NotFoundCustomer(QIException):
+    code = "QIT002001"
+
+    def __init__(self, customer_key) -> None:
+        title = "Customer not Found"
+        http_status = 404
+        description = f"Customer with key {customer_key} was not found."
+        translation = "Cliente não foi encontrado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class DuplicatedCustomerDocument(QIException):
+    code = "QIT002002"
+
+    def __init__(self, document_number) -> None:
+        title = "Customer CPF already registered"
+        http_status = 409
+        description = f"There is already a customer with CPF {document_number}."
+        translation = "Já existe um cadastro com este CPF."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class CustomerUnderage(QIException):
+    code = "QIT002003"
+
+    def __init__(self, age) -> None:
+        title = "Customer is underage"
+        http_status = 422
+        description = f"The customer is {age} years old, and the minimum is 18."
+        translation = "É preciso ter pelo menos 18 anos."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class CustomerOverage(QIException):
+    code = "QIT002004"
+
+    def __init__(self, age) -> None:
+        title = "Customer is overage"
+        http_status = 422
+        description = f"The customer is {age} years old, and the maximum is 120."
+        translation = "É preciso ter no máximo 120 anos."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCustomerCPF(QIException):
+    code = "QIT002005"
+
+    def __init__(self, document_number) -> None:
+        title = "Invalid Customer Document Number"
+        http_status = 422
+        description = f"The document number {document_number} is not a valid CPF."
+        translation = "O CPF informado não é válido."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidCustomerBirthdate(QIException):
+    code = "QIT002006"
+
+    def __init__(self, birthdate) -> None:
+        title = "Invalid Customer Birthdate"
+        http_status = 422
+        description = f"The birthdate {birthdate} is not a real date."
+        translation = "A data de nascimento informada não existe."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class CustomerTypePJNotSupported(QIException):
+    code = "QIT002007"
+
+    def __init__(self) -> None:
+        title = "Customer Type PJ not supported"
+        http_status = 422
+        description = "The customer type PJ is not supported in the MVP."
+        translation = "O tipo de cliente PJ não é suportado no MVP."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class CustomerDocumentAlreadyExists(QIException):
+    code = "QIT002008"
+
+    def __init__(self, document_type, side) -> None:
+        title = "Customer Document already exists"
+        http_status = 409
+        description = f"The customer already has a {document_type} for side {side}."
+        translation = "O cliente já possui este documento cadastrado para este lado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class NotFoundCustomerForDocument(QIException):
+    code = "QIT002009"
+
+    def __init__(self, customer_key) -> None:
+        title = "Customer not Found for Document"
+        http_status = 404
+        description = f"Customer with key {customer_key} was not found."
+        translation = "Cliente não foi encontrado para adicionar o documento."
+        super().__init__(title, self.code, http_status, description, translation)

@@ -12,6 +12,7 @@ from errors.base_error import (
     NotFoundResource,
 )
 from utils.logger import get_logger
+from utils.request_context import get_request_id
 
 
 logger = get_logger(__name__)
@@ -28,6 +29,8 @@ def qi_exception_to_response(exception: QIException) -> JSONResponse:
         "description": exception.description,
         "translation": exception.translation,
         "code": exception.code,
+        "request_id": get_request_id(),
+        "errors": getattr(exception, "errors", []),
     }
     return JSONResponse(status_code=exception.http_status, content=body)
 
