@@ -1,0 +1,1 @@
+from connectors.bankslip_connector import BankSlipConnector
