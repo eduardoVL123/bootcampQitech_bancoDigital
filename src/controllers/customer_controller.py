@@ -1,7 +1,7 @@
 from datetime import date
 from sqlalchemy.exc import IntegrityError
 
-from database import get_context
+from controllers.base_controller import BaseController
 from errors import (
     CustomerOverage,
     CustomerTypePJNotSupported,
@@ -17,9 +17,9 @@ from repositories import CustomerRepository, CustomerDocumentRepository
 from utils.document_number import is_valid_cpf
 
 
-class CustomerController:
+class CustomerController(BaseController):
     def __init__(self) -> None:
-        self.context = get_context()
+        super().__init__(__name__)
         self.customer_repo = CustomerRepository(self.context)
         self.document_repo = CustomerDocumentRepository(self.context)
 
@@ -47,6 +47,7 @@ class CustomerController:
         try:
             customer = self.customer_repo.create(payload)
             customer.is_idempotent = False
+            self.session.commit()
             return customer
         except IntegrityError as e:
             self.context.db_session.rollback()
@@ -79,6 +80,7 @@ class CustomerController:
 
         try:
             document = self.document_repo.create(customer.id, payload)
+            self.session.commit()
             return document
         except IntegrityError as e:
             self.context.db_session.rollback()
