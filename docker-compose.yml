@@ -62,6 +62,54 @@ services:
       db:
         condition: service_healthy
 
+  # A onboarding-api: dona do cliente e da abertura de conta (RFC 05).
+  # Mesmo esqueleto da api de cima, no mesmo banco (bootcamp): as tabelas
+  # dela estao na secao 7 do database/database.sql.
+  onboarding-api:
+    build:
+      context: ./onboarding-api
+      target: api
+    ports:
+      - "${ONBOARDING_API_PORT:-3005}:3005"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      APP_ENV: ${APP_ENV:-local}
+      SERVICE_NAME: onboarding-api
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      # Assina o access_token (JWT). Os testes leem a mesma variavel para
+      # conferir a assinatura. O padrao serve so para estudo.
+      AUTH_SECRET: ${AUTH_SECRET:-auth_secret_de_estudo_troque_em_producao_0123456789}
+      ONBOARDING_TIMEOUT_MINUTES: ${ONBOARDING_TIMEOUT_MINUTES:-20}
+      # Limites por documento e por origem (RFC 05). Se o Redis cair, os
+      # limites desligam e a API continua respondendo.
+      REDIS_URL: redis://redis:6379/0
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-false}
+    volumes:
+      - ./onboarding-api/src:/app
+    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3005/health_check\")'"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # So dado pequeno, que pode ser perdido: contadores de limite e, depois,
+  # o estado do circuit breaker dos biros. Sem porta para fora: os testes
+  # nunca leem o Redis (R1).
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   db:
     build: ./database/.
     environment:

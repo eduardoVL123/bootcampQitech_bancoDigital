@@ -1,7 +1,8 @@
 -- =====================================================================
 -- Banco Digital · Bootcamp QI Tech 2026
 -- Escopo: o minimo exigido pelo desafio (cliente, conta, transacao,
--- tarifa, extrato). Investimento e onboarding ficam para depois.
+-- tarifa, extrato), mais a abertura de conta (onboarding, secao 7).
+-- Investimento fica para depois.
 --
 -- Este arquivo roda SOZINHO, uma unica vez, quando o volume do Postgres
 -- nasce. Mudou alguma coisa aqui? Entao:
@@ -24,6 +25,9 @@
 -- Tabelas que a customer-api do Eduardo ja espera: os models dele
 -- (src/models/customer.py) apontam para estes nomes de tabela e de
 -- coluna, e hoje elas nao existem no database.sql da branch dele.
+-- Quem grava o cliente e a onboarding-api, no mesmo COMMIT da abertura
+-- (RFC 05). O request_key recebe a X-Idempotency-Key do pedido. O RG da
+-- abertura fica em onboarding_document (secao 7), e nao aqui.
 -- =====================================================================
 
 CREATE TABLE customer_type(
@@ -419,3 +423,102 @@ CREATE TABLE sample_entity_status_event(
     event_datetime                  TIMESTAMP NOT NULL,
     created_at                      TIMESTAMP NOT NULL DEFAULT(NOW())
 );
+
+
+-- =====================================================================
+-- 7. ABERTURA DE CONTA (onboarding-api, RFC 05)
+--
+-- A onboarding-api e a dona do cliente: grava o customer e a abertura
+-- no mesmo COMMIT, e o RG da abertura em onboarding_document. Renda, ocupacao e PEP
+-- sao dados da analise desta abertura (KYC e PLD), e por isso moram aqui,
+-- e nao no customer. Se a abertura vence sem terminar, eles sao apagados
+-- junto com o cadastro (LGPD).
+-- =====================================================================
+
+CREATE TABLE onboarding_status(
+    id                  BIGSERIAL PRIMARY KEY,
+    enumerator          VARCHAR(20) NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    UNIQUE(enumerator)
+);
+
+INSERT INTO onboarding_status (enumerator) VALUES
+('DRAFT'), ('PENDING_KYC'), ('ANALYSIS'), ('MANUAL_REVIEW'),
+('APPROVED'), ('ACTIVE'), ('REJECTED'), ('EXPIRED');
+
+
+CREATE TABLE onboarding(
+    id                      BIGSERIAL PRIMARY KEY,
+    onboarding_key          CHAR(36) NOT NULL,
+    -- Nulo depois de vencer: o cadastro e apagado.
+    customer_id             BIGINT REFERENCES customer(id),
+    -- Repassada pelo gateway. O UNIQUE e a garantia final de que repetir
+    -- o pedido nao cria outra abertura, mesmo se o Redis perder a chave.
+    idempotency_key         VARCHAR(64) NOT NULL,
+    -- SHA-256 do pedido: compara dois pedidos sem guardar os dados.
+    request_hash            CHAR(64) NOT NULL,
+    status_id               BIGINT NOT NULL REFERENCES onboarding_status(id),
+    -- Dados do KYC e do PLD, em centavos a renda. Nulos depois de vencer.
+    declared_monthly_income BIGINT,
+    occupation              VARCHAR(100),
+    pep_self_declared       BOOLEAN,
+    -- Quem cria a conta e a account-api, pela rota interna. Sem FK: a
+    -- tabela account e dela.
+    account_key             CHAR(36),
+    risk_level              VARCHAR(6),
+    reason_codes            VARCHAR(200),
+    analysis_attempts       INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at         TIMESTAMPTZ,
+    lease_until             TIMESTAMPTZ,
+    -- 20 minutos depois do POST /onboarding.
+    expires_at              TIMESTAMPTZ NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    updated_at              TIMESTAMPTZ,
+    UNIQUE(onboarding_key),
+    -- Uma abertura por cliente.
+    UNIQUE(customer_id),
+    UNIQUE(idempotency_key),
+    CHECK (declared_monthly_income IS NULL OR declared_monthly_income >= 0),
+    CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH')),
+    CHECK (analysis_attempts >= 0)
+);
+
+
+-- O RG da abertura: frente e verso, ou uma imagem com os dois lados. A
+-- foto fica no bucket; aqui so o caminho, o tipo e o tamanho. Fica com a
+-- abertura, e nao com o cliente: e o documento desta analise de KYC.
+CREATE TABLE onboarding_document(
+    id                  BIGSERIAL PRIMARY KEY,
+    onboarding_id       BIGINT NOT NULL REFERENCES onboarding(id),
+    document_type       VARCHAR(20) NOT NULL,
+    side                VARCHAR(10) NOT NULL,
+    -- Caminho no bucket. A foto NUNCA entra no Postgres.
+    object_key          VARCHAR(255) NOT NULL,
+    content_type        VARCHAR(50) NOT NULL,
+    size_bytes          BIGINT NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    -- Dois envios do mesmo lado chegando juntos: so um passa.
+    UNIQUE(onboarding_id, side),
+    UNIQUE(object_key),
+    CHECK (document_type IN ('RG')),
+    CHECK (side IN ('FRONT', 'BACK', 'BOTH')),
+    CHECK (content_type IN ('image/jpeg', 'image/png')),
+    CHECK (size_bytes > 0 AND size_bytes <= 5242880)
+);
+
+
+-- O historico da abertura: cada mudanca de etapa grava uma linha, no
+-- mesmo COMMIT da mudanca.
+CREATE TABLE onboarding_status_event(
+    id                  BIGSERIAL PRIMARY KEY,
+    onboarding_id       BIGINT NOT NULL REFERENCES onboarding(id),
+    status_id           BIGINT NOT NULL REFERENCES onboarding_status(id),
+    reason_code         VARCHAR(40),
+    actor               VARCHAR(20) NOT NULL,
+    justification       VARCHAR(500),
+    event_datetime      TIMESTAMPTZ NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    CHECK (actor IN ('api', 'worker', 'compliance'))
+);
+
+CREATE INDEX onboarding_status_event_onboarding ON onboarding_status_event (onboarding_id);
