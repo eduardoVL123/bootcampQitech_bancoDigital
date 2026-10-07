@@ -87,3 +87,25 @@ class BucketConnector:
 
         self.logger.info(f"DeleteObjects {RG_BUCKET}: {deleted} objeto(s)")
         return deleted
+
+    def get_presigned_url(self, object_key: str, expiration_seconds: int = 300) -> str:
+        if not self.available:
+            self.logger.warning("Bucket indisponivel (falha simulada)")
+            raise BucketError()
+
+        self.logger.info(f"OUTGOING GeneratePresignedUrl {RG_BUCKET}")
+        started_at = time.perf_counter()
+
+        try:
+            url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": RG_BUCKET, "Key": object_key},
+                ExpiresIn=expiration_seconds,
+            )
+        except (BotoCoreError, ClientError) as error:
+            self.logger.error(f"Bucket indisponivel ({type(error).__name__})")
+            raise BucketError() from error
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        self.logger.info(f"INCOMING GeneratePresignedUrl {RG_BUCKET} - {elapsed_ms:.1f} ms")
+        return url

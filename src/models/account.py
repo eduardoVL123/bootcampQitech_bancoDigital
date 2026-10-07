@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 
 from models.account_status import AccountStatus
 from models.base import Base
-from models.customer import Customer
+
 
 
 class Account(Base):
@@ -23,7 +23,7 @@ class Account(Base):
 
     id = Column(BigInteger, primary_key=True)
     account_key = Column(CHAR(36), nullable=False, unique=True)
-    customer_id = Column(BigInteger, ForeignKey(Customer.id), nullable=True)
+    customer_id = Column(BigInteger, ForeignKey("customer.id"), nullable=True)
     code = Column(String(30), nullable=True, unique=True)
     status_id = Column(BigInteger, ForeignKey(AccountStatus.id), nullable=False)
     balance = Column(BigInteger, nullable=True)
@@ -38,7 +38,6 @@ class Account(Base):
     )
 
     status = relationship("AccountStatus", foreign_keys=[status_id], lazy="selectin")
-    customer = relationship("Customer", foreign_keys=[customer_id], lazy="selectin")
 
     status_events = relationship(
         "AccountStatusEvent",

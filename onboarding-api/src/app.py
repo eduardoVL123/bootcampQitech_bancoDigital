@@ -46,6 +46,9 @@ def create_app() -> FastAPI:
     application.add_api_route(
         "/onboarding/{onboarding_key}/document", onboarding_resource.on_put_document, methods=["PUT"]
     )
+    application.add_api_route(
+        "/internal/onboarding/{onboarding_key}/document/{side}/url", onboarding_resource.on_get_document_url, methods=["GET"]
+    )
 
     application.add_api_route("/customer/{customer_key}", customer_resource.on_get_by_key, methods=["GET"])
 

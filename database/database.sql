@@ -548,3 +548,28 @@ CREATE TABLE onboarding_check(
     CHECK (check_type IN ('RECEITA', 'SANCTIONS', 'PEP', 'PLD')),
     CHECK (result IN ('PASS', 'FAIL', 'REVIEW'))
 );
+
+
+-- =====================================================================
+-- 8. WEBHOOKS OUTGOING (webhook-api, RFC 06)
+--
+-- A tabela webhook_outbox é responsável por armazenar eventos que devem 
+-- ser despachados para a internet (Transactional Outbox Pattern). O worker 
+-- lida com os status (PENDING, QUEUED_FOR_RETRY, DELIVERED, FAILED).
+-- =====================================================================
+
+CREATE TABLE webhook_outbox(
+    id                  BIGSERIAL PRIMARY KEY,
+    target_url          VARCHAR(500) NOT NULL,
+    event_type          VARCHAR(100) NOT NULL,
+    payload             JSONB NOT NULL,
+    status              VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    secret_key          VARCHAR(255),
+    retries             INTEGER NOT NULL DEFAULT 0,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    updated_at          TIMESTAMPTZ,
+    CHECK (status IN ('PENDING', 'QUEUED_FOR_RETRY', 'DELIVERED', 'FAILED')),
+    CHECK (retries >= 0)
+);
+
+CREATE INDEX webhook_outbox_status_idx ON webhook_outbox (status) WHERE status IN ('PENDING', 'QUEUED_FOR_RETRY');

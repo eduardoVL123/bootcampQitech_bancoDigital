@@ -82,3 +82,11 @@ class OnboardingResource:
         onboarding = controller.get(onboarding_key, credential)
 
         return JSONResponse(content=jsonable_encoder(onboarding), status_code=http_status.HTTP_200_OK)
+
+    def on_get_document_url(self, request: Request, onboarding_key: str, side: str) -> JSONResponse:
+        credential = read_credential(request)
+
+        controller = OnboardingController(read_fault_injection(request))
+        url = controller.get_document_url(onboarding_key, side, credential)
+
+        return JSONResponse(content={"url": url}, status_code=http_status.HTTP_200_OK)

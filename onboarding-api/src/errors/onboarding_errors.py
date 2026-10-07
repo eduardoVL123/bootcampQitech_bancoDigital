@@ -70,6 +70,21 @@ class OnboardingNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class DocumentNotFound(QIException):
+    """O link assinado do RG pedido por compliance, de um lado que a abertura
+    não tem. Era ONB005016 no main de 07/10, mas esse código já era o da
+    retentativa em lote com o birô fora (RFC 05 desde a v0.5)."""
+
+    code = "ONB005018"
+
+    def __init__(self) -> None:
+        title = "Document not found"
+        http_status = 404
+        description = "The requested document side was not found for this onboarding."
+        translation = "Este lado do documento não foi encontrado para esta abertura."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class CustomerNotFound(QIException):
     """Inexistente ou de outra pessoa, com o mesmo corpo (R8)."""
 

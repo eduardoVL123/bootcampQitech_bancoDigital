@@ -225,6 +225,23 @@ class OnboardingController(BaseController):
         if status == OnboardingStatus.DRAFT and now >= onboarding.expires_at:
             raise OnboardingExpired()
 
+    def get_document_url(self, onboarding_key: str, side: str, credential: Credential) -> str:
+        """Devolve o link assinado (presigned URL) de 5 minutos do S3 para a imagem,
+        apenas para o time de compliance."""
+        if not credential.is_compliance:
+            raise OnboardingNotFound()
+
+        onboarding = self.onboarding_repository.get_by_key(onboarding_key)
+        if onboarding is None:
+            raise OnboardingNotFound()
+
+        document = next((doc for doc in onboarding.documents if doc.side == side.upper()), None)
+        if not document:
+            from errors import DocumentNotFound
+            raise DocumentNotFound()
+
+        return self.bucket_connector.get_presigned_url(document.object_key, 300)
+
     def _check_waiting_for_document(self, onboarding: Onboarding) -> None:
         if onboarding.status.enumerator != OnboardingStatus.DRAFT:
             raise OnboardingNotDraft()
