@@ -1,8 +1,10 @@
 """O onboarding-worker (RFC 05): o mesmo código da API, num processo separado.
 
 Ele não tem rota. A cada WORKER_TICK_SECONDS (1 s), olha a fila: analisa o
-KYC das aberturas com o RG completo e pede a conta das aprovadas (F6). A
-cada WORKER_INTERVAL_SECONDS (1 min), também vence as aberturas paradas (F5).
+KYC das aberturas com o RG completo e pede a conta das aprovadas (F6). Com
+um birô sem resposta, a abertura espera a próxima tentativa, e o circuit
+breaker de cada birô fica no Redis, dividido pelas réplicas (F7). A cada
+WORKER_INTERVAL_SECONDS (1 min), também vence as aberturas paradas (F5).
 Nas próximas fatias, ele entrega os eventos (F9).
 
 Cada tarefa abre o próprio contexto de banco e o fecha no fim, como o

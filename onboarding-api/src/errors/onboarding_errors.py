@@ -162,6 +162,20 @@ class BucketUnavailable(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class BureauStillUnavailable(QIException):
+    """Na retentativa em lote, a chamada de teste de algum birô obrigatório
+    não respondeu. Nenhuma abertura volta para a fila."""
+
+    code = "ONB005016"
+
+    def __init__(self) -> None:
+        title = "Bureau still unavailable"
+        http_status = 503
+        description = "At least one mandatory bureau did not answer the test call. Nothing changed; try again later."
+        translation = "Algum birô obrigatório ainda não responde. Nada mudou; tente mais tarde."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class TooManyAttempts(QIException):
     """Limite por documento ou por origem (RFC 05, Limites de pedidos). A
     mensagem não diz qual dos dois, para não ajudar quem testa CPFs."""

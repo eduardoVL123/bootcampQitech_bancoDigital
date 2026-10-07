@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.9 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.10 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.4 (F6 verde e a decisão D26; D1, D2, D13 e D14 decididas). Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.5 (F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -214,9 +214,9 @@ Arquivos `test_get_onboarding.py`, `test_get_customer.py` e `test_credential.py`
 | F3-13 | `test_credencial_mal_formada_responde_401` | `Bearer abc` e `Basic abc` | `401 ONB000006` | OAuth |
 | F3-14 | `test_credencial_sem_assinatura_responde_401` | JWT com `alg: none` | `401 ONB000006` | OAuth |
 | F3-15 | `test_credencial_vencida_responde_401` | JWT com `exp` no passado | `401 ONB000007`, `error="invalid_token"`, `error_description="token expirado"` | OAuth |
-| F3-16 | `test_credencial_de_cliente_em_rota_de_compliance_responde_403` | Credencial `onboarding` nas três rotas de compliance | `403 ONB000008`, `error="insufficient_scope"`, `scope="compliance"` | Escopo |
+| F3-16 | `test_credencial_de_cliente_em_rota_de_compliance_responde_403` | Credencial `onboarding` nas rotas de compliance: desde a F7, `POST /admin/onboardings/retry`; a F8 acrescenta as outras duas | `403 ONB000008`, `error="insufficient_scope"`, `scope="compliance"` | Escopo |
 
-O F3-16 só pode ser escrito quando existir a primeira rota exclusiva de compliance, que nasce na F8 (`GET /onboardings`).
+O F3-16 só pode ser escrito quando existir a primeira rota exclusiva de compliance. Ela nasceu na F7 (`POST /admin/onboardings/retry`); a F8 acrescenta as outras duas.
 
 ### F4. Envio do RG, frente e verso
 
@@ -305,22 +305,36 @@ Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP p
 
 ### F7. Birô fora do ar
 
-Arquivo `test_bureau_down.py`.
+Arquivo `test_bureau_down.py`. **Verde em 07/10** (branch `feat/onboarding-biro-fora`). O birô fora é uma expectativa do Mockserver presa ao documento do teste (`503`, atraso de 3 s ou conexão derrubada), com prioridade maior e só pelas chamadas que o teste precisa. Por baixo dela fica a resposta regular: quando as falhas acabam, o birô "volta", e a abertura que sobra do teste termina sozinha, sem deixar falha para os próximos.
+
+O circuito é de todos os testes ao mesmo tempo, como seria de todos os clientes. Duas proteções evitam que um teste atrapalhe outro: os que provocam falha começam com a fixture `circuito_da_receita_fechado` (uma análise regular passa antes, e a contagem das 5 falhas seguidas recomeça do zero; se o circuito estiver aberto, ela espera ele fechar), e os que abrem o circuito ou mexem na chamada de teste dos birôs são `global_state` e rodam no fim da fila. As 24 horas usam o relógio simulado no envio do RG (`simulated_clock`); o `POST /onboarding` acontece agora, para a credencial do dono continuar valendo.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F7-01 | `test_biro_fora_mantem_em_analise` | Receita com `503` para o CPF | Três chamadas (uma mais 2 retentativas); `ANALYSIS`; account-api nunca chamada | Na dúvida, não aprova |
-| F7-02 | `test_timeout_do_biro_conta_como_falha` | Receita com atraso de 3 s | `ANALYSIS` | Timeout de 2 s |
-| F7-03 | `test_conexao_derrubada_conta_como_falha` | Conexão derrubada | `ANALYSIS` | Falha |
-| F7-04 | `test_biro_de_volta_retoma_a_analise` | Receita com `503` três vezes e depois regular | `ACTIVE` em até 75 s | Nova tentativa em 1 min (`slow`) |
-| F7-05 | `test_biro_fora_por_24h_vai_para_revisao` | RG completo "há 25 h"; Receita com `503` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE` | 24 h (`simulated_clock`) |
-| F7-06 | `test_biro_fora_por_23h_continua_em_analise` | RG completo "há 23 h"; Receita com `503` | `ANALYSIS` | Borda das 24 h (`simulated_clock`) |
-| F7-07 | `test_circuito_abre_depois_de_cinco_falhas` | Falhas seguidas até abrir; depois uma abertura nova com a Receita regular | Durante 30 s, nenhuma chamada nova à Receita, e a abertura fica em `ANALYSIS`; depois, uma chamada de teste e o circuito fecha | Circuit breaker (`global_state`, `slow`) |
-| F7-08 | `test_retentativa_em_lote_devolve_para_a_fila` | Abertura em `BUREAU_UNAVAILABLE`; Receita volta; `POST /admin/onboardings/retry` com a chave | `202`, `requeued_count` 1; depois `ACTIVE`; histórico `MANUAL_REVIEW`, `PENDING_KYC` | Retentativa em lote |
-| F7-09 | `test_retentativa_em_lote_mantem_os_outros_motivos` | Abertura em `MANUAL_REVIEW` por PEP, com a chave na lista | `requeued_count` 0; continua `MANUAL_REVIEW` | Só `BUREAU_UNAVAILABLE` |
-| F7-10 | `test_retentativa_sem_chaves_pega_todas_com_biro_fora` | Sem `onboarding_keys` | A abertura do teste volta para a fila; `requeued_count` pelo menos 1 | Retentativa em lote |
-| F7-11 | `test_retentativa_com_biro_ainda_fora_nao_muda_nada` | Saúde da Receita com `503` | `503 ONB005016`; a abertura continua `MANUAL_REVIEW` | `global_state` |
-| F7-12 | `test_retentativa_em_lote_confere_o_corpo` | `onboarding_keys` que não é lista, ou com item que não é UUID | `400 ONB000001` | Schema |
+| F7-01 | `test_biro_fora_mantem_em_analise` | Receita com `503` nas três chamadas da tentativa | Três chamadas (uma mais 2 retentativas) e, 3 s depois, ainda três; só a Receita chamada; `ANALYSIS`, `WAIT`, sem `checks` nem `reason_codes`; account-api nunca chamada | Na dúvida, não aprova |
+| F7-02 | `test_timeout_do_biro_conta_como_falha` | Receita responde regular, mas com atraso de 3 s, nas três chamadas | Três chamadas, só a Receita; `ANALYSIS`; account-api nunca chamada | Timeout de 2 s |
+| F7-03 | `test_conexao_derrubada_conta_como_falha` | Conexão derrubada nas três chamadas | Três chamadas; `ANALYSIS` | Falha |
+| F7-04 | `test_biro_de_volta_retoma_a_analise` | Receita com `503` nas três chamadas e depois regular | `ACTIVE` em até 90 s, e não antes de 50 s depois da falha; quatro chamadas; histórico sem etapa repetida; quatro `checks` | Nova tentativa em 1 min (`slow`) |
+| F7-05 | `test_biro_fora_por_24h_vai_para_revisao` | RG completo "há 24 h e 1 min"; Receita com `503` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE`, `WAIT`, sem `checks` nem `risk_level`; account-api nunca chamada | 24 h (`simulated_clock`) |
+| F7-06 | `test_biro_fora_por_menos_de_24h_continua_em_analise` | RG completo "há 23 h e 59 min"; Receita com `503` | `ANALYSIS`, sem `reason_codes` | Borda das 24 h (`simulated_clock`) |
+| F7-07 | `test_circuito_abre_depois_de_cinco_falhas` | Cinco aberturas seguidas com a Receita sem resposta; depois, duas com a Receita regular: uma logo, outra 20 s depois | As cinco tiveram as três chamadas; as duas ficam em `ANALYSIS` sem nenhuma chamada à Receita; passados os 30 s, uma consulta de teste fecha o circuito, e as duas chegam a `ACTIVE` com uma chamada cada | Circuit breaker (`global_state`, `slow`) |
+| F7-08 | `test_retentativa_em_lote_devolve_para_a_fila` | Abertura em `BUREAU_UNAVAILABLE`; Receita volta; `POST /admin/onboardings/retry` com a chave | `202`, `requeued_count` 1; depois `ACTIVE`; histórico `DRAFT`, `PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW`, `PENDING_KYC` (com `actor` `compliance`), `ANALYSIS`, `APPROVED`, `ACTIVE`; quatro `checks` aprovados | Retentativa em lote (`simulated_clock`) |
+| F7-09 | `test_retentativa_em_lote_mantem_os_outros_motivos` | Parametrizado: abertura em `MANUAL_REVIEW` por PEP declarado; por renda fora do padrão; com a chave na lista | `202`, `requeued_count` 0; continua `MANUAL_REVIEW`, com o mesmo histórico | Só `BUREAU_UNAVAILABLE` |
+| F7-10 | `test_retentativa_sem_chaves_pega_todas_com_biro_fora` | Parametrizado: corpo `{}` e pedido sem corpo | `requeued_count` pelo menos 1; a abertura do teste volta para a fila e chega a `ACTIVE` | Retentativa em lote (`simulated_clock`) |
+| F7-11 | `test_retentativa_com_biro_ainda_fora_nao_muda_nada` | Parametrizado: a chamada de teste da Receita, das sanções ou do PEP com `503` | `503 ONB005016`; a abertura continua `MANUAL_REVIEW`, com o mesmo histórico | Chamada de teste (`global_state`, `simulated_clock`) |
+| F7-12 | `test_retentativa_em_lote_confere_o_corpo` | Parametrizado: `onboarding_keys` que não é lista; item que não é UUID; lista vazia; campo a mais | `400 ONB000001`, com o campo e a regra (`type`, `format`, `minimum`, `format`) | Schema, decisão D29 |
+| F7-13 | `test_resposta_fora_do_contrato_conta_como_biro_sem_resposta` | RG completo "há 24 h e 1 min"; parametrizado: Receita `200` sem `situacao`; Receita `404` com o corpo de regular; sanções sem `match`; PEP sem `pep` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE`, sem `checks`; o birô que respondeu fora do contrato chamado uma vez só; account-api nunca chamada | Contrato dos birôs, decisão D15 (`simulated_clock`) |
+| F7-14 | `test_retentativa_recomeca_a_contagem_das_24h` | Abertura em `BUREAU_UNAVAILABLE`; a Receita falha de novo depois da retentativa | Seis chamadas; `ANALYSIS`, e não `MANUAL_REVIEW` de novo; a tentativa seguinte vem em 1 minuto (as tentativas também recomeçam), e a abertura chega a `ACTIVE` | Decisão D28 (`simulated_clock`, `slow`) |
+| F7-15 | `test_retentativa_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
+| F7-16 | `test_resposta_fora_do_contrato_nao_abre_o_circuito` | Cinco aberturas seguidas com a Receita respondendo `404`; depois, uma com a Receita regular | A última chega a `ACTIVE` na hora, com uma chamada à Receita | Decisão D15 (`global_state`) |
+
+A matriz de credencial da F3 ganha a rota `POST /admin/onboardings/retry` (F3-11 a F3-15), e o F3-16 nasce com ela: é a primeira rota só de compliance.
+
+O F7-16 já passava antes do código: sem circuito, nada abre. Ele protege a regra contra um circuito que conte a coisa errada, e quem prova que ele vale é a mutação abaixo.
+
+**Mutação da F7 (07/10).** Das 32 mutações, 31 morreram: 2 retentativas trocadas por 1 e por 3, timeout de 4 s, `5xx` que não é falha, chamada sem resposta que não é repetida, nova tentativa na hora, em 30 s e em 5 minutos, espera de 25 h e de 23 h, 24 h contadas do primeiro RG, abertura esperando que nunca volta para a fila, sem conferir o campo do contrato, sem conferir o status `200`, `4xx` repetido na hora e contado como falha, resposta fora do contrato que abre o circuito, circuito que sempre deixa passar, que abre com 4 e com 6 falhas, aberto por 10 s e por 90 s, resposta do contrato que não fecha o circuito, circuito só na memória de cada processo (as duas réplicas dividem a contagem), retentativa que devolve qualquer motivo, que ignora a lista de chaves ou que não zera as tentativas, sem a chamada de teste das sanções ou de nenhum birô, cliente na rota de compliance, sem conferir a chave idempotente e lista vazia aceita. Sobreviveu uma, explicada na seção 5: o meio aberto que deixa todas as consultas passarem, e não só a de teste.
+
+A mutação que sobrou da F6 (a conferência do campo do contrato na resposta do birô) agora morre pelo F7-13.
 
 ### F8. Compliance: fila e decisão
 
@@ -382,7 +396,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB000006` | 401 | F3-12, F3-13, F3-14 |
 | `ONB000007` | 401 | F3-15 |
 | `ONB000008` | 403 | F3-16 |
-| `ONB000011` | 400 | F1-30, F1-31, F4-19, F8-15 |
+| `ONB000011` | 400 | F1-30, F1-31, F4-19, F7-15, F8-15 |
 | `ONB000012` | 409 | F1-28 |
 | `ONB000404` | 404 | F0-04 |
 | `ONB005001` | 400 | F1-08, F1-09, F1-10, F4-11, F8-10 |
@@ -414,7 +428,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `PEP_MATCH` | F6-12 |
 | `PEP_SELF_DECLARED` | F6-13, F6-20 |
 | `INCOME_PROFILE` | F6-14, F6-17, F6-18, F6-19, F6-20 |
-| `BUREAU_UNAVAILABLE` | F7-05, F7-08 |
+| `BUREAU_UNAVAILABLE` | F7-05, F7-08, F7-10, F7-11, F7-13, F7-14 |
 | `COMPLIANCE_REJECTED` | F8-08 |
 
 **Transições do ciclo de vida**
@@ -426,15 +440,15 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `DRAFT` para `PENDING_KYC` | F4-01, F4-02, F4-04, F4-22 |
 | `DRAFT` para `EXPIRED` (pelo worker) | F5-04, F5-05 |
 | `PENDING_KYC` para `ANALYSIS` | F6-01 (histórico) |
-| `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03 |
+| `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03, F7-06, F7-14 |
 | `ANALYSIS` para `APPROVED` | F6-01 |
-| `ANALYSIS` para `MANUAL_REVIEW` | F6-09, F6-12, F6-14, F7-05 |
+| `ANALYSIS` para `MANUAL_REVIEW` | F6-09, F6-12, F6-14, F7-05, F7-13 |
 | `ANALYSIS` para `REJECTED` | F6-05, F6-11 |
 | `APPROVED` para `APPROVED` (account-api fora) | F6-22 |
 | `APPROVED` para `ACTIVE` | F6-01, F6-23 |
 | `MANUAL_REVIEW` para `APPROVED` | F8-07 |
 | `MANUAL_REVIEW` para `REJECTED` | F8-08 |
-| `MANUAL_REVIEW` para `PENDING_KYC` | F7-08 |
+| `MANUAL_REVIEW` para `PENDING_KYC` | F7-08, F7-10, F7-14 |
 
 **Eventos**
 
@@ -450,7 +464,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | Garantia | Testes |
 |---|---|
 | Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08 |
-| Na dúvida, não aprova | F7-01 a F7-07 |
+| Na dúvida, não aprova | F7-01 a F7-07, F7-13, F7-16 |
 | Nada em dobro | F1-24, F1-27, F1-32, F4-18, F4-22, F4-23, F6-03, F6-22, F6-24, F8-14, F9-06 |
 | Prazo de 20 minutos | F5-01 a F5-09 |
 | Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F5-04, F6-21, F8-06, F9-05, F10-01, F10-02 |
@@ -464,7 +478,10 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro manual ou um teste de outra suíte.
 
 - **Posse do worker depois de uma queda** (`lease_until`): precisa derrubar o worker no meio da análise. Roteiro manual com `docker compose kill onboarding-worker`.
-- **Circuit breaker compartilhado entre réplicas** pelo Redis: precisa de duas réplicas do worker.
+- **Circuit breaker sem Redis:** cada processo guarda o próprio circuito. O worker não lê o `X-Fault-Injection`, que é cabeçalho de pedido; é preciso parar o Redis (`docker compose stop redis`) num roteiro manual. Feito em 07/10: com o Redis parado, o F7-01 e o F6-01 passaram, e as duas réplicas escreveram no log que o circuito foi para a memória do processo. O circuito dividido entre as duas réplicas aparece em parte no F7-07: as cinco falhas caem em qualquer das duas, e o circuito só abre na quinta se a contagem for uma só.
+- **As esperas de 200 ms e 400 ms entre as retentativas, e a variação aleatória:** o teste vê as três chamadas, mas não mede o intervalo entre elas com precisão.
+- **As novas tentativas de 5, 15 e 60 minutos, e depois de hora em hora:** o F7-04 prova só a primeira, de 1 minuto. As outras pediriam esperar horas, e o worker usa o relógio de verdade.
+- **Uma consulta de teste por vez no meio aberto:** com duas réplicas, a segunda consulta que chega no mesmo instante espera a próxima tentativa. A janela é pequena demais para um teste provocar.
 - **Comunicação ao Coaf registrada** no caso de sanção: nenhuma rota mostra esse registro.
 - **Chave do Redis com o SHA-256 do documento, e não o CPF puro:** é detalhe interno.
 - **Link assinado de 5 minutos do RG para compliance:** a RFC cita o link e o registro de cada acesso, mas a tabela de rotas não tem essa rota (pendência P1 abaixo).
@@ -474,7 +491,7 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **As fotos apagadas no vencimento:** o worker apaga tudo em `rg/{onboarding_key}/`, mas o teste nunca lê o bucket. O que ele vê é o cadastro sumir (F5-04) e o CPF ficar livre (F5-05).
 - **Bucket fora durante o vencimento:** a abertura fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo. O worker não tem falha simulada; seria preciso derrubar o LocalStack (`docker compose stop localstack`) num roteiro manual.
 - **Foto que sobe no instante em que o worker vence a abertura:** se o envio do RG passa da conferência do prazo, e o worker marca `EXPIRED` e apaga o prefixo antes de a foto subir, ela fica no bucket sem linha. O envio recebe `410` depois da trava. É uma janela de milissegundos.
-- **Posse do worker vencida no meio da análise:** a abertura volta para a fila quando o `lease_until` passa. Provar isso pede derrubar o worker no meio da análise (`docker compose kill onboarding-worker`), num roteiro manual. Na F6, um birô que não responde como o contrato diz também deixa a abertura em `ANALYSIS` até a posse vencer; a F7 troca isso pelas novas tentativas em 1, 5, 15 e 60 minutos.
+- **Posse do worker vencida no meio da análise:** a abertura volta para a fila quando o `lease_until` passa. Provar isso pede derrubar o worker no meio da análise (`docker compose kill onboarding-worker`), num roteiro manual. Desde a F7, um birô sem resposta não depende mais da posse: a abertura fica em `ANALYSIS` sem posse, com a nova tentativa marcada em 1, 5, 15 ou 60 minutos.
 - **O que o Mockserver guarda:** os limites padrão de expectativas e de pedidos gravados dependem da memória, e, quando estouram, ele descarta os mais antigos sem avisar. O compose fixa os dois em 100.000 (`MOCKSERVER_MAX_EXPECTATIONS` e `MOCKSERVER_MAX_LOG_ENTRIES`).
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
@@ -498,7 +515,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D12 | Obrigatório e formato errados no mesmo pedido | Vence o `400 ONB005001` |
 | D13 | Como comparar nome e data com a Receita | **Decidida em 07/10 (F6):** nome sem acento, sem diferença de maiúscula e sem espaço sobrando; data igual |
 | D14 | PEP na PJ | **Decidida em 07/10, na RFC 05 v0.9:** consulta pelo CNPJ, porque a RFC não guarda os dados do sócio |
-| D15 | O que é uma falha que abre o circuito | Cada chamada que deu timeout, conexão recusada ou `5xx`. Um `4xx` que não é resposta prevista (como o `404` vazio de um mock sem expectativa) não abre o circuito, mas também não aprova: a abertura fica em `ANALYSIS` |
+| D15 | O que é uma falha que abre o circuito | **Decidida em 07/10 (F7), na RFC 05 v0.10:** uma consulta que, depois das 2 retentativas, ainda deu timeout, conexão recusada ou `5xx`. Conta uma falha por consulta, e não por chamada. Um `4xx` ou uma resposta sem o campo do contrato (como o `404` vazio de um mock sem expectativa) não abre nem fecha o circuito e não é repetido na hora; para a abertura, é birô sem resposta: não aprova, fica em `ANALYSIS` e, passadas 24 horas, vai para `MANUAL_REVIEW` com `BUREAU_UNAVAILABLE` |
 | D16 | Relógio simulado | Cabeçalho `X-Simulated-Now` (data e hora ISO 8601), só com `SIMULATED_CLOCK_ENABLED=true`, aceito no `POST /onboarding` e no envio do RG |
 | D17 | Falhas simuladas | `X-Fault-Injection: bucket_unavailable` e `redis_unavailable`, só com `FAULT_INJECTION_ENABLED=true` |
 | D18 | "Hoje" para idade e datas | O dia em `America/Sao_Paulo`, na API e nos testes, para o teste da borda não falhar à noite |
@@ -510,6 +527,9 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D24 | Depois que o worker apaga o cadastro, nada liga a abertura à credencial do dono (o `sub` é a `customer_key`), e ele receberia `404` | **Decidida em 07/10, na RFC 05 v0.8:** a tabela `onboarding` ganha `customer_key CHAR(36) NOT NULL`, que fica depois de vencer. Não é dado pessoal. O dono sempre recebe `410`; os outros, `404` |
 | D25 | A RFC dizia que o pedido depois do prazo "já marca a abertura como `EXPIRED`", o que faria o `GET` gravar e disputar a abertura com o worker | **Decidida em 07/10, na RFC 05 v0.8:** a API responde `410` pelo relógio (`expires_at`), sem gravar nada. Quem marca `EXPIRED` e apaga é só o worker, em até 1 minuto |
 | D26 | A RFC não diz o `next_step` das etapas depois do RG | **Decidida em 07/10, na RFC 05 v0.9:** `WAIT` enquanto o banco trabalha (`PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW`, `APPROVED`); `NONE` quando terminou (`ACTIVE`, `REJECTED`) |
+| D27 | A RFC abria o circuito por 5 falhas seguidas ou por 50% de falha em 10 chamadas em 60 s | **Decidida em 07/10, na RFC 05 v0.10:** só as 5 falhas seguidas. Com três birôs de baixo volume, elas já cobrem o birô que cai, e a regra por taxa não tem teste black box barato. Aberto por 30 s; depois, meio aberto: a próxima consulta passa como teste, e as outras esperam |
+| D28 | A RFC dizia "24 horas em `ANALYSIS`", mas não dizia de quando contam, nem o que fica gravado de uma análise interrompida | **Decidida em 07/10, na RFC 05 v0.10:** contam da entrada na fila (o RG completo, ou a retentativa em lote, que recomeça a contagem). A análise interrompida por um birô sem resposta não grava nada (nem `checks`, nem motivo, nem risco): a próxima tentativa refaz tudo, e o `UNIQUE(onboarding_id, check_type)` nunca vê uma verificação repetida |
+| D29 | A RFC não dizia como é a chamada de teste dos birôs nem o formato do corpo da retentativa em lote | **Decidida em 07/10, na RFC 05 v0.10:** `GET /receita/v1/health`, `GET /sancoes/v1/health` e `GET /pep/v1/health`, uma chamada cada, com 2 s de prazo, fora do circuito, esperando `200`. O corpo é opcional; `onboarding_keys` é uma lista com pelo menos um UUID (a lista vazia é recusada, para não ser confundida com "todas") |
 
 **Pendências da RFC encontradas no caminho**
 
@@ -528,9 +548,9 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F4 | 23 | F3 e LocalStack |
 | F5 | 9 | F4 e o worker (vencimento) |
 | F6 | 24 | F4, worker e Mockserver |
-| F7 | 12 | F6 |
+| F7 | 16 | F6 |
 | F8 | 15 | F6 |
 | F9 | 8 | F6 |
 | F10 | 2 | Todas |
 
-São 154 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 158 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

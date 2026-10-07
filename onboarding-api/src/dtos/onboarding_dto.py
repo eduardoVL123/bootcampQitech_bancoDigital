@@ -55,6 +55,11 @@ class OnboardingDTO:
         }
 
     @staticmethod
+    def requeued(count: int) -> dict:
+        """A resposta da retentativa em lote: quantas aberturas voltaram para a fila."""
+        return {"requeued_count": count}
+
+    @staticmethod
     def check(check: OnboardingCheck) -> dict:
         """Uma verificação como o cliente vê: o tipo, o resultado e o motivo.
         Nunca o que o birô respondeu, nem o protocolo dele (LGPD)."""
