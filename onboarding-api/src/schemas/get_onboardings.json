@@ -1,0 +1,28 @@
+{
+  "title": "GetOnboardings",
+  "description": "RFC 05, GET /onboardings: a fila de compliance. limit de 1 a 100 e page a partir de 0, so com digitos; etapa e motivo so os que existem; nenhum outro parametro, para nenhum dado pessoal entrar pela URL.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "enum": ["DRAFT", "PENDING_KYC", "ANALYSIS", "MANUAL_REVIEW", "APPROVED", "ACTIVE", "REJECTED", "EXPIRED"]
+    },
+    "reason_code": {
+      "enum": [
+        "RECEITA_SUSPENSA", "RECEITA_CANCELADA", "RECEITA_TITULAR_FALECIDO", "RECEITA_NULA",
+        "RECEITA_PENDENTE_REGULARIZACAO", "RECEITA_CNPJ_SUSPENSA", "RECEITA_CNPJ_INAPTA",
+        "RECEITA_CNPJ_BAIXADA", "RECEITA_CNPJ_NULA", "RECEITA_NAO_ENCONTRADO", "RECEITA_DADOS_DIVERGENTES",
+        "SANCTIONS_MATCH", "PEP_MATCH", "PEP_SELF_DECLARED", "INCOME_PROFILE", "BUREAU_UNAVAILABLE",
+        "COMPLIANCE_REJECTED"
+      ]
+    },
+    "limit": {
+      "type": "string",
+      "pattern": "^(100|[1-9][0-9]?)$"
+    },
+    "page": {
+      "type": "string",
+      "pattern": "^[0-9]{1,9}$"
+    }
+  },
+  "additionalProperties": false
+}

@@ -162,6 +162,34 @@ class BucketUnavailable(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class OnboardingNotInReview(QIException):
+    """Compliance só decide abertura em MANUAL_REVIEW. Também é a resposta de
+    quem perde quando duas decisões chegam juntas."""
+
+    code = "ONB005014"
+
+    def __init__(self) -> None:
+        title = "Onboarding is not in manual review"
+        http_status = 409
+        description = "Only an onboarding in MANUAL_REVIEW can be decided."
+        translation = "A abertura não está em MANUAL_REVIEW e não pode ser decidida."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class ApprovalWithoutBureauChecks(QIException):
+    """A abertura parou por birô fora e nunca terminou as consultas
+    obrigatórias: sem KYC aprovado, sem conta (decisão D32)."""
+
+    code = "ONB005017"
+
+    def __init__(self) -> None:
+        title = "Approval without the mandatory checks"
+        http_status = 409
+        description = "The onboarding stopped because a bureau was unavailable. Use the batch retry when it is back, or reject."
+        translation = "A abertura parou por birô fora, sem as consultas obrigatórias. Use a retentativa em lote quando o birô voltar, ou recuse."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class BureauStillUnavailable(QIException):
     """Na retentativa em lote, a chamada de teste de algum birô obrigatório
     não respondeu. Nenhuma abertura volta para a fila."""

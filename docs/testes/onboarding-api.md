@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.10 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.11 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.5 (F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.6 (F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -336,27 +336,35 @@ O F7-16 já passava antes do código: sem circuito, nada abre. Ele protege a reg
 
 A mutação que sobrou da F6 (a conferência do campo do contrato na resposta do birô) agora morre pelo F7-13.
 
+Cuidado ao repetir a mutação "retentativa devolve qualquer motivo": ela devolve à fila uma abertura de PEP que já tem as verificações gravadas, e o worker passa a tentar analisá-la a cada minuto, esbarrando no `UNIQUE(onboarding_id, check_type)`. No código de verdade isso não acontece, porque só volta à fila quem parou por birô fora, sem nada gravado. Em 07/10, a abertura de teste que sobrou foi estacionada com a posse (`lease_until`) no futuro, sem apagar nada.
+
 ### F8. Compliance: fila e decisão
 
-Arquivo `test_compliance.py`.
+Arquivo `test_compliance.py`. **Verde em 07/10** (branch `feat/onboarding-compliance`). A abertura em revisão vem do próprio worker: PEP declarado ou renda fora do padrão, com os birôs regulares no Mockserver. A fila é do banco inteiro, e não só do teste: por isso os testes da fila procuram as aberturas deles percorrendo as páginas, e nunca contam o total.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F8-01 | `test_fila_lista_da_mais_antiga_para_a_mais_nova` | Duas aberturas por PEP, A antes de B; percorre as páginas de `GET /onboardings?reason_code=PEP_SELF_DECLARED` | A aparece antes de B | Fila |
-| F8-02 | `test_fila_usa_os_valores_padrao` | Sem parâmetros | `limit` 10, `page` 0, só `MANUAL_REVIEW` | Padrões |
-| F8-03 | `test_fila_filtra_pela_etapa` | `status=REJECTED` | Traz a recusada do teste, não a que está em revisão | Filtro |
-| F8-04 | `test_fila_marca_a_ultima_pagina` | Filtro sem nenhum resultado; percorrer até o fim | `data` vazio e `is_last_page` verdadeiro; última página com até `limit` itens | Paginação |
-| F8-05 | `test_fila_recusa_parametro_errado` | Parametrizado: `limit` 0, 101 e `abc`; `page` -1; `status` e `reason_code` desconhecidos; parâmetro a mais (`document_number`) | `400 ONB000001` | Schema, LGPD |
-| F8-06 | `test_itens_da_fila_nao_mostram_dado_pessoal` | Qualquer item | Sem CPF, nome ou renda | LGPD |
-| F8-07 | `test_aprovacao_de_compliance_abre_a_conta` | `APPROVE` com justificativa | `202` `APPROVED`; depois `ACTIVE`; o evento traz `actor` `compliance`, a justificativa e quem decidiu | Decisão |
-| F8-08 | `test_recusa_de_compliance_e_definitiva` | `REJECT` com justificativa | `200` `REJECTED`, `COMPLIANCE_REJECTED`; account-api nunca chamada | Decisão |
-| F8-09 | `test_decisao_fora_de_revisao_e_recusada` | Abertura em `DRAFT`; abertura `ACTIVE`; abertura recusada por sanção | `409 ONB005014` | Etapa |
-| F8-10 | `test_decisao_exige_decisao_e_justificativa` | Sem `decision`; sem `justification` | `400 ONB005001`, com o campo | Obrigatório |
-| F8-11 | `test_limites_do_tamanho_da_justificativa` | 9 e 501 caracteres; 10 e 500 caracteres | `400 ONB000001` (`minimum`, `maximum`); os outros aceitos | Bordas |
+| F8-01 | `test_fila_lista_da_mais_antiga_para_a_mais_nova` | Duas aberturas por PEP, A antes de B; percorre as páginas de `GET /onboardings?reason_code=PEP_SELF_DECLARED` | A aparece antes de B; todo item tem `PEP_SELF_DECLARED` entre os motivos | Fila, decisão D30 |
+| F8-02 | `test_fila_usa_os_valores_padrao` | Uma abertura em revisão; `GET /onboardings` sem parâmetros | `limit` 10, `page` 0, até 10 itens, todos em `MANUAL_REVIEW` | Padrões |
+| F8-03 | `test_fila_filtra_pela_etapa` | Uma recusada por sanção e uma em revisão; `status=REJECTED` | A recusada aparece, a em revisão não, e todo item está em `REJECTED` | Filtro |
+| F8-04 | `test_fila_marca_a_ultima_pagina` | Duas aberturas em revisão; filtro sem nenhum resultado (`status=DRAFT&reason_code=SANCTIONS_MATCH`); `limit=1`; depois, `limit=100` percorrendo `MANUAL_REVIEW` até o fim | O filtro vazio dá `data` vazio e `is_last_page` verdadeiro; a página de um item não é a última; as páginas antes da última têm `limit` itens, e a última, de 1 a `limit`; nenhuma página vazia diz que não é a última | Paginação |
+| F8-05 | `test_fila_recusa_parametro_errado` | Parametrizado: `limit` 0, 101 e `abc`; `page` -1; `status` e `reason_code` desconhecidos; parâmetro a mais (`document_number`) | `400 ONB000001`, com o parâmetro em `errors` | Schema, LGPD |
+| F8-06 | `test_itens_da_fila_nao_mostram_dado_pessoal` | Uma abertura com nome e renda fáceis de reconhecer, em revisão; acha o item dela | O item tem exatamente `onboarding_key`, `customer_key`, `status`, `reason_codes`, `risk_level` e `created_at`; a página não traz CPF, nome nem renda | LGPD, decisão D30 |
+| F8-07 | `test_aprovacao_de_compliance_abre_a_conta` | `APPROVE` com justificativa | `202`, `APPROVED`, `WAIT`; depois `ACTIVE` com a conta; para compliance, o evento `APPROVED` traz `actor` `compliance`, a justificativa e `decided_by` igual ao `sub` da credencial; os motivos da revisão continuam | Decisão, decisão D31 |
+| F8-08 | `test_recusa_de_compliance_e_definitiva` | `REJECT` com justificativa | `200`, `REJECTED`, `NONE`, `reason_codes` igual a `COMPLIANCE_REJECTED`; account-api nunca chamada | Decisão, decisão D31 |
+| F8-09 | `test_decisao_fora_de_revisao_e_recusada` | Parametrizado: abertura em `DRAFT`; `ACTIVE`; recusada por sanção | `409 ONB005014`, e a etapa não muda | Etapa |
+| F8-10 | `test_decisao_exige_decisao_e_justificativa` | Parametrizado: sem `decision`; sem `justification` | `400 ONB005001`, com o campo | Obrigatório |
+| F8-11 | `test_limites_do_tamanho_da_justificativa` | Parametrizado: 9 e 501 caracteres; 10 e 500 caracteres | Os dois primeiros `400 ONB000001` (`minimum`, `maximum`); os outros aceitos | Bordas |
 | F8-12 | `test_decisao_so_aceita_approve_ou_reject` | `MAYBE` | `400 ONB000001` | Schema |
 | F8-13 | `test_decisao_em_abertura_que_nao_existe_responde_404` | UUID que ninguém criou | `404 ONB005006` | R8 |
-| F8-14 | `test_decisoes_simultaneas_valem_uma_vez` | `APPROVE` e `REJECT` juntos | Um aceito, o outro `409 ONB005014`; um só evento de decisão | `concurrency` |
+| F8-14 | `test_decisoes_simultaneas_valem_uma_vez` | `APPROVE` e `REJECT` juntos, em cinco aberturas | Em cada uma, uma decisão aceita e a outra `409 ONB005014`; um evento de decisão só | `concurrency` |
 | F8-15 | `test_decisao_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
+| F8-16 | `test_dono_nao_ve_a_justificativa_nem_quem_decidiu` | Compliance recusa com uma justificativa fácil de reconhecer; o dono lê a abertura | Os eventos do dono não têm `justification` nem `decided_by`, e o texto da justificativa não aparece | PLD (sem aviso ao suspeito), decisão D31 |
+| F8-17 | `test_aprovacao_de_abertura_parada_por_biro_fora_e_recusada` | Abertura em `BUREAU_UNAVAILABLE` (RG "há 24 h e 1 min", Receita com `503`); `APPROVE` | `409 ONB005017`; continua `MANUAL_REVIEW`; um `REJECT` depois é aceito | Sem KYC aprovado, sem conta; decisão D32 (`simulated_clock`) |
+
+A matriz de credencial da F3 ganha `GET /onboardings` e `PUT /onboarding/{key}/decision`, nas duas listas: com credencial (F3-11 a F3-15) e só de compliance (F3-16). O F7-08 passa a conferir também que a retentativa em lote grava quem pediu (`decided_by`).
+
+**Mutação da F8 (07/10).** As 24 mutações morreram: fila sem filtro de etapa ou de motivo, fila da mais nova para a mais antiga, última página sempre e nunca, `limit` padrão 20, item da fila com a renda, parâmetro desconhecido aceito, `limit` 0 aceito, decisão sem trava, decisão fora de `MANUAL_REVIEW`, aprovação de abertura parada por birô fora, recusa que mantém os motivos, aprovação que vira recusa, histórico sem justificativa ou sem quem decidiu, dono que vê a justificativa, compliance que não vê, aprovação com `200`, justificativa sem mínimo e sem máximo, decisão sem chave idempotente, fila sem credencial e decisão que aceita a credencial do cliente. Duas foram conferidas pelo motivo da falha, e não só pelo vermelho: `limit` padrão 20 (`assert 20 == 10`) e recusa que mantém os motivos (`PEP_SELF_DECLARED` no lugar de `COMPLIANCE_REJECTED`).
 
 ### F9. Outbox e eventos para a webhook-api
 
@@ -415,6 +423,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB005014` | 409 | F8-09, F8-14 |
 | `ONB005015` | 503 | F4-17 |
 | `ONB005016` | 503 | F7-11 |
+| `ONB005017` | 409 | F8-17 |
 
 **Motivos (`reason_codes`)**
 
@@ -463,7 +472,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 
 | Garantia | Testes |
 |---|---|
-| Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08 |
+| Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08, F8-17 |
 | Na dúvida, não aprova | F7-01 a F7-07, F7-13, F7-16 |
 | Nada em dobro | F1-24, F1-27, F1-32, F4-18, F4-22, F4-23, F6-03, F6-22, F6-24, F8-14, F9-06 |
 | Prazo de 20 minutos | F5-01 a F5-09 |
@@ -530,6 +539,9 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D27 | A RFC abria o circuito por 5 falhas seguidas ou por 50% de falha em 10 chamadas em 60 s | **Decidida em 07/10, na RFC 05 v0.10:** só as 5 falhas seguidas. Com três birôs de baixo volume, elas já cobrem o birô que cai, e a regra por taxa não tem teste black box barato. Aberto por 30 s; depois, meio aberto: a próxima consulta passa como teste, e as outras esperam |
 | D28 | A RFC dizia "24 horas em `ANALYSIS`", mas não dizia de quando contam, nem o que fica gravado de uma análise interrompida | **Decidida em 07/10, na RFC 05 v0.10:** contam da entrada na fila (o RG completo, ou a retentativa em lote, que recomeça a contagem). A análise interrompida por um birô sem resposta não grava nada (nem `checks`, nem motivo, nem risco): a próxima tentativa refaz tudo, e o `UNIQUE(onboarding_id, check_type)` nunca vê uma verificação repetida |
 | D29 | A RFC não dizia como é a chamada de teste dos birôs nem o formato do corpo da retentativa em lote | **Decidida em 07/10, na RFC 05 v0.10:** `GET /receita/v1/health`, `GET /sancoes/v1/health` e `GET /pep/v1/health`, uma chamada cada, com 2 s de prazo, fora do circuito, esperando `200`. O corpo é opcional; `onboarding_keys` é uma lista com pelo menos um UUID (a lista vazia é recusada, para não ser confundida com "todas") |
+| D30 | A RFC não dizia o que cada item da fila mostra, como a fila se ordena nem como o filtro de motivo funciona | **Decidida em 07/10, na RFC 05 v0.11:** cada item tem `onboarding_key`, `customer_key`, `status`, `reason_codes`, `risk_level` e `created_at`, nunca dado pessoal; a ordem é a de criação da abertura, da mais antiga para a mais nova; `reason_code` acha a abertura que tem esse motivo entre os dela; `page` começa em 0 |
+| D31 | A RFC dizia que a decisão, a justificativa e quem decidiu ficam no histórico, mas a tabela de eventos não tinha onde guardar quem decidiu, e não dizia quem vê | **Decidida em 07/10, na RFC 05 v0.11:** coluna nova `decided_by` em `onboarding_status_event`, com o `sub` da credencial de compliance (também na retentativa em lote). Só compliance vê `justification` e `decided_by`; o cliente vê a etapa e o motivo, porque avisar o suspeito de uma suspeita de lavagem é proibido. Recusar troca os motivos por `COMPLIANCE_REJECTED`; aprovar mantém os motivos e o risco |
+| D32 | A RFC deixava compliance aprovar qualquer abertura em `MANUAL_REVIEW`, inclusive a parada por birô fora, que nunca terminou as consultas obrigatórias | **Decidida em 07/10, na RFC 05 v0.11:** aprovar uma abertura com `BUREAU_UNAVAILABLE` responde `409 ONB005017` e nada muda: o caminho é a retentativa em lote. Recusar continua valendo |
 
 **Pendências da RFC encontradas no caminho**
 
@@ -549,8 +561,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F5 | 9 | F4 e o worker (vencimento) |
 | F6 | 24 | F4, worker e Mockserver |
 | F7 | 16 | F6 |
-| F8 | 15 | F6 |
+| F8 | 17 | F6 e F7 (a credencial de compliance e a coluna de quem decidiu) |
 | F9 | 8 | F6 |
 | F10 | 2 | Todas |
 
-São 158 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 160 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

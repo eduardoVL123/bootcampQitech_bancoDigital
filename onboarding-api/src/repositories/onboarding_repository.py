@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 from uuid import uuid4
 
-from sqlalchemy import and_, or_, tuple_
+from sqlalchemy import and_, func, or_, tuple_
 
 from database import Context
 from models import Customer, Onboarding, OnboardingCheck, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
@@ -46,14 +46,26 @@ class OnboardingRepository:
         self.change_status(onboarding, OnboardingStatus.DRAFT, OnboardingStatusEvent.API, now)
         return onboarding
 
-    def change_status(self, onboarding: Onboarding, enumerator: str, actor: str, now: datetime) -> None:
-        """Muda a etapa e grava o evento junto: as duas coisas entram no mesmo COMMIT."""
+    def change_status(
+        self,
+        onboarding: Onboarding,
+        enumerator: str,
+        actor: str,
+        now: datetime,
+        justification: Optional[str] = None,
+        decided_by: Optional[str] = None,
+    ) -> None:
+        """Muda a etapa e grava o evento junto: as duas coisas entram no mesmo
+        COMMIT. Quando quem muda é compliance, o evento guarda também a
+        justificativa e quem decidiu."""
         status = self.get_status(enumerator)
         onboarding.status = status
 
         event = OnboardingStatusEvent()
         event.status = status
         event.actor = actor
+        event.justification = justification
+        event.decided_by = decided_by
         event.event_datetime = now
         onboarding.status_events.append(event)
 
@@ -121,6 +133,24 @@ class OnboardingRepository:
         )
         abandoned = and_(OnboardingStatus.enumerator == OnboardingStatus.ANALYSIS, Onboarding.lease_until < now)
         return self._take(or_(waiting, retry_due, abandoned))
+
+    def queue_page(self, status: str, reason_code: Optional[str], limit: int, offset: int) -> list:
+        """Uma página da fila de compliance, da abertura mais antiga para a mais
+        nova, com um item a mais para saber se há próxima página. Com
+        `reason_code`, só as que têm esse motivo entre os delas: os motivos
+        ficam separados por vírgula, e a vírgula nas duas pontas faz achar o
+        motivo inteiro, e nunca um pedaço de outro. O strpos procura o texto
+        exato (no LIKE, o _ dos motivos valeria qualquer letra)."""
+        query = (
+            self.session.query(Onboarding)
+            .join(OnboardingStatus, Onboarding.status_id == OnboardingStatus.id)
+            .filter(OnboardingStatus.enumerator == status)
+        )
+
+        if reason_code is not None:
+            query = query.filter(func.strpos(func.concat(",", Onboarding.reason_codes, ","), f",{reason_code},") > 0)
+
+        return query.order_by(Onboarding.id).limit(limit + 1).offset(offset).all()
 
     def in_review_only_for(self, reason_code: str, onboarding_keys: Optional[list]) -> list:
         """As aberturas em MANUAL_REVIEW só por este motivo, travadas até o

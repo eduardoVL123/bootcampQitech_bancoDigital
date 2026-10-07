@@ -520,9 +520,13 @@ CREATE TABLE onboarding_status_event(
     reason_code         VARCHAR(40),
     actor               VARCHAR(20) NOT NULL,
     justification       VARCHAR(500),
+    -- Quem de compliance mudou a etapa (o sub da credencial), na decisao
+    -- ou na retentativa em lote. Nulo quando foi a api ou o worker.
+    decided_by          VARCHAR(100),
     event_datetime      TIMESTAMPTZ NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    CHECK (actor IN ('api', 'worker', 'compliance'))
+    CHECK (actor IN ('api', 'worker', 'compliance')),
+    CONSTRAINT onboarding_status_event_decided_by_check CHECK (decided_by IS NULL OR actor = 'compliance')
 );
 
 CREATE INDEX onboarding_status_event_onboarding ON onboarding_status_event (onboarding_id);

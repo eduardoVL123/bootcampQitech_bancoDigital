@@ -30,6 +30,14 @@ def next_step(onboarding: Onboarding) -> str:
     return NEXT_STEP_BY_STATUS[status]
 
 
+def reason_codes(onboarding: Onboarding) -> list:
+    """Os motivos, que o banco guarda separados por vírgula, como lista."""
+    if not onboarding.reason_codes:
+        return []
+
+    return onboarding.reason_codes.split(",")
+
+
 class OnboardingDTO:
     """Monta a resposta pública da abertura: só chaves (R5) e nenhum dado pessoal."""
 
@@ -52,6 +60,25 @@ class OnboardingDTO:
             "onboarding_key": onboarding.onboarding_key,
             "status": onboarding.status.enumerator,
             "next_step": next_step(onboarding),
+        }
+
+    @staticmethod
+    def decided(onboarding: Onboarding) -> dict:
+        """A resposta da decisão de compliance: a etapa nova e o próximo passo,
+        no mesmo formato da resposta do envio do RG."""
+        return OnboardingDTO.document_received(onboarding)
+
+    @staticmethod
+    def queue_item(onboarding: Onboarding) -> dict:
+        """Um item da fila de compliance (decisão D30): chaves, etapa, motivos,
+        risco e quando a abertura começou. Nunca dado pessoal."""
+        return {
+            "onboarding_key": onboarding.onboarding_key,
+            "customer_key": onboarding.customer_key,
+            "status": onboarding.status.enumerator,
+            "reason_codes": reason_codes(onboarding),
+            "risk_level": onboarding.risk_level,
+            "created_at": onboarding.created_at.isoformat(),
         }
 
     @staticmethod
@@ -80,23 +107,26 @@ class OnboardingDTO:
         }
 
     @staticmethod
-    def detail(onboarding: Onboarding) -> dict:
+    def detail(onboarding: Onboarding, for_compliance: bool = False) -> dict:
         """A resposta do GET /onboarding/{key}: a etapa, o próximo passo, o
-        prazo e o histórico. Nunca os dados do cadastro nem os consultados."""
-        status = onboarding.status.enumerator
+        prazo e o histórico. Nunca os dados do cadastro nem os consultados.
 
-        reason_codes = []
-        if onboarding.reason_codes:
-            reason_codes = onboarding.reason_codes.split(",")
+        A justificativa e quem decidiu só saem para compliance (decisão D31):
+        avisar o suspeito de uma suspeita de lavagem é proibido."""
+        status = onboarding.status.enumerator
 
         status_events = []
         for event in onboarding.status_events:
-            status_events.append({
+            status_event = {
                 "status": event.status.enumerator,
                 "reason_code": event.reason_code,
                 "actor": event.actor,
                 "event_datetime": event.event_datetime.isoformat(),
-            })
+            }
+            if for_compliance:
+                status_event["justification"] = event.justification
+                status_event["decided_by"] = event.decided_by
+            status_events.append(status_event)
 
         return {
             "onboarding_key": onboarding.onboarding_key,
@@ -106,7 +136,7 @@ class OnboardingDTO:
             "expires_at": onboarding.expires_at.isoformat(),
             "documents": [OnboardingDTO.document(document) for document in onboarding.documents],
             "checks": [OnboardingDTO.check(check) for check in onboarding.checks],
-            "reason_codes": reason_codes,
+            "reason_codes": reason_codes(onboarding),
             "risk_level": onboarding.risk_level,
             "account_key": onboarding.account_key,
             "status_events": status_events,

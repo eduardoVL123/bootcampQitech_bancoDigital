@@ -39,6 +39,7 @@ from tests.utils.mockserver import (
     saude_do_biro,
 )
 from tests.utils.onboarding_api import (
+    ANALISTA_DE_COMPLIANCE,
     ESPERA_PELO_WORKER_SEGUNDOS,
     RELOGIO_SIMULADO_LIGADO,
     Onboarding,
@@ -359,6 +360,10 @@ class TestRetentativaEmLote:
         assert final["status_events"][4]["actor"] == "compliance"
         assert final["reason_codes"] == []
         assert [check["result"] for check in final["checks"]] == ["PASS"] * 4
+
+        # confere: quem pediu fica no histórico, e só compliance vê (decisão D31)
+        para_compliance = Onboarding.consulta_abertura(abertura["onboarding_key"], credencial_de_compliance()).json()
+        assert para_compliance["status_events"][4]["decided_by"] == ANALISTA_DE_COMPLIANCE
 
     @pytest.mark.parametrize(
         "cria_os_dados, motivo",
