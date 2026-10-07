@@ -166,6 +166,11 @@ def create_app() -> FastAPI:
         methods=["GET"],
     )
     application.add_api_route(
+        "/account/{account_key}/statement",
+        account_resource.on_get_statement,
+        methods=["GET"],
+    )
+    application.add_api_route(
         "/health_check",
         health_check_resource.on_get_health_check,
         methods=["GET"]

@@ -35,6 +35,9 @@ services:
       # A senha que protege os endpoints internos. O padrao vale pra
       # estudar; num sistema de verdade, isso nunca teria valor padrao.
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      # O mesmo segredo da onboarding-api. Aqui ele assina o cursor do
+      # extrato, para ninguem forjar um apontando para outra conta.
+      AUTH_SECRET: ${AUTH_SECRET:-auth_secret_de_estudo_troque_em_producao_0123456789}
       # A API de boletos (assunto do sabado 4). Variavel que nao esta
       # nesta lista NAO CHEGA no container: o compose repassa o que
       # esta escrito aqui, e mais nada. Sem estas tres linhas, mexer

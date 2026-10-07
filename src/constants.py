@@ -14,6 +14,14 @@ SERVICE_NAME = os.environ.get("SERVICE_NAME", "bootcamp-api")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN")
 
+# O mesmo segredo que a onboarding-api usa para assinar a credencial do
+# cliente. Aqui ele assina o cursor do extrato: sem assinatura, qualquer
+# um montaria um cursor a mao apontando para o livro de outra conta.
+AUTH_SECRET = os.environ.get("AUTH_SECRET", "auth_secret_de_estudo_troque_em_producao_0123456789")
+
+# Quantos lancamentos o extrato devolve por pagina quando ninguem pede.
+STATEMENT_DEFAULT_LIMIT = int(os.environ.get("STATEMENT_DEFAULT_LIMIT", "20"))
+
 # A API de boletos: o serviço de fora que este projeto chama pra emitir
 # uma cobrança (veja src/connectors/). O endereço vem do ambiente, como
 # tudo aqui — na sua máquina ele aponta pro mock server do sábado 4; em

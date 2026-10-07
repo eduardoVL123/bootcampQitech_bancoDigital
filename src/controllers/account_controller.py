@@ -1,8 +1,10 @@
 from sqlalchemy.exc import IntegrityError
 
+from constants import STATEMENT_DEFAULT_LIMIT
 from controllers.base_controller import BaseController
 from errors import NotFoundAccount, NotFoundCustomer
 from repositories import AccountRepository, CustomerRepository
+from utils import statement_cursor
 
 
 class AccountController(BaseController):
@@ -49,3 +51,27 @@ class AccountController(BaseController):
         if not account:
             raise NotFoundAccount(account_key)
         return account
+
+    def statement(self, account_key: str, query_params: dict) -> tuple:
+        """Uma pagina do extrato, e o cursor da proxima.
+
+        A conta e conferida antes de tudo: extrato de conta que nao
+        existe e 404, e nao uma lista vazia, que esconderia o erro.
+        """
+        account = self.get_by_key(account_key)
+
+        limit = int(query_params.get("limit", STATEMENT_DEFAULT_LIMIT))
+
+        before_sequence = None
+        if query_params.get("cursor"):
+            before_sequence = statement_cursor.decode(query_params["cursor"], account_key)
+
+        linhas, tem_proxima = self.account_repo.get_statement_page(
+            account.id, limit, before_sequence
+        )
+
+        next_cursor = None
+        if tem_proxima and linhas:
+            next_cursor = statement_cursor.encode(account_key, linhas[-1].sequence)
+
+        return linhas, next_cursor

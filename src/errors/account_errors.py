@@ -125,3 +125,16 @@ class MissingIdempotencyKey(QIException):
         description = "Every movement requires the Idempotency-Key header."
         translation = "O cabeçalho Idempotency-Key é obrigatório."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidStatementCursor(QIException):
+    """400: o cursor nao foi emitido por este servidor, ou nao e desta conta."""
+
+    code = "QIT002015"
+
+    def __init__(self) -> None:
+        title = "Invalid statement cursor"
+        http_status = 400
+        description = "The cursor was not issued by this server, or belongs to another account."
+        translation = "O cursor do extrato é inválido."
+        super().__init__(title, self.code, http_status, description, translation)

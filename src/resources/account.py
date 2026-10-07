@@ -1,9 +1,10 @@
+from fastapi import Request
 from fastapi import status as http_status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from controllers import AccountController
-from dtos import AccountDTO
+from dtos import AccountDTO, StatementDTO
 from utils.schema_handler import SchemaHandler
 
 
@@ -30,5 +31,15 @@ class AccountResource:
 
         return JSONResponse(
             content=jsonable_encoder(AccountDTO.full_response(account)),
+            status_code=http_status.HTTP_200_OK,
+        )
+
+    @SchemaHandler.validate_query_params("get_statement.json")
+    def on_get_statement(self, request: Request, account_key: str) -> JSONResponse:
+        controller = AccountController()
+        linhas, next_cursor = controller.statement(account_key, dict(request.query_params))
+
+        return JSONResponse(
+            content=jsonable_encoder(StatementDTO.page(linhas, next_cursor)),
             status_code=http_status.HTTP_200_OK,
         )

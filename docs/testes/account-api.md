@@ -100,16 +100,31 @@ A transação **não move dinheiro**. Ela decide a regra, grava o que foi pedido
 
 **Mutação conferida no F3-05.** Troquei a conferência de saldo de "o total da conta neste posting" para "cada lançamento isolado". Numa transferência a origem aparece duas vezes, pelo valor e pela tarifa, e a conferência isolada deixa passar o pedido que só cabe sem a tarifa. O mutante devolveu `500` no lugar de `409`: o `CHECK (balance >= 0)` do banco segurou o saldo negativo, mas feio, com a API assumindo a culpa.
 
-## F4. Extrato
+## F4. Extrato paginado por cursor
+
+Rota: `GET /account/{account_key}/statement?limit=20&cursor=...`
 
 | # | Teste | Espera |
 |---|---|---|
-| F4-01 | `test_extrato_traz_os_lancamentos_da_conta_em_ordem` | mais novo primeiro |
-| F4-02 | `test_cada_linha_traz_o_saldo_depois_dela` | o `balance_after` da última bate com o saldo |
-| F4-03 | `test_extrato_pagina_por_cursor` | segunda página não repete item da primeira |
-| F4-04 | `test_extrato_estavel_enquanto_chegam_lancamentos` | lançamento novo entre páginas não duplica nada |
-| F4-05 | `test_recusa_cursor_adulterado` | `400 QIT002015` |
-| F4-06 | `test_cliente_nao_ve_extrato_de_outro` | `404 QIT002010` (R8) |
+| F4-01 | `test_traz_os_lancamentos_da_conta_do_mais_novo_para_o_mais_velho` | `sequence` 3, 2, 1 |
+| F4-02 | `test_cada_linha_traz_o_saldo_depois_dela` | `balance_after` da primeira linha bate com o saldo atual |
+| F4-03 | `test_pagina_por_cursor_sem_repetir_item` | páginas sem interseção |
+| F4-04 | `test_ultima_pagina_se_anuncia` | `is_last_page` true, `next_cursor` nulo |
+| F4-05 | `test_extrato_estavel_enquanto_chegam_lancamentos` | três lançamentos novos entre as páginas não duplicam nada |
+| F4-06 | `test_recusa_cursor_adulterado` | `400 QIT002015` |
+| F4-07 | `test_recusa_cursor_de_outra_conta` | `400 QIT002015` |
+| F4-08 | `test_recusa_limite_fora_do_intervalo` | `400 QIT000001` para 0, 101 e texto |
+| F4-09 | `test_conta_que_nao_existe_responde_404` | `404 QIT002010`, e não lista vazia |
+| F4-10 | `test_conta_sem_movimento_tem_extrato_vazio` | `data` vazio, `is_last_page` true |
+
+**Mutações conferidas.**
+
+| O que eu quebrei | O que o teste respondeu |
+|---|---|
+| troquei o cursor por `OFFSET` | o F4-05 pegou um lançamento repetido nas duas páginas. **O F4-03 passou**, e é esse o ponto: paginação por offset só quebra quando chega escrita entre uma página e a seguinte |
+| tirei a conferência da assinatura e do dono do cursor | o F4-06 e o F4-07 viraram `200` no lugar de `400`: daria para montar um cursor à mão e espiar o livro de outra conta |
+
+A primeira é a mais instrutiva. Um teste de paginação que só lê não distingue cursor de offset. É preciso escrever no meio.
 
 ## F5. Conciliação
 

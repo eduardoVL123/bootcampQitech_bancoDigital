@@ -24,3 +24,22 @@ class AccountDTO:
             for evento in account.status_events
         ]
         return resposta
+
+
+class StatementDTO:
+    @staticmethod
+    def page(linhas: list, next_cursor: str) -> dict:
+        return {
+            "data": [
+                {
+                    "entry_key": linha.entry_key.strip(),
+                    "amount": linha.amount,
+                    "balance_after": linha.balance_after,
+                    "sequence": linha.sequence,
+                    "created_at": linha.created_at.isoformat(),
+                }
+                for linha in linhas
+            ],
+            "next_cursor": next_cursor,
+            "is_last_page": next_cursor is None,
+        }

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from database import Context
-from models import Account, AccountStatus, AccountStatusEvent
+from models import Account, AccountStatus, AccountStatusEvent, LedgerEntry
 
 
 class AccountRepository:
@@ -67,3 +67,26 @@ class AccountRepository:
         self.session.flush()
 
         return account
+
+    def get_statement_page(self, account_id: int, limit: int, before_sequence: int = None) -> tuple:
+        """Uma pagina do livro desta conta, do mais novo para o mais velho.
+
+        Pede limit + 1 linhas de proposito: a linha a mais nao vai na
+        resposta, ela so responde "existe proxima pagina?". Sem ela
+        seria preciso um COUNT sobre o livro inteiro a cada pagina.
+
+        Nao pede trava: um GET nao espera ninguem. O livro e append-only,
+        entao as linhas que esta consulta ve nunca mudam depois.
+        """
+        consulta = self.session.query(LedgerEntry).filter(
+            LedgerEntry.account_id == account_id,
+            LedgerEntry.sequence.isnot(None),
+        )
+
+        if before_sequence is not None:
+            consulta = consulta.filter(LedgerEntry.sequence < before_sequence)
+
+        linhas = consulta.order_by(LedgerEntry.sequence.desc()).limit(limit + 1).all()
+
+        tem_proxima = len(linhas) > limit
+        return linhas[:limit], tem_proxima
