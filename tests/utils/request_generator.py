@@ -125,3 +125,31 @@ class RequestGenerator:
             headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
         )
         return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_transaction(payload: dict, idempotency_key: str = None) -> BaseConnectorResponse:
+        headers = {"INTERNAL-TOKEN": INTERNAL_TOKEN}
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
+
+        response = ClientRequisition.send("POST", "/transaction", payload=payload, headers=headers)
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_transaction(transaction_key: str) -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "GET",
+            f"/transaction/{transaction_key}",
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_fee_policy(payload: dict) -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "POST",
+            "/internal/fee_policy",
+            payload=payload,
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json

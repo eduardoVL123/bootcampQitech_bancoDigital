@@ -78,3 +78,50 @@ class PostingDoesNotSumZero(QIException):
         description = f"The entries sum to {total}, and a posting must sum to zero."
         translation = "Os lançamentos precisam somar zero."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class TransactionShapeInvalid(QIException):
+    """422: o pedido e impossivel por ele mesmo, em qualquer estado.
+
+    Deposito com origem, transferencia sem destino, transferencia para
+    a propria conta. Nao e o estado do banco que recusa: e o pedido que
+    nao faz sentido.
+    """
+
+    code = "QIT002019"
+
+    def __init__(self, motivo) -> None:
+        title = "Transaction shape is invalid"
+        http_status = 422
+        description = f"The transaction is invalid: {motivo}."
+        translation = "O pedido não combina com o tipo de transação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class IdempotencyKeyReused(QIException):
+    """409: a mesma chave chegou com OUTRO pedido.
+
+    Repetir o mesmo pedido devolve o original. Repetir a chave com um
+    pedido diferente e erro do cliente, e nao pode ser silencioso: um
+    dos dois pedidos nao seria executado sem ninguem perceber.
+    """
+
+    code = "QIT002020"
+
+    def __init__(self, idempotency_key) -> None:
+        title = "Idempotency key reused with a different request"
+        http_status = 409
+        description = f"Idempotency key {idempotency_key} was already used with another request."
+        translation = "Esta chave já foi usada para outro pedido."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class MissingIdempotencyKey(QIException):
+    code = "QIT002021"
+
+    def __init__(self) -> None:
+        title = "Idempotency-Key header is required"
+        http_status = 400
+        description = "Every movement requires the Idempotency-Key header."
+        translation = "O cabeçalho Idempotency-Key é obrigatório."
+        super().__init__(title, self.code, http_status, description, translation)

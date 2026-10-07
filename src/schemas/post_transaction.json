@@ -1,0 +1,18 @@
+{
+  "title": "PostTransaction",
+  "type": "object",
+  "properties": {
+    "type": {"type": "string", "enum": ["DEPOSIT", "TRANSFER"]},
+    "origin_account_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "destination_account_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "amount": {"type": "integer", "minimum": 1}
+  },
+  "required": ["type", "amount"],
+  "additionalProperties": false
+}

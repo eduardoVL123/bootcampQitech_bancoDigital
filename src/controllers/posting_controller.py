@@ -21,7 +21,21 @@ class PostingController(BaseController):
         self.posting_repo = PostingRepository(self.context)
 
     def apply(self, payload: dict):
-        """Devolve (posting, ja_existia). O resource traduz em 201 ou 200.
+        """A versao que fecha a transacao. Usada pela rota interna."""
+        posting, ja_existia = self.apply_in_current_transaction(payload)
+        if not ja_existia:
+            self.session.commit()
+        return posting, ja_existia
+
+    def apply_in_current_transaction(self, payload: dict, transaction_id=None):
+        """Aplica os lancamentos e NAO da commit.
+
+        A trava vale enquanto a transacao do banco estiver aberta, e
+        quem a fecha e quem chamou este metodo, depois de gravar o resto.
+        E assim que a transferencia inteira (o cabecalho da transacao
+        mais os quatro lancamentos) cabe num COMMIT so.
+
+        Devolve (posting, ja_existia). O resource traduz em 201 ou 200.
 
         A ordem dos passos nao e arbitraria, e e o que vale explicar:
 
@@ -57,11 +71,10 @@ class PostingController(BaseController):
 
         self._check_state_and_balance(entradas, travadas)
 
-        posting = self.posting_repo.create_posting(posting_key, payload["type"])
+        posting = self.posting_repo.create_posting(posting_key, payload["type"], transaction_id)
         for conta, amount in entradas:
             self.posting_repo.add_entry(posting.id, travadas.get(conta.id, conta), amount)
 
-        self.session.commit()
         return posting, False
 
     def reconciliation(self) -> dict:

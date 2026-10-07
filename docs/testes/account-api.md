@@ -76,17 +76,29 @@ Entrega junto o `GET /internal/reconciliation`, porque sem ele não há como pro
 
 A segunda é a que mais importa: a trava estava certa no banco e a decisão saía errada, porque o identity map do SQLAlchemy devolvia o objeto com o saldo antigo. É a armadilha que o `CLAUDE.md` descreve, e agora tem teste que a pega.
 
-## F3. Transferência com tarifa
+## F3. Transação: transferência com tarifa e depósito
+
+Rotas: `POST /transaction` (com o cabeçalho `Idempotency-Key`), `GET /transaction/{key}` e `POST /internal/fee_policy`.
+
+A transação **não move dinheiro**. Ela decide a regra, grava o que foi pedido e pede o posting da F2.
 
 | # | Teste | Espera |
 |---|---|---|
-| F3-01 | `test_transferencia_move_valor_e_cobra_tarifa` | origem perde valor mais tarifa; destino ganha o valor; `FEE_HOLD` ganha a tarifa |
-| F3-02 | `test_transferencia_gera_quatro_lancamentos_somando_zero` | quatro lançamentos, soma zero |
-| F3-03 | `test_tarifa_e_copiada_da_politica_vigente` | `fee_amount` igual à política, e a política fica registrada |
-| F3-04 | `test_tarifa_antiga_preservada_depois_de_mudar_a_regra` | transação velha mantém o valor velho |
-| F3-05 | `test_recusa_saldo_que_nao_cobre_valor_mais_tarifa` | `409 QIT002012` |
-| F3-06 | `test_recusa_transferencia_para_a_propria_conta` | `422` |
-| F3-07 | `test_dez_cliques_com_a_mesma_chave_geram_uma_transferencia` | uma transação, uma tarifa |
+| F3-01 | `test_transferencia_move_valor_e_cobra_tarifa` | Ana 89800, Bruno 10000, tarifa 200 |
+| F3-02 | `test_transferencia_gera_quatro_lancamentos_somando_zero` | conciliação em zero |
+| F3-03 | `test_tarifa_e_copiada_da_politica_vigente` | `fee_amount` e `fee_policy_key` registrados |
+| F3-04 | `test_tarifa_antiga_preservada_depois_de_mudar_a_regra` | muda para 500, a transação velha segue com 200 |
+| F3-05 | `test_recusa_saldo_que_nao_cobre_valor_mais_tarifa` | `409 QIT002012`, saldo intacto |
+| F3-06 | `test_recusa_transferencia_para_a_propria_conta` | `422 QIT002019` |
+| F3-07 | `test_recusa_transferencia_sem_destino` | `422 QIT002019` |
+| F3-08 | `test_recusa_pedido_sem_chave_de_idempotencia` | `400 QIT002021` |
+| F3-09 | `test_mesma_chave_com_outro_pedido_e_conflito` | `409 QIT002020`, nada movido |
+| F3-10 | `test_deposito_credita_sem_cobrar_tarifa` | `fee_amount` 0 |
+| F3-11 | `test_dez_cliques_com_a_mesma_chave_geram_uma_transferencia` | um `201`, um débito, uma tarifa, conciliação zero |
+
+**Poluição entre testes, e como foi resolvida.** O F3-04 cria uma política de tarifa nova, e isso é configuração **global e append-only**: a partir dali, todo teste seguinte cobra o valor novo. Na primeira rodada o F3-09 e o F3-11 quebraram por isso, e só quebravam quando rodavam junto com o F3-04. Cada teste que afirma um valor de tarifa agora **define o valor antes**, com `define_tarifa()`. Conferido rodando a suíte três vezes em ordem aleatória com o `pytest-randomly`: 33 passando nas três.
+
+**Mutação conferida no F3-05.** Troquei a conferência de saldo de "o total da conta neste posting" para "cada lançamento isolado". Numa transferência a origem aparece duas vezes, pelo valor e pela tarifa, e a conferência isolada deixa passar o pedido que só cabe sem a tarifa. O mutante devolveu `500` no lugar de `409`: o `CHECK (balance >= 0)` do banco segurou o saldo negativo, mas feio, com a API assumindo a culpa.
 
 ## F4. Extrato
 
