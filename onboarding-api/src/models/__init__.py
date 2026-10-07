@@ -4,3 +4,4 @@ from models.customer import Customer
 from models.onboarding_status import OnboardingStatus
 from models.onboarding import Onboarding
 from models.onboarding_status_event import OnboardingStatusEvent
+from models.onboarding_document import OnboardingDocument

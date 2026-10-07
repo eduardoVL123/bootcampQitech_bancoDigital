@@ -54,8 +54,11 @@ def setup_logging() -> None:
     root_logger.handlers = [handler]
 
     # O urllib3 fala MUITO em modo debug, e nada disso e nosso: sao
-    # detalhes de conexao HTTP das bibliotecas que usamos.
-    for biblioteca_falante in ["urllib3"]:
+    # detalhes de conexao HTTP das bibliotecas que usamos. O cliente do S3
+    # (boto3, botocore e s3transfer) e pior: em debug ele escreve cabecalhos,
+    # assinatura e os parametros de cada envio do RG. Quem registra a ida e a
+    # volta ao bucket, sem dado pessoal, e o src/connectors/bucket_connector.py.
+    for biblioteca_falante in ["urllib3", "boto3", "botocore", "s3transfer"]:
         logging.getLogger(biblioteca_falante).setLevel(logging.CRITICAL)
 
 

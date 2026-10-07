@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.5 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
-| **Data** | 06/10/2026 |
-| **Versão** | 0.1 |
+| **Base** | RFC 05 v0.7 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Data** | 07/10/2026 |
+| **Versão** | 0.2 (F4 verde: três testes novos, F4-21 a F4-23, e as decisões D22 e D23) |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -27,7 +27,7 @@ Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da 
 | onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos |
 | PostgreSQL | `bootcamp` | O banco único do grupo; as tabelas da onboarding estão na seção 7 do `database/database.sql` (o teste não lê) |
 | Redis | só dentro do compose | Limites por documento e por origem, circuit breaker |
-| LocalStack | só dentro do compose | Bucket privado `rg-documentos` |
+| LocalStack | só dentro do compose | Bucket privado `rg-documentos`, criado por `localstack/init-bucket.sh`. Imagem fixa na 4.14.0, a última que sobe sem conta no LocalStack |
 | Mockserver | `http://127.0.0.1:1080` | Receita, sanções, PEP, account-api e webhook-api |
 
 | Variável | Onde | Para quê |
@@ -220,7 +220,7 @@ O F3-16 só pode ser escrito quando existir a primeira rota exclusiva de complia
 
 ### F4. Envio do RG, frente e verso
 
-Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimos de JPEG e PNG).
+Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimos de JPEG e PNG). **Verde em 07/10** (branch `feat/onboarding-rg`), com o `PUT .../document` também na matriz de credencial (F3-11 a F3-15). Fica para a F5: o `410 ONB005010` no envio de uma abertura vencida e o `next_attempt_at` que o worker vai ler.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
@@ -235,15 +235,20 @@ Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimo
 | F4-09 | `test_recusa_arquivo_que_nao_e_jpeg_nem_png` | Bytes de PDF | `422 ONB005012` | Tipo |
 | F4-10 | `test_tipo_do_arquivo_vem_dos_bytes_e_nao_do_nome` | PDF chamado `rg.jpg` com `image/jpeg`; JPEG chamado `rg.pdf` | O primeiro `422 ONB005012`; o segundo aceito | Primeiros bytes |
 | F4-11 | `test_recusa_envio_sem_arquivo` | Nenhum arquivo | `400 ONB005001` | Obrigatório |
-| F4-12 | `test_recusa_mais_de_duas_imagens` | Parametrizado: `front`, `back` e `both` juntos; `front` e depois `front` e `back` | `409 ONB005009` | Máximo de 2 |
-| F4-13 | `test_recusa_lado_repetido` | Parametrizado: `front` e depois `front`; `front` e depois `both` | `409 ONB005009` | Lado repetido |
-| F4-14 | `test_envio_recusado_nao_muda_nada` | Depois de cada `409`, `413` e `422` | `documents` e `status` iguais aos de antes | Nada enviado |
+| F4-12 | `test_recusa_mais_de_duas_imagens` | Parametrizado: `front`, `back` e `both` no mesmo envio; `front` e depois `front` e `back` | `409 ONB005009` | Máximo de 2 |
+| F4-13 | `test_recusa_lado_repetido` | Parametrizado: `front` e depois `front`; `front` e depois `both`; `front` duas vezes no mesmo envio; `front` e `both` no mesmo envio | `409 ONB005009` | Lado repetido |
+| F4-14 | `test_envio_recusado_nao_muda_nada` | Parametrizado: frente de novo com o verso junto (`409`); verso grande com a frente boa junto (`413`); verso em PDF com a frente boa junto (`422`) | `documents` e `status` iguais aos de antes, nem a imagem boa é guardada | Nada enviado |
 | F4-15 | `test_recusa_envio_fora_de_draft` | RG já completo, novo envio | `409 ONB005008` | Etapa |
-| F4-16 | `test_envio_para_abertura_de_outra_pessoa_responde_404` | Credencial de outro cliente; UUID que ninguém criou | `404 ONB005006` | R8 |
+| F4-16 | `test_envio_para_abertura_de_outra_pessoa_responde_404` | Parametrizado: credencial de outro cliente; UUID que ninguém criou; credencial de compliance | `404 ONB005006`, e a abertura da dona continua sem documento | R8 e escopo |
 | F4-17 | `test_bucket_fora_responde_503_e_nao_grava_nada` | `X-Fault-Injection: bucket_unavailable`; depois repete sem a falha | `503 ONB005015` e `DRAFT` sem documentos; a repetição dá `202` | Bucket fora (`fault_injection`) |
 | F4-18 | `test_envios_simultaneos_do_mesmo_lado_gravam_um_so` | 5 envios de `front` juntos | Um `200`, quatro `409 ONB005009`, nenhum `500` | `UNIQUE(onboarding_id, side)` (`concurrency`) |
 | F4-19 | `test_envio_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
 | F4-20 | `test_rg_completo_entra_no_historico` | RG completo | `status_events`: `DRAFT`, `PENDING_KYC` | Histórico |
+| F4-21 | `test_so_o_verso_mantem_draft_e_pede_a_frente` | Só `back` | `200`, `DRAFT`, `next_step` `SEND_FRONT` | Decisão D23 |
+| F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; cada abertura em `PENDING_KYC`, com um evento só | Trava da abertura (`concurrency`) |
+| F4-23 | `test_frente_e_imagem_com_os_dois_lados_juntas_gravam_uma_so` | `front` e `both` em pedidos separados, juntos, em cinco aberturas | Em cada abertura, um passa e o outro dá `409`; um documento só | Conferência depois da trava (`concurrency`) |
+
+**Mutação da F4 (07/10).** Cada regra foi quebrada de propósito no código, uma por vez, para ver se algum teste fica vermelho. Das 24 mutações, 21 morreram: limite de 5 MB e a borda dele, tipo pelos bytes, PNG, envio sem arquivo, lado repetido, `both` com os dois lados, o mesmo lado duas vezes no formulário, etapa `DRAFT`, só o dono (e não compliance) manda o RG, bucket fora sem gravar nada, chave idempotente, ida para `PENDING_KYC`, `SEND_FRONT`, `documents` sem o caminho no bucket, a trava da abertura e a conferência de lados depois dela. Sobreviveram três, e nenhuma é falta de teste de regra: a segunda conferência de etapa depois da trava (hoje a de lados já recusa, porque com o RG completo toda imagem repete um lado; ela passa a valer na F5, quando o vencimento apaga as imagens), o tratamento do `UNIQUE` sem a trava e o `rollback` antes do bucket (os dois na seção 5).
 
 ### F5. Prazo de 20 minutos
 
@@ -380,7 +385,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB005006` | 404 | F3-03, F3-04, F4-16, F8-13 |
 | `ONB005007` | 404 | F3-08, F3-09, F5-04 |
 | `ONB005008` | 409 | F4-15 |
-| `ONB005009` | 409 | F4-12, F4-13, F4-18 |
+| `ONB005009` | 409 | F4-12, F4-13, F4-18, F4-23 |
 | `ONB005010` | 410 | F5-01, F5-02, F5-07 |
 | `ONB005011` | 413 | F4-08 |
 | `ONB005012` | 422 | F4-09, F4-10 |
@@ -409,8 +414,8 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | Transição | Testes |
 |---|---|
 | início para `DRAFT` | F1-01 |
-| `DRAFT` para `DRAFT` (falta um lado) | F4-03 |
-| `DRAFT` para `PENDING_KYC` | F4-01, F4-02, F4-04 |
+| `DRAFT` para `DRAFT` (falta um lado) | F4-03, F4-21 |
+| `DRAFT` para `PENDING_KYC` | F4-01, F4-02, F4-04, F4-22 |
 | `DRAFT` para `EXPIRED` | F5-01, F5-04 |
 | `PENDING_KYC` para `ANALYSIS` | F6-01 (histórico) |
 | `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03 |
@@ -438,13 +443,13 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 |---|---|
 | Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08 |
 | Na dúvida, não aprova | F7-01 a F7-07 |
-| Nada em dobro | F1-24, F1-27, F1-32, F4-18, F6-03, F6-22, F6-24, F8-14, F9-06 |
+| Nada em dobro | F1-24, F1-27, F1-32, F4-18, F4-22, F4-23, F6-03, F6-22, F6-24, F8-14, F9-06 |
 | Prazo de 20 minutos | F5-01 a F5-07 |
 | Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F6-21, F8-06, F9-05, F10-01, F10-02 |
 | Abuso contido | F2-01 a F2-07 |
 | Credencial válida e no prazo | F1-04, F3-11 a F3-16 |
 | Cada um vê só o que é seu | F3-03, F3-04, F3-08, F3-09, F4-16 |
-| Motivo e próximo passo sempre claros | F1-08, F1-11, F1-33, F3-01, F4-03 |
+| Motivo e próximo passo sempre claros | F1-08, F1-11, F1-33, F3-01, F4-03, F4-21 |
 
 ## 5. O que o black box não alcança
 
@@ -455,6 +460,9 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **Comunicação ao Coaf registrada** no caso de sanção: nenhuma rota mostra esse registro.
 - **Chave do Redis com o SHA-256 do documento, e não o CPF puro:** é detalhe interno.
 - **Link assinado de 5 minutos do RG para compliance:** a RFC cita o link e o registro de cada acesso, mas a tabela de rotas não tem essa rota (pendência P1 abaixo).
+- **Foto sem linha no bucket:** quando o envio é recusado depois de a foto subir (outro envio da mesma abertura ganhou a trava), a foto fica no bucket sem linha no banco. A RFC aceita esse pior caso ("nunca uma linha sem foto"). O caminho começa com `rg/{onboarding_key}/`, e o vencimento da F5 pode apagar pelo prefixo. O teste não vê, porque nunca lê o bucket.
+- **`UNIQUE(onboarding_id, side)` como última garantia no envio do RG:** a conferência depois da trava já recusa o lado repetido, e a janela que sobra para o `UNIQUE` é pequena demais para um teste provocar. A mutação que tira a trava e o tratamento do `UNIQUE` juntos sobrevive por isso.
+- **A conexão devolvida antes de chamar o bucket:** o envio do RG encerra a leitura (`rollback`, sem nada gravado) antes do `PutObject`, para não segurar conexão nem trava durante até 10 s. Não aparece por HTTP.
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
 ## 6. Decisões a confirmar com o time
@@ -484,6 +492,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D19 | Prefixo dos códigos de erro | **Decidida em 06/10, na RFC 05 v0.6:** todo erro que a onboarding-api responde começa com `ONB` (`ONB000xxx` nos gerais, `ONB005xxx` nos dela). Os que só o gateway responde continuam `QIT` |
 | D20 | Onde moram as tabelas da onboarding | **Decidida em 06/10:** no banco único do grupo (`bootcamp`), seção 7 do `database/database.sql`. `customer` e `customer_document` seguem a definição do grupo; a onboarding preenche o `request_key` com a `onboarding_key` (como pede o `bancos.md`), e renda, ocupação e PEP ficam na tabela `onboarding` |
 | D21 | Onde ficam os documentos do RG | **Decidida em 06/10:** numa tabela da abertura, `onboarding_document`, ligada pelo `onboarding_id`, uma linha por imagem, com `UNIQUE(onboarding_id, side)`. A `customer_document` do grupo fica como está, e a onboarding não grava nela |
+| D22 | A RFC diz que o `GET` mostra os lados do RG recebidos, mas não diz o formato | **Decidida em 07/10, na RFC 05 v0.7:** `documents` é uma lista, na ordem de chegada, com `side`, `content_type` (o que os bytes dizem), `size_bytes` e `created_at` de cada imagem. Nunca o caminho no bucket. A resposta do `PUT` traz `onboarding_key`, `status` e `next_step` |
+| D23 | A RFC diz `SEND_BACK` quando falta um lado, mas a pessoa pode mandar o verso primeiro | **Decidida em 07/10, na RFC 05 v0.7:** só a frente, `SEND_BACK`; só o verso, `SEND_FRONT` |
 
 **Pendências da RFC encontradas no caminho**
 
@@ -499,7 +509,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F1 | 34 | F0 |
 | F2 | 7 | F1 e Redis |
 | F3 | 16 | F1 |
-| F4 | 20 | F3 e LocalStack |
+| F4 | 23 | F3 e LocalStack |
 | F5 | 7 | F4 e o worker (vencimento) |
 | F6 | 24 | F4, worker e Mockserver |
 | F7 | 12 | F6 |
@@ -507,4 +517,4 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F9 | 8 | F6 |
 | F10 | 2 | Todas |
 
-São 149 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 152 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

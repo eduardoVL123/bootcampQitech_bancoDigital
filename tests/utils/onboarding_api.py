@@ -9,6 +9,7 @@ O que tem aqui:
   - pessoa_fisica() e pessoa_juridica(): um cadastro valido, com documento novo;
   - cabecalhos_do_gateway(): o que o gateway manda em todo pedido;
   - credenciais: a do cliente vem da API; as outras o teste fabrica;
+  - imagens do RG: JPEG, PNG e PDF de qualquer tamanho, feitos na hora;
   - datas: "hoje" e o dia de Sao Paulo, como na API.
 """
 import base64
@@ -99,6 +100,20 @@ class Onboarding:
     def consulta_cliente(chave_do_cliente: str, credencial: str) -> requests.Response:
         """GET /customer/{customer_key}"""
         return Onboarding.envia("GET", f"/customer/{chave_do_cliente}", cabecalhos_com_credencial(credencial))
+
+    @staticmethod
+    def envia_rg(chave_da_abertura: str, credencial: str, arquivos: list, cabecalhos: dict = None) -> requests.Response:
+        """PUT /onboarding/{onboarding_key}/document: manda as imagens do RG.
+
+        `arquivos` é uma lista de imagem(...). Lista vazia manda o pedido sem
+        corpo nenhum. Sem `cabecalhos`, vai o que o gateway mandaria."""
+        if cabecalhos is None:
+            cabecalhos = cabecalhos_do_gateway()
+
+        if credencial is not None:
+            cabecalhos["Authorization"] = f"Bearer {credencial}"
+
+        return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/document", cabecalhos, files=arquivos)
 
     @staticmethod
     def comeca_abertura(dados: dict = None) -> dict:
@@ -206,6 +221,55 @@ def novo_cpf() -> str:
 
 def novo_cnpj() -> str:
     return RandomGenerator.generate_cnpj()
+
+
+# ----------------------------------------------------------------------
+# Imagens do RG
+# ----------------------------------------------------------------------
+
+LIMITE_DA_IMAGEM_BYTES = 5 * 1024 * 1024
+
+# Os primeiros bytes de cada formato. É por eles que a API reconhece o tipo,
+# e não pelo nome do arquivo nem pelo Content-Type que o cliente declara.
+INICIO_DO_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00"
+INICIO_DO_PNG = b"\x89PNG\r\n\x1a\n"
+INICIO_DO_PDF = b"%PDF-1.4\n"
+
+
+def com_tamanho(inicio: bytes, tamanho: int) -> bytes:
+    """O começo do formato, completado com zeros até o tamanho pedido."""
+    return inicio + b"\x00" * (tamanho - len(inicio))
+
+
+def bytes_de_jpeg(tamanho: int = 2048) -> bytes:
+    return com_tamanho(INICIO_DO_JPEG, tamanho)
+
+
+def bytes_de_png(tamanho: int = 2048) -> bytes:
+    return com_tamanho(INICIO_DO_PNG, tamanho)
+
+
+def bytes_de_pdf(tamanho: int = 2048) -> bytes:
+    return com_tamanho(INICIO_DO_PDF, tamanho)
+
+
+def imagem(lado: str, conteudo: bytes = None, nome: str = None, tipo: str = "image/jpeg") -> tuple:
+    """Um arquivo do envio do RG, no formato do requests: (campo, (nome, bytes, tipo)).
+
+    `lado` é o campo do formulário: front, back ou both. Sem `conteudo`, vai
+    um JPEG pequeno e válido."""
+    if conteudo is None:
+        conteudo = bytes_de_jpeg()
+
+    if nome is None:
+        nome = f"rg-{lado}.jpg"
+
+    return (lado, (nome, conteudo, tipo))
+
+
+def imagens(*lados: str) -> list:
+    """Um JPEG válido para cada lado pedido: imagens("front", "back")."""
+    return [imagem(lado) for lado in lados]
 
 
 # ----------------------------------------------------------------------
