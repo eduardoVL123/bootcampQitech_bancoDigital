@@ -30,6 +30,17 @@ REFUSALS_TO_BLOCK_ORIGIN = 20
 REFUSALS_WINDOW_SECONDS = 10 * 60
 ORIGIN_BLOCK_SECONDS = 30 * 60
 
+# O bucket privado das fotos do RG (RFC 05). No compose, quem faz o papel
+# do S3 e o LocalStack. Sem o endereco, o cliente do S3 iria para a AWS de
+# verdade: por isso a API nao sobe sem ele.
+S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL")
+S3_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+RG_BUCKET = os.environ.get("RG_BUCKET", "rg-documentos")
+BUCKET_TIMEOUT_SECONDS = 10
+
+# Cada imagem do RG tem ate 5 MB (RFC 05, Rotas).
+MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+
 # So o ambiente de teste liga. Com true, a API obedece ao cabecalho
 # X-Fault-Injection e finge que o Redis (ou, depois, o bucket) caiu.
 FAULT_INJECTION_ENABLED = os.environ.get("FAULT_INJECTION_ENABLED", "false").lower() == "true"
@@ -46,7 +57,7 @@ BYPASS_ENDPOINTS = [
     "/health_check",
 ]
 
-REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET"]
+REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET", "S3_ENDPOINT_URL"]
 
 
 def check_variables():

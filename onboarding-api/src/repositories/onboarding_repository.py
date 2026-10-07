@@ -3,11 +3,11 @@ from typing import Optional
 from uuid import uuid4
 
 from database import Context
-from models import Customer, Onboarding, OnboardingStatus, OnboardingStatusEvent
+from models import Customer, Onboarding, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
 
 
 class OnboardingRepository:
-    """Grava e busca a abertura e o histórico dela. Só aqui existe query de abertura."""
+    """Grava, busca e trava a abertura, o histórico e as imagens do RG. Só aqui existe query de abertura."""
 
     def __init__(self, context: Context) -> None:
         self.session = context.db_session
@@ -54,8 +54,38 @@ class OnboardingRepository:
         event.event_datetime = now
         onboarding.status_events.append(event)
 
+    def add_document(
+        self,
+        onboarding: Onboarding,
+        side: str,
+        object_key: str,
+        content_type: str,
+        size_bytes: int,
+        now: datetime,
+    ) -> None:
+        """Uma linha por imagem do RG, só com o caminho no bucket: a foto nunca entra no Postgres."""
+        document = OnboardingDocument()
+        document.document_type = OnboardingDocument.RG
+        document.side = side
+        document.object_key = object_key
+        document.content_type = content_type
+        document.size_bytes = size_bytes
+        document.created_at = now
+        onboarding.documents.append(document)
+
     def get_by_key(self, onboarding_key: str) -> Optional[Onboarding]:
         return self.session.query(Onboarding).filter(Onboarding.onboarding_key == onboarding_key).first()
+
+    def get_by_key_for_update(self, onboarding_key: str) -> Onboarding:
+        """A abertura, que já se sabe que existe, travada até o COMMIT (SELECT ... FOR UPDATE).
+        O populate_existing relê do banco o que a sessão tinha guardado de antes da trava."""
+        return (
+            self.session.query(Onboarding)
+            .filter(Onboarding.onboarding_key == onboarding_key)
+            .with_for_update()
+            .populate_existing()
+            .one()
+        )
 
     def get_by_idempotency_key(self, idempotency_key: str) -> Optional[Onboarding]:
         return self.session.query(Onboarding).filter(Onboarding.idempotency_key == idempotency_key).first()

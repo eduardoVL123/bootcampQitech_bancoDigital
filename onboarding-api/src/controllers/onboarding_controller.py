@@ -1,13 +1,16 @@
 import hashlib
 import json
 from datetime import date, timedelta
-from typing import Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple
+from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
 
+from connectors import BucketConnector, BucketError
 from constants import (
     DOCUMENT_ATTEMPTS_PER_HOUR,
     DOCUMENT_ATTEMPTS_WINDOW_SECONDS,
+    MAX_DOCUMENT_BYTES,
     ONBOARDING_TIMEOUT_MINUTES,
     ORIGIN_BLOCK_SECONDS,
     REFUSALS_TO_BLOCK_ORIGIN,
@@ -16,26 +19,51 @@ from constants import (
 from controllers.base_controller import BaseController
 from dtos import OnboardingDTO
 from errors import (
+    BucketUnavailable,
     DocumentAlreadyRegistered,
+    FileTooLarge,
     IdempotencyKeyReused,
     InvalidDate,
     InvalidDocumentNumber,
+    MissingRequiredFields,
+    OnboardingNotDraft,
     OnboardingNotFound,
+    RepeatedDocumentSide,
     TooManyAttempts,
     UnderageCustomer,
+    UnsupportedFileType,
 )
-from models import CustomerType, Onboarding
+from models import CustomerType, Onboarding, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
 from repositories import CustomerRepository, OnboardingRepository, RateLimitRepository
 from utils.access_token import issue_access_token
 from utils.clock import bank_today, now_utc
 from utils.credential import Credential
 from utils.document_number import is_valid_cnpj, is_valid_cpf
+from utils.image_type import detect_image_type
 
 MINIMUM_AGE = 18
 
 # O nome que o PostgreSQL dá ao UNIQUE(document_number) do database.sql. É
 # por ele que se sabe que a gravação parou num documento já cadastrado.
 DOCUMENT_NUMBER_CONSTRAINT = "customer_document_number_key"
+
+# O UNIQUE(onboarding_id, side): o mesmo lado do RG duas vezes na mesma abertura.
+DOCUMENT_SIDE_CONSTRAINT = "onboarding_document_onboarding_id_side_key"
+
+NO_DOCUMENT_ERROR = {
+    "field": "front",
+    "rule": "required",
+    "message": "Mande a frente e o verso (front e back), ou uma imagem com os dois lados (both).",
+}
+
+
+class DocumentImage(NamedTuple):
+    """Uma imagem do RG já conferida: o campo do envio, o lado, os bytes e o tipo que os bytes dizem."""
+
+    field: str
+    side: str
+    content: bytes
+    content_type: str
 
 
 class OnboardingController(BaseController):
@@ -46,6 +74,7 @@ class OnboardingController(BaseController):
         self.customer_repository = CustomerRepository(self.context)
         self.onboarding_repository = OnboardingRepository(self.context)
         self.rate_limit_repository = RateLimitRepository(available="redis_unavailable" not in fault_injection)
+        self.bucket_connector = BucketConnector(available="bucket_unavailable" not in fault_injection)
 
     def start(self, onboarding_data: dict, idempotency_key: str, origin: str) -> Tuple[dict, bool]:
         """Cadastra o cliente e começa a abertura em DRAFT, num COMMIT só.
@@ -115,14 +144,134 @@ class OnboardingController(BaseController):
 
         return OnboardingDTO.detail(onboarding)
 
+    def send_document(self, onboarding_key: str, credential: Credential, files: List[Tuple[str, bytes]]) -> Tuple[dict, bool]:
+        """Guarda as imagens do RG (RFC 05, Mandar o RG).
+
+        Devolve a resposta e se o RG ficou completo (202) ou se ainda falta
+        um lado (200). Tudo é conferido antes de gastar o bucket. Depois,
+        primeiro o bucket e só então o banco: o pior caso é uma foto sem
+        linha, invisível, e nunca uma linha apontando para uma foto que não existe.
+        """
+        onboarding = self.onboarding_repository.get_by_key(onboarding_key)
+
+        # Só o dono manda o RG. Compliance lê a abertura, mas não envia
+        # documento. Para qualquer outro, a abertura não existe (R8).
+        if onboarding is None or not self._is_owner(onboarding, credential):
+            raise OnboardingNotFound()
+
+        self._check_waiting_for_document(onboarding)
+        images = self._check_images(files)
+        self._check_sides(onboarding, images)
+
+        # Nada foi gravado até aqui. Encerrar a leitura devolve a conexão ao
+        # pool e garante que nenhuma trava fica aberta durante a chamada ao bucket.
+        self.session.rollback()
+
+        object_keys = self._store_in_bucket(onboarding_key, images)
+
+        # Agora a trava: dois envios da mesma abertura passam daqui um de cada
+        # vez, e o segundo confere de novo, já vendo o que o primeiro gravou.
+        # Sem ela, a frente e o verso chegando juntos veriam só o próprio lado,
+        # e a abertura ficaria presa em DRAFT com o RG completo.
+        onboarding = self.onboarding_repository.get_by_key_for_update(onboarding_key)
+        self._check_waiting_for_document(onboarding)
+        self._check_sides(onboarding, images)
+
+        now = now_utc()
+        for image, object_key in zip(images, object_keys):
+            self.onboarding_repository.add_document(
+                onboarding, image.side, object_key, image.content_type, len(image.content), now
+            )
+
+        try:
+            self.session.flush()
+        except IntegrityError as error:
+            # O UNIQUE(onboarding_id, side) é a garantia final, se a trava faltar.
+            # Qualquer outra restrição que barrar é defeito, e não lado repetido.
+            self.session.rollback()
+            if self._constraint_name(error) == DOCUMENT_SIDE_CONSTRAINT:
+                raise RepeatedDocumentSide(images[0].field)
+            raise
+
+        sides_shown = OnboardingDocument.sides_shown(document.side for document in onboarding.documents)
+        complete = sides_shown == OnboardingDocument.COMPLETE_RG
+
+        # RG completo: a parte da pessoa acabou, e a abertura entra na fila da análise.
+        if complete:
+            self.onboarding_repository.change_status(
+                onboarding, OnboardingStatus.PENDING_KYC, OnboardingStatusEvent.API, now
+            )
+
+        onboarding_dto = OnboardingDTO.document_received(onboarding)
+
+        self.session.commit()
+        return onboarding_dto, complete
+
+    def _check_waiting_for_document(self, onboarding: Onboarding) -> None:
+        if onboarding.status.enumerator != OnboardingStatus.DRAFT:
+            raise OnboardingNotDraft()
+
+    def _check_images(self, files: List[Tuple[str, bytes]]) -> List[DocumentImage]:
+        """Pelo menos uma imagem, cada uma com até 5 MB e JPEG ou PNG pelos primeiros bytes."""
+        if not files:
+            raise MissingRequiredFields([NO_DOCUMENT_ERROR])
+
+        images = []
+        for field, content in files:
+            if len(content) > MAX_DOCUMENT_BYTES:
+                raise FileTooLarge(field, MAX_DOCUMENT_BYTES // (1024 * 1024))
+
+            content_type = detect_image_type(content)
+            if content_type is None:
+                raise UnsupportedFileType(field)
+
+            images.append(DocumentImage(field, field.upper(), content, content_type))
+
+        return images
+
+    def _check_sides(self, onboarding: Onboarding, images: List[DocumentImage]) -> None:
+        """Cada lado do RG chega uma vez só, contando os já guardados e os do
+        mesmo envio. A imagem BOTH mostra os dois lados. Como o RG só tem dois
+        lados, uma terceira imagem sempre repete um, e assim a mesma conferência
+        garante o máximo de duas imagens."""
+        shown = OnboardingDocument.sides_shown(document.side for document in onboarding.documents)
+
+        for image in images:
+            image_sides = OnboardingDocument.SIDES_SHOWN[image.side]
+            if shown & image_sides:
+                raise RepeatedDocumentSide(image.field)
+            shown = shown | image_sides
+
+    def _store_in_bucket(self, onboarding_key: str, images: List[DocumentImage]) -> List[str]:
+        """Manda cada imagem para o bucket e devolve os caminhos. O caminho tem
+        a chave da abertura e nenhum dado pessoal, e é novo a cada envio: dois
+        envios juntos nunca escrevem um por cima do outro."""
+        object_keys = []
+
+        for image in images:
+            object_key = f"rg/{onboarding_key}/{image.field}-{uuid4()}"
+            try:
+                self.bucket_connector.put_object(object_key, image.content, image.content_type)
+            except BucketError:
+                raise BucketUnavailable()
+            object_keys.append(object_key)
+
+        return object_keys
+
     def _can_read(self, onboarding: Onboarding, credential: Credential) -> bool:
         if credential.is_compliance:
             return True
 
+        return self._is_owner(onboarding, credential)
+
+    def _is_owner(self, onboarding: Onboarding, credential: Credential) -> bool:
         return onboarding.customer is not None and credential.is_customer(onboarding.customer.customer_key)
 
+    def _constraint_name(self, error: IntegrityError) -> Optional[str]:
+        return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+
     def _resolve_conflict(self, error: IntegrityError, idempotency_key: str, request_hash: str, origin: str) -> dict:
-        constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+        constraint = self._constraint_name(error)
 
         # Um pedido com a mesma chave chegou junto e gravou primeiro: é a
         # mesma abertura, e quem perdeu recebe a do vencedor.

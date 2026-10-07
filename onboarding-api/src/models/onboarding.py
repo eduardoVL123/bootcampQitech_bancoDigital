@@ -42,3 +42,8 @@ class Onboarding(Base):
         back_populates="onboarding",
         order_by="asc(OnboardingStatusEvent.id)",
     )
+    documents = relationship(
+        "OnboardingDocument",
+        back_populates="onboarding",
+        order_by="asc(OnboardingDocument.id)",
+    )

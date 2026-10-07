@@ -83,6 +83,71 @@ class CustomerNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class OnboardingNotDraft(QIException):
+    code = "ONB005008"
+
+    def __init__(self) -> None:
+        title = "Onboarding is not waiting for documents"
+        http_status = 409
+        description = "The onboarding is no longer in DRAFT and does not accept documents."
+        translation = "A abertura não está em DRAFT e não espera mais documento."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class RepeatedDocumentSide(QIException):
+    """O RG tem dois lados, e a abertura guarda no máximo duas imagens. Uma
+    terceira imagem sempre repete um lado, e por isso as duas regras viram
+    uma recusa só."""
+
+    code = "ONB005009"
+
+    def __init__(self, field) -> None:
+        title = "Repeated document side"
+        http_status = 409
+        description = "The upload would exceed two images or repeats a side already sent."
+        translation = "O envio passaria de duas imagens do RG, ou repete um lado já enviado."
+        errors = [{"field": field, "rule": "repeated_side", "message": "Este lado do RG já foi enviado."}]
+        super().__init__(title, self.code, http_status, description, translation, errors)
+
+
+class FileTooLarge(QIException):
+    code = "ONB005011"
+
+    def __init__(self, field, max_megabytes) -> None:
+        title = "File too large"
+        http_status = 413
+        description = f"Each image must have at most {max_megabytes} MB."
+        translation = f"Cada imagem pode ter até {max_megabytes} MB."
+        errors = [{"field": field, "rule": "max_size", "message": f"Até {max_megabytes} MB."}]
+        super().__init__(title, self.code, http_status, description, translation, errors)
+
+
+class UnsupportedFileType(QIException):
+    """O tipo vem dos primeiros bytes do arquivo. O nome e o Content-Type são
+    o que o cliente diz, e não provam nada."""
+
+    code = "ONB005012"
+
+    def __init__(self, field) -> None:
+        title = "Unsupported file type"
+        http_status = 422
+        description = "The file is neither JPEG nor PNG."
+        translation = "O arquivo não é JPEG nem PNG."
+        errors = [{"field": field, "rule": "file_type", "message": "Só JPEG ou PNG."}]
+        super().__init__(title, self.code, http_status, description, translation, errors)
+
+
+class BucketUnavailable(QIException):
+    code = "ONB005015"
+
+    def __init__(self) -> None:
+        title = "Document storage unavailable"
+        http_status = 503
+        description = "The document storage did not answer. Nothing was saved; repeat with the same key."
+        translation = "O bucket não respondeu e nada foi gravado. Repita com a mesma chave."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class TooManyAttempts(QIException):
     """Limite por documento ou por origem (RFC 05, Limites de pedidos). A
     mensagem não diz qual dos dois, para não ajudar quem testa CPFs."""

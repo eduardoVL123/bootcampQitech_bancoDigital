@@ -84,6 +84,13 @@ services:
       # limites desligam e a API continua respondendo.
       REDIS_URL: redis://redis:6379/0
       FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-false}
+      # O bucket privado do RG, no LocalStack (S3 sem custo de AWS). As
+      # chaves "test" sao as que o LocalStack aceita, e nao valem na AWS.
+      S3_ENDPOINT_URL: http://localstack:4566
+      RG_BUCKET: rg-documentos
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
     volumes:
       - ./onboarding-api/src:/app
     command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
@@ -98,6 +105,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # O S3 de mentira, onde moram as fotos do RG (RFC 05). Versao fixa: a
+  # 4.14.0 e a ultima que sobe sem conta no LocalStack; as de 2026.03 em
+  # diante pedem um LOCALSTACK_AUTH_TOKEN. Sem porta para fora: os testes
+  # nunca leem o bucket (R1). O script de localstack/ cria o bucket quando
+  # ele fica pronto, e a checagem de saude so passa depois disso.
+  localstack:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3
+    volumes:
+      - ./localstack/init-bucket.sh:/etc/localstack/init/ready.d/init-bucket.sh
+    healthcheck:
+      test: ["CMD", "awslocal", "s3api", "head-bucket", "--bucket", "rg-documentos"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 10s
 
   # So dado pequeno, que pode ser perdido: contadores de limite e, depois,
   # o estado do circuit breaker dos biros. Sem porta para fora: os testes

@@ -48,15 +48,16 @@ docker compose up -d --build --wait
 - `--build`: monta as imagens com o código atual.
 - `--wait`: só termina quando todos os serviços estão saudáveis.
 
-Na primeira vez demora alguns minutos, porque baixa as imagens e instala as dependências. Depois fica rápido.
+Na primeira vez demora alguns minutos, porque baixa as imagens (só a do LocalStack tem uns 460 MB) e instala as dependências. Depois fica rápido.
 
-Para conferir, rode `docker compose ps`. Os quatro serviços precisam aparecer como `healthy`:
+Para conferir, rode `docker compose ps`. Os cinco serviços precisam aparecer como `healthy`:
 
 | Serviço | O que é | Porta na sua máquina |
 |---|---|---|
 | `onboarding-api` | A API de criação de conta | 3005 |
 | `db` | PostgreSQL, com o banco único do grupo (`bootcamp`) | 5432 |
 | `redis` | Contadores dos limites de pedidos | nenhuma |
+| `localstack` | O S3 de mentira, com o bucket privado `rg-documentos` das fotos do RG. Só fica `healthy` depois que o bucket existe | nenhuma |
 | `api` | A API da raiz do repositório (pasta `src/`) | 3000 |
 
 **4. Rode os testes da onboarding-api:**
@@ -113,7 +114,7 @@ tests/onboarding_api/test_service.py::TestService::test_requires_internal_token 
 
 ## Testes com falha simulada
 
-Alguns testes fingem que algo caiu: hoje, o F2-06, com o Redis fora do ar. Eles só rodam com `FAULT_INJECTION_ENABLED=true` **nos dois lados**: na API, para ela obedecer ao cabeçalho `X-Fault-Injection`, e no pytest, para o teste não ser pulado. É assim que o CI roda.
+Alguns testes fingem que algo caiu: hoje, o F2-06, com o Redis fora do ar, e o F4-17, com o bucket do RG fora do ar. Eles só rodam com `FAULT_INJECTION_ENABLED=true` **nos dois lados**: na API, para ela obedecer ao cabeçalho `X-Fault-Injection`, e no pytest, para o teste não ser pulado. É assim que o CI roda.
 
 No `cmd`, sem aspas e sem espaço em volta do `=`:
 
@@ -184,3 +185,5 @@ No PowerShell, troque `grep` por `Select-String`; no `cmd`, por `findstr`.
 | `No module named jwt` ou `No module named pytest` | Faltam dependências no `.venv` | `.venv/Scripts/python -m pip install -r requirements-dev.txt` |
 | Os testes não acham a API, mas ela está de pé | Falta o `.env` com `SERVER_LOCALHOST=127.0.0.1` | Crie o arquivo com essa linha |
 | `SKIPPED ... FAULT_INJECTION_ENABLED=true` | Teste de falha simulada pulado de propósito | Normal. Para rodar, veja a seção de falha simulada |
+| O `localstack` não sobe e o log pede `LOCALSTACK_AUTH_TOKEN` | Alguém trocou a imagem por uma versão de 2026.03 em diante, que exige conta no LocalStack | Volte para `localstack/localstack:4.14.0` no `docker-compose.yml`, a última que sobe sem conta |
+| `FAILED test_bucket_fora_responde_503...` com `assert 202 == 503` | O pytest está com `FAULT_INJECTION_ENABLED=true`, mas a API subiu sem | Suba de novo com a variável ligada no mesmo terminal |
