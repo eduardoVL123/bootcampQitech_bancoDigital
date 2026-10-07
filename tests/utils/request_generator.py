@@ -81,3 +81,28 @@ class RequestGenerator:
             headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
         )
         return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_account(payload: dict) -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "POST",
+            "/internal/account",
+            payload=payload,
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_account(account_key: str) -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "GET",
+            f"/account/{account_key}",
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_account_sem_token(payload: dict) -> BaseConnectorResponse:
+        """Sem o INTERNAL-TOKEN de proposito: e o teste F1-11."""
+        response = ClientRequisition.send("POST", "/internal/account", payload=payload)
+        return response.response_status, response.response_json

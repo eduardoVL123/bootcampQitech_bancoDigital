@@ -1,0 +1,12 @@
+{
+  "title": "PostAccount",
+  "type": "object",
+  "properties": {
+    "customer_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  },
+  "required": ["customer_key"],
+  "additionalProperties": false
+}

@@ -1,0 +1,69 @@
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from database import Context
+from models import Account, AccountStatus, AccountStatusEvent
+
+
+class AccountRepository:
+    """A unica camada que fala com o banco sobre conta.
+
+    Nenhuma regra de negocio mora aqui: busca, grava e trava. Quem
+    decide o que fazer com isso e o controller.
+    """
+
+    def __init__(self, context: Context) -> None:
+        self.session = context.db_session
+
+    def get_status(self, enumerator: str) -> AccountStatus:
+        return self.session.query(AccountStatus).filter(
+            AccountStatus.enumerator == enumerator
+        ).one()
+
+    def get_by_key(self, account_key: str) -> Account:
+        return self.session.query(Account).filter(
+            Account.account_key == account_key
+        ).first()
+
+    def get_open_by_customer_id(self, customer_id: int) -> Account:
+        """A conta nao encerrada deste cliente, se existir.
+
+        E a mesma condicao do indice parcial account_one_open_per_customer:
+        closed_at nulo. Se um dia a condicao do indice mudar, esta tem
+        de mudar junto.
+        """
+        return self.session.query(Account).filter(
+            Account.customer_id == customer_id,
+            Account.closed_at.is_(None),
+        ).first()
+
+    def create(self, customer_id: int) -> Account:
+        """Grava a conta e o evento de estado, sem commit.
+
+        Quem fecha a transacao e o controller, que e o unico dono do
+        commit. O flush manda o INSERT agora para que a violacao do
+        indice unico aconteca aqui, e nao so no commit: e assim que o
+        controller consegue tratar o pedido repetido.
+        """
+        ativa = self.get_status(AccountStatus.ACTIVE)
+
+        account = Account()
+        account.account_key = str(uuid4())
+        account.customer_id = customer_id
+        account.status_id = ativa.id
+        account.balance = 0
+        account.last_sequence = 0
+
+        self.session.add(account)
+        self.session.flush()
+
+        self.session.add(
+            AccountStatusEvent(
+                account_id=account.id,
+                status_id=ativa.id,
+                event_datetime=datetime.now(timezone.utc),
+            )
+        )
+        self.session.flush()
+
+        return account

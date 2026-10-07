@@ -9,7 +9,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import HealthCheckResource, SampleEntityResource, CustomerResource
+from resources import HealthCheckResource, SampleEntityResource, CustomerResource, AccountResource
 from utils.logger import setup_logging
 
 
@@ -122,11 +122,22 @@ def create_app() -> FastAPI:
     # 201, 202, 204 — todos saem de dentro do resource, que é quem sabe
     # se a coisa foi criada, agendada ou concluída. Esta lista diz QUEM
     # atende cada endereço, e mais nada.
+    account_resource = AccountResource()
     health_check_resource = HealthCheckResource()
     sample_entity_resource = SampleEntityResource()
     customer_resource = CustomerResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
+    application.add_api_route(
+        "/internal/account",
+        account_resource.on_post_open,
+        methods=["POST"],
+    )
+    application.add_api_route(
+        "/account/{account_key}",
+        account_resource.on_get_by_key,
+        methods=["GET"],
+    )
     application.add_api_route(
         "/health_check",
         health_check_resource.on_get_health_check,
