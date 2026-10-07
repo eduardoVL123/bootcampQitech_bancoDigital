@@ -1,0 +1,14 @@
+# Dependencias que so o desenvolvedor precisa (rodar teste, ler .env).
+# Nao vao para dentro da imagem que sobe em producao.
+
+-r requirements.txt
+
+pytest==7.4.4
+pytest-cov==4.1.0
+python-dotenv==1.0.1
+
+# Os testes da onboarding-api conferem a assinatura do access_token (JWT)
+# e calculam "hoje" no fuso de Sao Paulo. O Windows nao traz a base de
+# fusos horarios, e o tzdata cobre essa falta.
+PyJWT==2.15.1
+tzdata==2026.5
