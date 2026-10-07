@@ -1,0 +1,47 @@
+{
+  "title": "PostPosting",
+  "type": "object",
+  "properties": {
+    "posting_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["DEPOSIT", "WITHDRAWAL", "TRANSFER", "FEE_APPROPRIATION"]
+    },
+    "transaction_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_key": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "account_code": {
+            "type": "string",
+            "enum": ["FEE_HOLD", "FEE_REVENUE", "SETTLEMENT"]
+          },
+          "amount": {
+            "type": "integer",
+            "not": {"const": 0}
+          }
+        },
+        "required": ["amount"],
+        "additionalProperties": false,
+        "oneOf": [
+          {"required": ["account_key"]},
+          {"required": ["account_code"]}
+        ]
+      }
+    }
+  },
+  "required": ["posting_key", "type", "entries"],
+  "additionalProperties": false
+}

@@ -106,3 +106,22 @@ class RequestGenerator:
         """Sem o INTERNAL-TOKEN de proposito: e o teste F1-11."""
         response = ClientRequisition.send("POST", "/internal/account", payload=payload)
         return response.response_status, response.response_json
+
+    @staticmethod
+    def POST_posting(payload: dict) -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "POST",
+            "/internal/posting",
+            payload=payload,
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json
+
+    @staticmethod
+    def GET_reconciliation() -> BaseConnectorResponse:
+        response = ClientRequisition.send(
+            "GET",
+            "/internal/reconciliation",
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN},
+        )
+        return response.response_status, response.response_json

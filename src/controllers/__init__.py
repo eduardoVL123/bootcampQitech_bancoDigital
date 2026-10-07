@@ -1,3 +1,4 @@
 from controllers.sample_entity_controller import SampleEntityController
 from controllers.customer_controller import CustomerController
 from controllers.account_controller import AccountController
+from controllers.posting_controller import PostingController

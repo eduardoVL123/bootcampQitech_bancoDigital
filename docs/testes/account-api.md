@@ -49,20 +49,32 @@ Rotas: `POST /internal/account` e `GET /account/{account_key}`.
 | F1-10 | `test_conta_que_nao_existe_responde_404` | `GET` com chave inventada | `404 QIT002010` |
 | F1-11 | `test_sem_token_do_aplicativo_nada_passa` | sem `INTERNAL-TOKEN` | `403 QIT000002` |
 
-## F2. Depósito: a rota que move dinheiro
+## F2. A rota que move dinheiro: `POST /internal/posting`
 
-Rota: `POST /internal/posting`.
+Entrega junto o `GET /internal/reconciliation`, porque sem ele não há como provar que o dinheiro fechou: conta técnica não tem coluna de saldo, e o saldo dela só existe como soma do livro.
 
 | # | Teste | Espera |
 |---|---|---|
-| F2-01 | `test_deposito_credita_a_conta_e_debita_a_liquidacao` | `201`; saldo vira o valor; `SETTLEMENT` fica com o negativo |
-| F2-02 | `test_deposito_gera_dois_lancamentos_que_somam_zero` | o extrato mostra o crédito; a conciliação continua zero |
-| F2-03 | `test_lancamento_numera_a_sequencia_da_conta` | primeiro lançamento tem `sequence` 1 |
-| F2-04 | `test_mesma_posting_key_nao_credita_duas_vezes` | segunda chamada `200`, saldo não muda |
-| F2-05 | `test_recusa_conjunto_que_nao_soma_zero` | `422 QIT002017` |
-| F2-06 | `test_recusa_conta_que_nao_existe` | `404 QIT002010` |
-| F2-07 | `test_recusa_saldo_insuficiente` | `409 QIT002012`, nada muda |
-| F2-08 | `test_recusa_conta_bloqueada` | `409 QIT002011` |
+| F2-01 | `test_deposito_credita_a_conta` | `201`, saldo vira o valor, dois lançamentos |
+| F2-02 | `test_deposito_mantem_a_conciliacao_em_zero` | `total` 0 |
+| F2-03 | `test_lancamento_numera_a_sequencia_da_conta` | `sequence` 1 e 2, `balance_after` acompanhando |
+| F2-04 | `test_lancamento_de_conta_tecnica_nao_tem_sequencia` | `sequence` e `balance_after` nulos |
+| F2-05 | `test_mesma_posting_key_nao_credita_duas_vezes` | `200`, saldo não muda |
+| F2-06 | `test_recusa_conjunto_que_nao_soma_zero` | `422 QIT002017`, nada gravado |
+| F2-07 | `test_recusa_conta_que_nao_existe` | `404 QIT002010` |
+| F2-08 | `test_recusa_saldo_insuficiente` | `409 QIT002012`, saldo intacto |
+| F2-09 | `test_recusa_lancamento_de_valor_zero` | `400 QIT000001` |
+| F2-10 | `test_recusa_entrada_sem_conta_nenhuma` | `400 QIT000001` |
+| F2-11 | `test_dez_saques_com_saldo_para_cinco_passam_exatamente_cinco` | cinco `201`, cinco `409`, nenhum `5xx`, saldo zero, conciliação zero |
+
+**Mutações conferidas no F2-11**, que é o teste que sustenta o Principal desafio da RFC 02:
+
+| O que eu quebrei | O que o teste respondeu |
+|---|---|
+| tirei o `with_for_update()` | `[201, 500, 500, 500, 500, 500, 201, 500, 500, 500]` |
+| tirei só o `populate_existing()`, mantendo a trava | `[201, 201, 500, 500, 500, 500, 500, 500, 500, 500]` |
+
+A segunda é a que mais importa: a trava estava certa no banco e a decisão saía errada, porque o identity map do SQLAlchemy devolvia o objeto com o saldo antigo. É a armadilha que o `CLAUDE.md` descreve, e agora tem teste que a pega.
 
 ## F3. Transferência com tarifa
 

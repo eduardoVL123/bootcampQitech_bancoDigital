@@ -290,11 +290,13 @@ CREATE TABLE posting(
     id                  BIGSERIAL PRIMARY KEY,
     posting_key         CHAR(36) NOT NULL,
     type_id             BIGINT NOT NULL REFERENCES posting_type(id),
-    -- UNIQUE: uma transacao gera no maximo UM posting. E o indice que
-    -- impede o clique duplo virar dois conjuntos de lancamentos.
-    -- Quando a caixinha voltar ao escopo, esta coluna vira NULA para os
-    -- postings de rendimento, que nao vem de transacao.
-    transaction_id      BIGINT NOT NULL REFERENCES transaction(id),
+    -- NULA quando o posting nao nasce de uma transacao: a apropriacao
+    -- da tarifa depois dos 7 dias, e o rendimento da caixinha. Quando
+    -- vem de uma transacao, o UNIQUE abaixo garante que ela gera no
+    -- maximo UM posting: e o indice que impede o clique duplo virar
+    -- dois conjuntos de lancamentos. Nulo nao conflita com nulo no
+    -- Postgres, entao varios postings sem transacao convivem.
+    transaction_id      BIGINT REFERENCES transaction(id),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
     UNIQUE(posting_key),
     UNIQUE(transaction_id)

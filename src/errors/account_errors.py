@@ -18,3 +18,63 @@ class NotFoundAccount(QIException):
         description = f"Account with key {account_key} was not found."
         translation = "Conta não encontrada."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountNotActive(QIException):
+    """409: o pedido e possivel, o ESTADO de agora e que nao deixa."""
+
+    code = "QIT002011"
+
+    def __init__(self, account_key, status) -> None:
+        title = "Account does not allow movement"
+        http_status = 409
+        description = f"Account {account_key} is {status} and cannot be moved."
+        translation = "Esta conta não movimenta no estado atual."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InsufficientBalance(QIException):
+    """409, e nao 422.
+
+    A MDN define 409 como conflito com o estado atual do servidor, e e
+    exatamente isso: o pedido e possivel em si, o saldo de agora e que
+    nao deixa. O 422 fica para o pedido impossivel por ele mesmo.
+    """
+
+    code = "QIT002012"
+
+    def __init__(self, account_key) -> None:
+        title = "Insufficient balance"
+        http_status = 409
+        description = f"Account {account_key} does not have enough balance."
+        translation = "Saldo insuficiente."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class PostingKeyReused(QIException):
+    code = "QIT002016"
+
+    def __init__(self, posting_key) -> None:
+        title = "Posting key reused with a different set of entries"
+        http_status = 409
+        description = f"Posting key {posting_key} was already used with other entries."
+        translation = "Esta chave já foi usada para outro conjunto de lançamentos."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class PostingDoesNotSumZero(QIException):
+    """422: o pedido e impossivel por ele mesmo, em qualquer estado.
+
+    Um conjunto que nao soma zero cria ou destroi dinheiro. A trigger
+    adiada do banco tambem recusa no COMMIT; esta checagem existe para
+    o cliente receber um erro nomeado em vez de um 500.
+    """
+
+    code = "QIT002017"
+
+    def __init__(self, total) -> None:
+        title = "Entries do not sum to zero"
+        http_status = 422
+        description = f"The entries sum to {total}, and a posting must sum to zero."
+        translation = "Os lançamentos precisam somar zero."
+        super().__init__(title, self.code, http_status, description, translation)
