@@ -10,13 +10,15 @@ O que tem aqui:
   - cabecalhos_do_gateway(): o que o gateway manda em todo pedido;
   - credenciais: a do cliente vem da API; as outras o teste fabrica;
   - imagens do RG: JPEG, PNG e PDF de qualquer tamanho, feitos na hora;
-  - datas: "hoje" e o dia de Sao Paulo, como na API.
+  - datas: "hoje" e o dia de Sao Paulo, como na API, e o relogio simulado;
+  - espera_ate: espera o efeito do worker, que nao tem rota;
 """
 import base64
 import json
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from os import environ
 from threading import Barrier
 from uuid import uuid4
@@ -40,6 +42,14 @@ FUSO_DO_BANCO = ZoneInfo("America/Sao_Paulo")
 
 # Os testes de falha simulada so rodam com a variavel ligada na API e no pytest.
 FALHA_SIMULADA_LIGADA = environ.get("FAULT_INJECTION_ENABLED") == "true"
+
+# O relogio simulado (decisao D16) tambem: com ele, o teste diz que o pedido
+# aconteceu no passado, pelo cabecalho X-Simulated-Now.
+RELOGIO_SIMULADO_LIGADO = environ.get("SIMULATED_CLOCK_ENABLED") == "true"
+
+# O worker vence as aberturas a cada minuto. O teste espera uma passada
+# inteira e mais um pouco.
+ESPERA_PELO_WORKER_SEGUNDOS = 90
 
 PRAZO_DA_ABERTURA_MINUTOS = 20
 VALIDADE_DA_CREDENCIAL_SEGUNDOS = 3600
@@ -116,13 +126,13 @@ class Onboarding:
         return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/document", cabecalhos, files=arquivos)
 
     @staticmethod
-    def comeca_abertura(dados: dict = None) -> dict:
+    def comeca_abertura(dados: dict = None, cabecalhos: dict = None) -> dict:
         """Prepara o mundo do teste: uma abertura nova em DRAFT, criada pela
         propria API (nunca por INSERT no banco). Devolve o corpo do 201."""
         if dados is None:
             dados = pessoa_fisica()
 
-        resposta = Onboarding.cadastra(dados)
+        resposta = Onboarding.cadastra(dados, cabecalhos)
         assert resposta.status_code == 201, resposta.text
         return resposta.json()
 
@@ -301,6 +311,34 @@ def nascido_para_completar_amanha(anos: int) -> str:
 
 def amanha() -> str:
     return (hoje() + timedelta(days=1)).isoformat()
+
+
+def no_passado(minutos: float) -> dict:
+    """O cabecalho que faz o pedido acontecer `minutos` atras (decisao D16).
+    So vale com SIMULATED_CLOCK_ENABLED=true na API."""
+    momento = datetime.now(timezone.utc) - timedelta(minutes=minutos)
+    return {"X-Simulated-Now": momento.isoformat()}
+
+
+# ----------------------------------------------------------------------
+# Esperar o worker
+# ----------------------------------------------------------------------
+
+def espera_ate(consulta, condicao, limite_segundos: float, intervalo_segundos: float = 0.5):
+    """Repete a consulta ate a condicao valer e devolve o ultimo resultado.
+
+    O worker roda em outro processo, sem rota para o teste chamar: o teste
+    so ve o efeito dele, consultando a API de novo ate o efeito aparecer.
+    Passou do limite, o teste falha mostrando o que viu por ultimo."""
+    fim = time.monotonic() + limite_segundos
+
+    while True:
+        resultado = consulta()
+        if condicao(resultado):
+            return resultado
+        if time.monotonic() > fim:
+            raise AssertionError(f"Passaram {limite_segundos} s e a condicao nao valeu. Ultimo resultado: {resultado}")
+        time.sleep(intervalo_segundos)
 
 
 # ----------------------------------------------------------------------

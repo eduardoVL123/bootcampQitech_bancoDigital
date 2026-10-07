@@ -83,6 +83,20 @@ class CustomerNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class OnboardingExpired(QIException):
+    """Passaram os 20 minutos em DRAFT. Vale antes e depois de o worker apagar
+    os dados: o dono é reconhecido pela customer_key da abertura (decisão D24)."""
+
+    code = "ONB005010"
+
+    def __init__(self) -> None:
+        title = "Onboarding expired"
+        http_status = 410
+        description = "The onboarding expired after 20 minutes without the document. Start a new one."
+        translation = "A abertura venceu: passaram 20 minutos sem o RG. Comece outra."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class OnboardingNotDraft(QIException):
     code = "ONB005008"
 

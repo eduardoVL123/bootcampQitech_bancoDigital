@@ -452,6 +452,10 @@ CREATE TABLE onboarding(
     onboarding_key          CHAR(36) NOT NULL,
     -- Nulo depois de vencer: o cadastro e apagado.
     customer_id             BIGINT REFERENCES customer(id),
+    -- A chave do cliente, que fica depois de vencer: e por ela que a API
+    -- reconhece o dono da abertura, porque a credencial traz a customer_key.
+    -- E um UUID, e nao dado pessoal (decisao D24).
+    customer_key            CHAR(36) NOT NULL,
     -- Repassada pelo gateway. O UNIQUE e a garantia final de que repetir
     -- o pedido nao cria outra abertura, mesmo se o Redis perder a chave.
     idempotency_key         VARCHAR(64) NOT NULL,

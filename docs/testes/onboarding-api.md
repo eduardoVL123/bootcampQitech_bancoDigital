@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.7 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.8 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.2 (F4 verde: três testes novos, F4-21 a F4-23, e as decisões D22 e D23) |
+| **Versão** | 0.3 (F5 verde: dois testes novos, F5-08 e F5-09, e as decisões D24 e D25). Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -24,7 +24,7 @@ Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da 
 | Peça | Endereço nos testes | Papel |
 |---|---|---|
 | onboarding-api | `http://127.0.0.1:3005` | Quem está sendo testado |
-| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos |
+| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos. Desde a F5, uma passada a cada minuto vence as aberturas paradas (`WORKER_INTERVAL_SECONDS`) |
 | PostgreSQL | `bootcamp` | O banco único do grupo; as tabelas da onboarding estão na seção 7 do `database/database.sql` (o teste não lê) |
 | Redis | só dentro do compose | Limites por documento e por origem, circuit breaker |
 | LocalStack | só dentro do compose | Bucket privado `rg-documentos`, criado por `localstack/init-bucket.sh`. Imagem fixa na 4.14.0, a última que sobe sem conta no LocalStack |
@@ -252,17 +252,23 @@ Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimo
 
 ### F5. Prazo de 20 minutos
 
-Arquivo `test_expiration.py`, marcador `simulated_clock`.
+Arquivo `test_expiration.py`, marcador `simulated_clock`; os que esperam o worker também têm `slow`. **Verde em 07/10** (branch `feat/onboarding-prazo`). Cada teste prepara a própria abertura: o F5-05 não depende do F5-04.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
 | F5-01 | `test_envio_depois_do_prazo_responde_410` | `POST` com `X-Simulated-Now` de 21 min atrás; envio do RG agora | `410 ONB005010` | Prazo |
-| F5-02 | `test_consulta_depois_do_prazo_responde_410` | Mesma preparação; `GET /onboarding` | `410 ONB005010` | Prazo |
+| F5-02 | `test_consulta_depois_do_prazo_responde_410` | Mesma preparação; `GET /onboarding`, parametrizado: dono e compliance | `410 ONB005010` | Prazo |
 | F5-03 | `test_envio_pouco_antes_do_prazo_e_aceito` | `POST` de 19 min atrás; envio do RG agora | `202` | Borda do prazo |
-| F5-04 | `test_worker_apaga_os_dados_da_abertura_vencida` | `POST` de 21 min atrás, `front` enviado "antes" do prazo; espera o worker (até 70 s) | `GET /customer` com compliance: `404 ONB005007`; `GET /onboarding`: `410` | LGPD, prazo (`slow`) |
-| F5-05 | `test_documento_fica_livre_depois_do_vencimento` | Depois do F5-04, o mesmo CPF | `201` | Prazo |
-| F5-06 | `test_prazo_para_de_contar_depois_do_rg_completo` | `POST` de 25 min atrás; RG completo "há 10 min" (antes de vencer); `GET` agora | Não é `410`: a abertura segue para a análise | Prazo só vale em `DRAFT` |
-| F5-07 | `test_repetir_o_cadastro_de_abertura_vencida_responde_410` | Repete o `POST` da abertura vencida, com a mesma chave | `410 ONB005010` | Decisão D9 |
+| F5-04 | `test_worker_apaga_os_dados_da_abertura_vencida` | `POST` de 21 min atrás, `front` enviado "antes" do prazo; espera o worker (até 90 s) | `GET /customer` com compliance: `404 ONB005007`; `GET /onboarding` e envio do RG com a credencial do dono: `410` | LGPD, prazo, decisão D24 (`slow`) |
+| F5-05 | `test_documento_fica_livre_depois_do_vencimento` | Abertura vencida; espera o worker; o mesmo CPF com outra chave | `201` | Prazo (`slow`) |
+| F5-06 | `test_prazo_para_de_contar_depois_do_rg_completo` | `POST` de 25 min atrás; RG completo "há 10 min" (antes de vencer); `GET` agora | `200`, e a etapa não é `EXPIRED` | Prazo só vale em `DRAFT` |
+| F5-07 | `test_repetir_o_cadastro_de_abertura_vencida_responde_410` | Repete o `POST` da abertura vencida, com a mesma chave | `410 ONB005010`, sem credencial nova | Decisão D9 |
+| F5-08 | `test_abertura_vencida_de_outra_pessoa_continua_404` | Abertura vencida da Ana; `GET` e envio do RG com a credencial do Bruno | `404 ONB005006` nos dois | R8: o dono é conferido antes do prazo |
+| F5-09 | `test_worker_nao_vence_abertura_com_rg_completo` | RG completo antes de vencer; depois uma sentinela que vence 10 s depois da preparação; espera o worker apagar a sentinela, o que prova uma passada inteira depois da preparação | A completa continua fora de `EXPIRED`, e o cadastro dela continua lá | Prazo só vale em `DRAFT`, no worker (`slow`) |
+
+**Mutação da F5 (07/10).** Das 19 mutações, 16 morreram: prazo em `DRAFT`, prazo em qualquer etapa, prazo de 22 e de 18 minutos (as duas bordas), consulta sem prazo, prazo conferido antes do dono na consulta e no envio, envio com a hora real em vez da do pedido, repetição do cadastro vencido, `X-Simulated-Now` ignorado, `EXPIRED` sem `410`, dono pelo cadastro em vez da `customer_key`, worker que não marca, não busca ou não apaga o cadastro, e worker que busca e marca qualquer etapa. Sobreviveram três, todas explicadas: a conferência do prazo antes do bucket (a de depois da trava ainda responde `410`; sem a primeira, só a foto de uma abertura vencida chega a subir antes da recusa) e as duas proteções do worker contra vencer quem completou o RG (a busca só pega `DRAFT`, e a marcação confere de novo): cada uma cobre a falta da outra, e o F5-09 pega quando faltam as duas.
+
+A mutação também achou um defeito, já corrigido: a passada do worker parava quando um lote inteiro já tinha sido tentado, e as vencidas depois dele ficavam esperando. Agora cada lote começa depois do último (cursor por `expires_at` e `id`).
 
 ### F6. Worker: KYC, PLD e abertura da conta
 
@@ -382,11 +388,11 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB005003` | 409 | F1-22, F1-23, F1-24 |
 | `ONB005004` | 422 | F1-15, F1-16, F1-17 |
 | `ONB005005` | 422 | F1-18, F1-19, F1-20 |
-| `ONB005006` | 404 | F3-03, F3-04, F4-16, F8-13 |
+| `ONB005006` | 404 | F3-03, F3-04, F4-16, F5-08, F8-13 |
 | `ONB005007` | 404 | F3-08, F3-09, F5-04 |
 | `ONB005008` | 409 | F4-15 |
 | `ONB005009` | 409 | F4-12, F4-13, F4-18, F4-23 |
-| `ONB005010` | 410 | F5-01, F5-02, F5-07 |
+| `ONB005010` | 410 | F5-01, F5-02, F5-04, F5-07 |
 | `ONB005011` | 413 | F4-08 |
 | `ONB005012` | 422 | F4-09, F4-10 |
 | `ONB005013` | 429 | F2-01, F2-03, F2-07 |
@@ -416,7 +422,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | início para `DRAFT` | F1-01 |
 | `DRAFT` para `DRAFT` (falta um lado) | F4-03, F4-21 |
 | `DRAFT` para `PENDING_KYC` | F4-01, F4-02, F4-04, F4-22 |
-| `DRAFT` para `EXPIRED` | F5-01, F5-04 |
+| `DRAFT` para `EXPIRED` (pelo worker) | F5-04, F5-05 |
 | `PENDING_KYC` para `ANALYSIS` | F6-01 (histórico) |
 | `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03 |
 | `ANALYSIS` para `APPROVED` | F6-01 |
@@ -444,11 +450,11 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08 |
 | Na dúvida, não aprova | F7-01 a F7-07 |
 | Nada em dobro | F1-24, F1-27, F1-32, F4-18, F4-22, F4-23, F6-03, F6-22, F6-24, F8-14, F9-06 |
-| Prazo de 20 minutos | F5-01 a F5-07 |
-| Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F6-21, F8-06, F9-05, F10-01, F10-02 |
+| Prazo de 20 minutos | F5-01 a F5-09 |
+| Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F5-04, F6-21, F8-06, F9-05, F10-01, F10-02 |
 | Abuso contido | F2-01 a F2-07 |
 | Credencial válida e no prazo | F1-04, F3-11 a F3-16 |
-| Cada um vê só o que é seu | F3-03, F3-04, F3-08, F3-09, F4-16 |
+| Cada um vê só o que é seu | F3-03, F3-04, F3-08, F3-09, F4-16, F5-08 |
 | Motivo e próximo passo sempre claros | F1-08, F1-11, F1-33, F3-01, F4-03, F4-21 |
 
 ## 5. O que o black box não alcança
@@ -463,6 +469,9 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **Foto sem linha no bucket:** quando o envio é recusado depois de a foto subir (outro envio da mesma abertura ganhou a trava), a foto fica no bucket sem linha no banco. A RFC aceita esse pior caso ("nunca uma linha sem foto"). O caminho começa com `rg/{onboarding_key}/`, e o vencimento da F5 pode apagar pelo prefixo. O teste não vê, porque nunca lê o bucket.
 - **`UNIQUE(onboarding_id, side)` como última garantia no envio do RG:** a conferência depois da trava já recusa o lado repetido, e a janela que sobra para o `UNIQUE` é pequena demais para um teste provocar. A mutação que tira a trava e o tratamento do `UNIQUE` juntos sobrevive por isso.
 - **A conexão devolvida antes de chamar o bucket:** o envio do RG encerra a leitura (`rollback`, sem nada gravado) antes do `PutObject`, para não segurar conexão nem trava durante até 10 s. Não aparece por HTTP.
+- **As fotos apagadas no vencimento:** o worker apaga tudo em `rg/{onboarding_key}/`, mas o teste nunca lê o bucket. O que ele vê é o cadastro sumir (F5-04) e o CPF ficar livre (F5-05).
+- **Bucket fora durante o vencimento:** a abertura fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo. O worker não tem falha simulada; seria preciso derrubar o LocalStack (`docker compose stop localstack`) num roteiro manual.
+- **Foto que sobe no instante em que o worker vence a abertura:** se o envio do RG passa da conferência do prazo, e o worker marca `EXPIRED` e apaga o prefixo antes de a foto subir, ela fica no bucket sem linha. O envio recebe `410` depois da trava. É uma janela de milissegundos.
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
 ## 6. Decisões a confirmar com o time
@@ -494,6 +503,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D21 | Onde ficam os documentos do RG | **Decidida em 06/10:** numa tabela da abertura, `onboarding_document`, ligada pelo `onboarding_id`, uma linha por imagem, com `UNIQUE(onboarding_id, side)`. A `customer_document` do grupo fica como está, e a onboarding não grava nela |
 | D22 | A RFC diz que o `GET` mostra os lados do RG recebidos, mas não diz o formato | **Decidida em 07/10, na RFC 05 v0.7:** `documents` é uma lista, na ordem de chegada, com `side`, `content_type` (o que os bytes dizem), `size_bytes` e `created_at` de cada imagem. Nunca o caminho no bucket. A resposta do `PUT` traz `onboarding_key`, `status` e `next_step` |
 | D23 | A RFC diz `SEND_BACK` quando falta um lado, mas a pessoa pode mandar o verso primeiro | **Decidida em 07/10, na RFC 05 v0.7:** só a frente, `SEND_BACK`; só o verso, `SEND_FRONT` |
+| D24 | Depois que o worker apaga o cadastro, nada liga a abertura à credencial do dono (o `sub` é a `customer_key`), e ele receberia `404` | **Decidida em 07/10, na RFC 05 v0.8:** a tabela `onboarding` ganha `customer_key CHAR(36) NOT NULL`, que fica depois de vencer. Não é dado pessoal. O dono sempre recebe `410`; os outros, `404` |
+| D25 | A RFC dizia que o pedido depois do prazo "já marca a abertura como `EXPIRED`", o que faria o `GET` gravar e disputar a abertura com o worker | **Decidida em 07/10, na RFC 05 v0.8:** a API responde `410` pelo relógio (`expires_at`), sem gravar nada. Quem marca `EXPIRED` e apaga é só o worker, em até 1 minuto |
 
 **Pendências da RFC encontradas no caminho**
 
@@ -510,11 +521,11 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F2 | 7 | F1 e Redis |
 | F3 | 16 | F1 |
 | F4 | 23 | F3 e LocalStack |
-| F5 | 7 | F4 e o worker (vencimento) |
+| F5 | 9 | F4 e o worker (vencimento) |
 | F6 | 24 | F4, worker e Mockserver |
 | F7 | 12 | F6 |
 | F8 | 15 | F6 |
 | F9 | 8 | F6 |
 | F10 | 2 | Todas |
 
-São 152 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 154 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

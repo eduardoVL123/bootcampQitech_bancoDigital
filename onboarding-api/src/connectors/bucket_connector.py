@@ -61,3 +61,29 @@ class BucketConnector:
 
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         self.logger.info(f"INCOMING PutObject {RG_BUCKET} - {elapsed_ms:.1f} ms")
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Apaga todos os objetos que começam com o prefixo e devolve quantos.
+
+        O vencimento apaga pelo prefixo da abertura (rg/{onboarding_key}/), e
+        não pelas linhas do banco: assim some também a foto que subiu num
+        envio recusado depois, e que nunca ganhou linha."""
+        if not self.available:
+            self.logger.warning("Bucket indisponivel (falha simulada)")
+            raise BucketError()
+
+        deleted = 0
+
+        try:
+            pages = s3_client.get_paginator("list_objects_v2").paginate(Bucket=RG_BUCKET, Prefix=prefix)
+            for page in pages:
+                objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                if objects:
+                    s3_client.delete_objects(Bucket=RG_BUCKET, Delete={"Objects": objects, "Quiet": True})
+                    deleted = deleted + len(objects)
+        except (BotoCoreError, ClientError) as error:
+            self.logger.error(f"Bucket indisponivel ({type(error).__name__})")
+            raise BucketError() from error
+
+        self.logger.info(f"DeleteObjects {RG_BUCKET}: {deleted} objeto(s)")
+        return deleted
