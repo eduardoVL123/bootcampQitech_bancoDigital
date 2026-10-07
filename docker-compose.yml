@@ -16,6 +16,28 @@
 # padrao. E o jeito de trocar uma porta ocupada ou o token, sem editar
 # este arquivo.
 
+# O que a onboarding-api e o onboarding-worker leem igual: o mesmo codigo,
+# o mesmo banco e o mesmo bucket. O "&" da um nome a este bloco, e o
+# "<<: *" de cada servico copia o bloco inteiro para dentro dele.
+x-onboarding-environment: &onboarding-environment
+  DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+  APP_ENV: ${APP_ENV:-local}
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+  # Assina o access_token (JWT). Os testes leem a mesma variavel para
+  # conferir a assinatura. O padrao serve so para estudo.
+  AUTH_SECRET: ${AUTH_SECRET:-auth_secret_de_estudo_troque_em_producao_0123456789}
+  ONBOARDING_TIMEOUT_MINUTES: ${ONBOARDING_TIMEOUT_MINUTES:-20}
+  # Limites por documento e por origem (RFC 05). Se o Redis cair, os
+  # limites desligam e a API continua respondendo.
+  REDIS_URL: redis://redis:6379/0
+  # O bucket privado do RG, no LocalStack (S3 sem custo de AWS). As
+  # chaves "test" sao as que o LocalStack aceita, e nao valem na AWS.
+  S3_ENDPOINT_URL: http://localstack:4566
+  RG_BUCKET: rg-documentos
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-east-1
+
 services:
   api:
     build:
@@ -72,25 +94,12 @@ services:
     ports:
       - "${ONBOARDING_API_PORT:-3005}:3005"
     environment:
-      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
-      APP_ENV: ${APP_ENV:-local}
+      <<: *onboarding-environment
       SERVICE_NAME: onboarding-api
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
-      # Assina o access_token (JWT). Os testes leem a mesma variavel para
-      # conferir a assinatura. O padrao serve so para estudo.
-      AUTH_SECRET: ${AUTH_SECRET:-auth_secret_de_estudo_troque_em_producao_0123456789}
-      ONBOARDING_TIMEOUT_MINUTES: ${ONBOARDING_TIMEOUT_MINUTES:-20}
-      # Limites por documento e por origem (RFC 05). Se o Redis cair, os
-      # limites desligam e a API continua respondendo.
-      REDIS_URL: redis://redis:6379/0
+      # So o ambiente de teste liga estas duas: falhas simuladas
+      # (X-Fault-Injection) e o relogio simulado (X-Simulated-Now).
       FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-false}
-      # O bucket privado do RG, no LocalStack (S3 sem custo de AWS). As
-      # chaves "test" sao as que o LocalStack aceita, e nao valem na AWS.
-      S3_ENDPOINT_URL: http://localstack:4566
-      RG_BUCKET: rg-documentos
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: us-east-1
+      SIMULATED_CLOCK_ENABLED: ${SIMULATED_CLOCK_ENABLED:-false}
     volumes:
       - ./onboarding-api/src:/app
     command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
@@ -104,6 +113,27 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # O onboarding-worker: o mesmo codigo da onboarding-api, em outro
+  # processo e sem porta (RFC 05). A cada minuto, vence as aberturas
+  # paradas: apaga as fotos do bucket e os dados pessoais. O watchfiles
+  # faz o papel do --reload da API: salvou o arquivo, ele reinicia.
+  onboarding-worker:
+    build:
+      context: ./onboarding-api
+      target: api
+    environment:
+      <<: *onboarding-environment
+      SERVICE_NAME: onboarding-worker
+      WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}
+    volumes:
+      - ./onboarding-api/src:/app
+    command: watchfiles --filter python "python worker.py"
+    depends_on:
+      db:
         condition: service_healthy
       localstack:
         condition: service_healthy

@@ -12,6 +12,8 @@ class Onboarding(Base):
     id = Column(BigInteger, primary_key=True)
     onboarding_key = Column(CHAR(36), nullable=False)
     customer_id = Column(BigInteger, ForeignKey(Customer.id))
+    # Fica depois de vencer: é por ela que se reconhece o dono (decisão D24).
+    customer_key = Column(CHAR(36), nullable=False)
     idempotency_key = Column(String(64), nullable=False)
     request_hash = Column(CHAR(64), nullable=False)
     status_id = Column(BigInteger, ForeignKey(OnboardingStatus.id), nullable=False)

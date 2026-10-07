@@ -45,6 +45,16 @@ MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 # X-Fault-Injection e finge que o Redis (ou, depois, o bucket) caiu.
 FAULT_INJECTION_ENABLED = os.environ.get("FAULT_INJECTION_ENABLED", "false").lower() == "true"
 
+# Tambem so no teste: com true, o POST /onboarding e o envio do RG aceitam o
+# cabecalho X-Simulated-Now e acontecem "no passado" (decisao D16). Em
+# producao, ninguem escolhe a hora do proprio pedido.
+SIMULATED_CLOCK_ENABLED = os.environ.get("SIMULATED_CLOCK_ENABLED", "false").lower() == "true"
+
+# O onboarding-worker passa a cada minuto (RFC 05, Prazo de 20 minutos). Em
+# cada passada, vence as aberturas paradas, um lote de cada vez.
+WORKER_INTERVAL_SECONDS = int(os.environ.get("WORKER_INTERVAL_SECONDS", "60"))
+EXPIRATION_BATCH_SIZE = 50
+
 # Idade e datas no futuro sao conferidas no dia de Sao Paulo, e nao no do
 # servidor, que roda em UTC (decisao D18 do plano de testes).
 BANK_TIMEZONE = "America/Sao_Paulo"

@@ -32,7 +32,7 @@ class OnboardingDTO:
         """A resposta do POST /onboarding, igual no 201 e no 200 da repetição."""
         return {
             "onboarding_key": onboarding.onboarding_key,
-            "customer_key": onboarding.customer.customer_key,
+            "customer_key": onboarding.customer_key,
             "status": onboarding.status.enumerator,
             "expires_at": onboarding.expires_at.isoformat(),
             "access_token": access_token,
@@ -64,10 +64,6 @@ class OnboardingDTO:
         prazo e o histórico. Nunca os dados do cadastro nem os consultados."""
         status = onboarding.status.enumerator
 
-        customer_key = None
-        if onboarding.customer is not None:
-            customer_key = onboarding.customer.customer_key
-
         reason_codes = []
         if onboarding.reason_codes:
             reason_codes = onboarding.reason_codes.split(",")
@@ -83,7 +79,7 @@ class OnboardingDTO:
 
         return {
             "onboarding_key": onboarding.onboarding_key,
-            "customer_key": customer_key,
+            "customer_key": onboarding.customer_key,
             "status": status,
             "next_step": next_step(onboarding),
             "expires_at": onboarding.expires_at.isoformat(),

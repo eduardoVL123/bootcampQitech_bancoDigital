@@ -1,6 +1,9 @@
+from datetime import datetime
+
 from fastapi import Request
 
-from constants import FAULT_INJECTION_ENABLED
+from constants import FAULT_INJECTION_ENABLED, SIMULATED_CLOCK_ENABLED
+from utils.clock import now_utc
 
 
 def read_origin_ip(request: Request) -> str:
@@ -19,6 +22,18 @@ def read_origin_ip(request: Request) -> str:
         return request.client.host
 
     return "unknown"
+
+
+def read_request_time(request: Request) -> datetime:
+    """A hora do pedido. Com SIMULATED_CLOCK_ENABLED=true, o teste pode dizer
+    que ele aconteceu no passado, pelo X-Simulated-Now (decisão D16): é assim
+    que o teste do prazo de 20 minutos não espera 20 minutos de verdade."""
+    simulated_now = request.headers.get("X-Simulated-Now")
+
+    if SIMULATED_CLOCK_ENABLED and simulated_now:
+        return datetime.fromisoformat(simulated_now)
+
+    return now_utc()
 
 
 def read_fault_injection(request: Request) -> frozenset:

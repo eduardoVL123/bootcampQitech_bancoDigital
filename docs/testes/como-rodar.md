@@ -50,7 +50,7 @@ docker compose up -d --build --wait
 
 Na primeira vez demora alguns minutos, porque baixa as imagens (só a do LocalStack tem uns 460 MB) e instala as dependências. Depois fica rápido.
 
-Para conferir, rode `docker compose ps`. Os cinco serviços precisam aparecer como `healthy`:
+Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `healthy`, menos o `onboarding-worker`, que não tem porta nem checagem de saúde e aparece só como `Up`:
 
 | Serviço | O que é | Porta na sua máquina |
 |---|---|---|
@@ -58,6 +58,7 @@ Para conferir, rode `docker compose ps`. Os cinco serviços precisam aparecer co
 | `db` | PostgreSQL, com o banco único do grupo (`bootcamp`) | 5432 |
 | `redis` | Contadores dos limites de pedidos | nenhuma |
 | `localstack` | O S3 de mentira, com o bucket privado `rg-documentos` das fotos do RG. Só fica `healthy` depois que o bucket existe | nenhuma |
+| `onboarding-worker` | O mesmo código da onboarding-api, em outro processo. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
 | `api` | A API da raiz do repositório (pasta `src/`) | 3000 |
 
 **4. Rode os testes da onboarding-api:**
@@ -107,6 +108,7 @@ tests/onboarding_api/test_service.py::TestService::test_requires_internal_token 
 | Só um grupo (uma classe) | `.venv/Scripts/python -m pytest "tests/onboarding_api/test_post_onboarding.py::TestPostOnboardingIdempotency" -v` |
 | Só um teste | `.venv/Scripts/python -m pytest "tests/onboarding_api/test_service.py::TestService::test_requires_internal_token" -v` |
 | Por palavra no nome | `.venv/Scripts/python -m pytest tests/onboarding_api -k idempotency -v` |
+| Pular os testes lentos, que esperam o worker (até 90 s cada) | acrescente `-m "not slow"` |
 | Parar no primeiro erro | acrescente `-x` |
 | Só os que falharam na última vez | acrescente `--lf` |
 | Ver o motivo dos pulados | acrescente `-rs` |
@@ -116,10 +118,13 @@ tests/onboarding_api/test_service.py::TestService::test_requires_internal_token 
 
 Alguns testes fingem que algo caiu: hoje, o F2-06, com o Redis fora do ar, e o F4-17, com o bucket do RG fora do ar. Eles só rodam com `FAULT_INJECTION_ENABLED=true` **nos dois lados**: na API, para ela obedecer ao cabeçalho `X-Fault-Injection`, e no pytest, para o teste não ser pulado. É assim que o CI roda.
 
+Os testes do prazo de 20 minutos (F5) seguem a mesma ideia, com `SIMULATED_CLOCK_ENABLED=true`: com ela, o teste manda `X-Simulated-Now` e o pedido acontece "no passado", sem esperar 20 minutos de verdade. Ligue as duas juntas.
+
 No `cmd`, sem aspas e sem espaço em volta do `=`:
 
 ```bat
 set FAULT_INJECTION_ENABLED=true
+set SIMULATED_CLOCK_ENABLED=true
 docker compose up -d --wait
 .venv\Scripts\python -m pytest tests\onboarding_api -v
 ```
@@ -128,6 +133,7 @@ No PowerShell:
 
 ```powershell
 $env:FAULT_INJECTION_ENABLED = "true"
+$env:SIMULATED_CLOCK_ENABLED = "true"
 docker compose up -d --wait
 .venv/Scripts/python -m pytest tests/onboarding_api -v
 ```
@@ -136,18 +142,21 @@ No Git Bash:
 
 ```bash
 export FAULT_INJECTION_ENABLED=true
+export SIMULATED_CLOCK_ENABLED=true
 docker compose up -d --wait
 .venv/Scripts/python -m pytest tests/onboarding_api -v
 ```
 
-O `docker compose up` percebe que a variável mudou e recria a onboarding-api sozinho. Para voltar ao normal, feche o terminal (ou rode `set FAULT_INJECTION_ENABLED=` no `cmd`, `Remove-Item Env:FAULT_INJECTION_ENABLED` no PowerShell ou `unset FAULT_INJECTION_ENABLED` no Git Bash) e suba de novo.
+O `docker compose up` percebe que a variável mudou e recria a onboarding-api sozinho. Por isso, **todo** `docker compose up` precisa das variáveis no mesmo terminal: um `up` sem elas recria a API com as falsificações desligadas, e os testes delas falham. Para voltar ao normal, feche o terminal (ou rode `set FAULT_INJECTION_ENABLED=` no `cmd`, `Remove-Item Env:FAULT_INJECTION_ENABLED` no PowerShell ou `unset FAULT_INJECTION_ENABLED` no Git Bash, e o mesmo para `SIMULATED_CLOCK_ENABLED`) e suba de novo.
+
+Atenção: com o worker de pé, toda abertura de teste que ficou parada em `DRAFT` por mais de 20 minutos é vencida e tem o cadastro apagado. Isso vale também para as aberturas que as outras suítes deixam no banco local, e é o comportamento esperado da RFC 05.
 
 ## Mudei o código: preciso subir de novo?
 
 | O que mudou | O que fazer |
 |---|---|
 | Só os testes (`tests/`) | Nada. Rode o pytest de novo |
-| Código Python da API (`onboarding-api/src/`) | Em geral a API recarrega sozinha. Se o teste não enxergar a mudança: `docker compose restart onboarding-api` |
+| Código Python da API (`onboarding-api/src/`) | Em geral a API e o worker recarregam sozinhos. Se o teste não enxergar a mudança: `docker compose restart onboarding-api onboarding-worker` |
 | `onboarding-api/requirements.txt` | `docker compose up -d --build --wait` |
 | `database/database.sql` (tabelas) | `docker compose down -v` e depois `docker compose up -d --build --wait`. O SQL só roda num banco vazio, e o `-v` apaga os dados de teste |
 
@@ -187,3 +196,5 @@ No PowerShell, troque `grep` por `Select-String`; no `cmd`, por `findstr`.
 | `SKIPPED ... FAULT_INJECTION_ENABLED=true` | Teste de falha simulada pulado de propósito | Normal. Para rodar, veja a seção de falha simulada |
 | O `localstack` não sobe e o log pede `LOCALSTACK_AUTH_TOKEN` | Alguém trocou a imagem por uma versão de 2026.03 em diante, que exige conta no LocalStack | Volte para `localstack/localstack:4.14.0` no `docker-compose.yml`, a última que sobe sem conta |
 | `FAILED test_bucket_fora_responde_503...` com `assert 202 == 503` | O pytest está com `FAULT_INJECTION_ENABLED=true`, mas a API subiu sem | Suba de novo com a variável ligada no mesmo terminal |
+| `FAILED test_envio_depois_do_prazo_responde_410` com `assert 202 == 410` | O pytest está com `SIMULATED_CLOCK_ENABLED=true`, mas a API subiu sem | Suba de novo com a variável ligada no mesmo terminal |
+| `AssertionError: Passaram 90 s e a condicao nao valeu` num teste da F5 | O worker não está de pé, ou parou com erro | `docker compose ps` e `docker compose logs onboarding-worker --tail 30` |

@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Carlos Alberto Magalhães Neto · \<nome 2\> · \<nome 3\> |
 | **Data** | 06/10/2026 |
-| **Versão** | 0.7 (envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
+| **Versão** | 0.8 (prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
 
 ## Contextualização
 
@@ -142,8 +142,9 @@ As recusas seguem o padrão OAuth, com o cabeçalho `WWW-Authenticate`:
 
 **Prazo de 20 minutos.** Cada abertura nasce com `expires_at` 20 minutos depois do `POST` (`ONBOARDING_TIMEOUT_MINUTES`). Enquanto está em `DRAFT`:
 
-- Qualquer pedido depois do prazo recebe `410 ONB005010` e já marca a abertura como `EXPIRED`.
-- A cada minuto, o worker vence as que passaram do prazo. Apaga as fotos do bucket e os dados pessoais do cadastro: sem conta aberta, não há relação com o banco que justifique guardá-los. A linha da abertura fica como `EXPIRED`, sem dado pessoal.
+- Qualquer pedido depois do prazo recebe `410 ONB005010`, mesmo antes de o worker passar. A API não grava nada nesse pedido: quem marca `EXPIRED` e apaga é só o worker, num lugar só, sem disputa com a API.
+- A cada minuto, o worker vence as que passaram do prazo. Apaga as fotos do bucket, pelo prefixo da abertura (`rg/{onboarding_key}/`), e os dados pessoais do cadastro: sem conta aberta, não há relação com o banco que justifique guardá-los. A linha da abertura fica como `EXPIRED`, sem dado pessoal.
+- O dono continua recebendo `410`, e não `404`, depois que o cadastro some: a abertura guarda a `customer_key`, que é um UUID e não identifica ninguém, e é por ela que a API reconhece a credencial do dono. Para qualquer outra pessoa, continua `404` (R8).
 - O documento fica livre para uma nova abertura.
 
 Depois que o RG fica completo, o prazo deixa de valer: a análise é tempo do banco, e não da pessoa.
@@ -208,7 +209,7 @@ Contratos com as vizinhas, para conferir dos dois lados:
 | Vizinha | Quem chama | Contrato | Quando | O que garante |
 |---|---|---|---|---|
 | gateway-api | o gateway chama a onboarding | Todas as rotas públicas acima, com `X-Idempotency-Key` repassada | Sempre | Replay em 24 horas, menos no `POST /onboarding`, que só reserva a chave enquanto roda; `UNIQUE` aqui como garantia final |
-| LocalStack S3 | onboarding-api | `PutObject`, `DeleteObject` e link assinado de 5 minutos no bucket privado `rg-documentos` | Envio do RG e vencimento | Primeiro o bucket, depois o `COMMIT`: nunca uma linha sem foto |
+| LocalStack S3 | onboarding-api | `PutObject`, `DeleteObjects` pelo prefixo da abertura e link assinado de 5 minutos no bucket privado `rg-documentos` | Envio do RG e vencimento | Primeiro o bucket, depois o `COMMIT`: nunca uma linha sem foto |
 | Receita, sanções e PEP | onboarding-worker | Consulta por documento, timeout 2 s, circuit breaker | Análise | Nenhuma aprovação sem as três |
 | account-api | onboarding-worker | `POST /internal/account` com `customer_key`, `X-Idempotency-Key` igual à `onboarding_key` (RFC 02) | Depois de `APPROVED` | `201` conta nova ou `200` a que já existia: uma conta por cliente |
 | webhook-api | onboarding-worker | `POST /internal/event` com `event_id`, `event_type`, `occurred_at` e `data`, sem dado pessoal (contrato a confirmar na RFC da webhook-api) | Cada evento da outbox | O mesmo `event_id` duas vezes é recebido uma vez |
@@ -234,7 +235,7 @@ Cenários de erro e tratamento:
 | RG enviado fora de `DRAFT` | `409 ONB005008` | Nada muda | Consulta a etapa |
 | Arquivo grande ou de outro tipo | `413 ONB005011` ou `422 ONB005012` | Nada é enviado | Manda JPEG ou PNG de até 5 MB |
 | Bucket fora do ar | `503 ONB005015` | Nada é gravado; a abertura continua em `DRAFT` | Repete com a mesma chave, dentro do prazo |
-| Passaram os 20 minutos | `410 ONB005010` | Vence a abertura e apaga os dados pessoais e as fotos | Começa outra abertura |
+| Passaram os 20 minutos | `410 ONB005010` | Nada é gravado no pedido; em até 1 minuto, o worker vence a abertura e apaga os dados pessoais e as fotos | Começa outra abertura |
 | Birô fora na análise | `GET` mostra `ANALYSIS` | O circuit breaker abre; o worker agenda outra tentativa | Espera |
 | Birô fora por 24 horas | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE` | Evento `account.kyc.manual_review` | Espera; compliance retenta em lote quando o birô voltar |
 | Retentativa com o birô ainda fora | `503 ONB005016` | Nenhuma abertura muda | Compliance tenta mais tarde |
@@ -288,6 +289,7 @@ erDiagram
         bigserial id PK
         char(36) onboarding_key UK "sai na resposta"
         bigint customer_id FK "UK; nulo depois de vencer, com os dados apagados"
+        char(36) customer_key "fica depois de vencer: reconhece o dono"
         varchar(64) idempotency_key UK "repassada pelo gateway"
         char(64) request_hash "SHA-256 do pedido, sem guardar os dados"
         bigint status_id FK
@@ -489,8 +491,7 @@ sequenceDiagram
     C->>O: PUT /onboarding/{key}/document, front e back
     O->>O: credencial do dono, etapa DRAFT, dentro do prazo
     alt passou dos 20 minutos
-        O->>P: EXPIRED, COMMIT
-        O-->>C: 410 ONB005010
+        O-->>C: 410 ONB005010, nada gravado
     end
     O->>O: 1 ou 2 arquivos, até 5 MB, JPEG ou PNG pelos primeiros bytes
     O->>O: lados já guardados mais os novos não passam de 2
@@ -512,7 +513,7 @@ sequenceDiagram
     end
 ```
 
-1. Confere a credencial e a etapa: de outra pessoa, `404 ONB005006`; fora de `DRAFT`, `409 ONB005008`; vencida, `410 ONB005010`.
+1. Confere a credencial e a etapa, nesta ordem: de outra pessoa, `404 ONB005006`; vencida, `410 ONB005010`; fora de `DRAFT`, `409 ONB005008`.
 2. Confere os arquivos antes de gastar o bucket. Nenhum: `400 ONB005001`. Acima de 5 MB: `413 ONB005011`. Nem JPEG nem PNG: `422 ONB005012`. Somados aos já guardados, mais de dois, ou um lado repetido: `409 ONB005009`.
 3. **O RG completo** é frente e verso, em duas imagens, ou uma imagem `both` com os dois lados.
 4. Primeiro o bucket, depois o banco. O pior caso é um objeto sem linha, invisível, e nunca uma linha apontando para uma foto que não existe. Nenhuma trava fica aberta durante o `PutObject`: depois do bucket, a API trava a abertura (`SELECT ... FOR UPDATE`) e confere de novo a etapa e os lados, já vendo o que outro envio gravou. Assim a frente e o verso chegando juntos completam o RG, e a frente e uma imagem `both` juntas não passam as duas. O `UNIQUE(onboarding_id, side)` é a última garantia.
@@ -660,16 +661,16 @@ sequenceDiagram
     participant S as LocalStack S3
     participant O as onboarding-api
     participant C as Cliente
-    W->>P: DRAFT com expires_at vencido ... SKIP LOCKED
-    W->>S: DeleteObject das imagens já enviadas
-    W->>P: EXPIRED, apaga onboarding_document e customer, customer_id nulo, evento, COMMIT
+    W->>P: DRAFT com expires_at vencido ... SKIP LOCKED, EXPIRED, evento, COMMIT
+    W->>S: DeleteObjects de tudo em rg/{onboarding_key}/
+    W->>P: apaga onboarding_document e customer, customer_id nulo, COMMIT
     C->>O: PUT document ou GET, depois do prazo
     Note over C: 410 ONB005010: comece outra abertura
 ```
 
-1. A cada minuto, o worker pega as aberturas em `DRAFT` com `expires_at` vencido.
-2. Apaga primeiro as fotos do bucket e depois, num `COMMIT`, o cadastro e as linhas de documento. A abertura fica como `EXPIRED`, sem dado pessoal. Se o bucket falhar, a abertura fica para a próxima passada.
-3. Um pedido que chega depois do prazo, antes da passada do worker, já recebe `410 ONB005010` e marca a abertura como `EXPIRED`.
+1. A cada minuto, o worker pega as aberturas em `DRAFT` com `expires_at` vencido, e as `EXPIRED` que ainda têm cadastro. Anda das mais antigas para as mais novas, em lotes, e cada lote começa depois do último: a passada sempre termina, e uma abertura que falha não segura as que vêm depois.
+2. Marca `EXPIRED` com o evento, num `COMMIT` curto: um envio do RG que chegue no meio encontra a abertura vencida e recebe `410`. Depois apaga as fotos pelo prefixo da abertura, sem trava aberta, inclusive alguma que subiu num envio recusado e nunca ganhou linha. Por fim, num `COMMIT`, apaga o cadastro e as linhas de documento. A abertura fica como `EXPIRED`, sem dado pessoal. Se o bucket falhar, ela fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo.
+3. Um pedido que chega depois do prazo, antes da passada do worker, já recebe `410 ONB005010`, sem gravar nada.
 4. Os pedidos também têm prazo: o gateway corta o que passa de 30 s (60 s no envio do RG), e nada fica preso consumindo recurso.
 
 **Clique duplo: o mesmo pedido chega duas vezes**
