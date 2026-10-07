@@ -260,7 +260,7 @@ erDiagram
     CUSTOMER {
         bigserial id PK
         char(36) customer_key UK "sai na resposta e no JWT"
-        char(36) request_key UK "a X-Idempotency-Key do pedido de abertura"
+        char(36) request_key UK "a onboarding_key da abertura que criou o cliente"
         bigint type_id FK
         varchar(255) name "nome ou razão social"
         varchar(18) document_number UK "CPF ou CNPJ com máscara"

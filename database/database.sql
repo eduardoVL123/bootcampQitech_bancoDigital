@@ -26,7 +26,7 @@
 -- (src/models/customer.py) apontam para estes nomes de tabela e de
 -- coluna, e hoje elas nao existem no database.sql da branch dele.
 -- Quem grava o cliente e a onboarding-api, no mesmo COMMIT da abertura
--- (RFC 05). O request_key recebe a X-Idempotency-Key do pedido. O RG da
+-- (RFC 05). O request_key recebe a onboarding_key da abertura. O RG da
 -- abertura fica em onboarding_document (secao 7), e nao aqui.
 -- =====================================================================
 

@@ -85,10 +85,13 @@ class OnboardingController(BaseController):
         now = now_utc()
         expires_at = now + timedelta(minutes=ONBOARDING_TIMEOUT_MINUTES)
 
+        onboarding_key = OnboardingRepository.new_key()
+
         try:
-            customer = self.customer_repository.create(onboarding_data, idempotency_key, birth_date, opening_date)
+            # O cliente guarda, no request_key, a abertura que o criou (bancos.md).
+            customer = self.customer_repository.create(onboarding_data, onboarding_key, birth_date, opening_date)
             onboarding = self.onboarding_repository.create(
-                customer, onboarding_data, idempotency_key, request_hash, expires_at, now
+                onboarding_key, customer, onboarding_data, idempotency_key, request_hash, expires_at, now
             )
             self.session.flush()
         except IntegrityError as error:

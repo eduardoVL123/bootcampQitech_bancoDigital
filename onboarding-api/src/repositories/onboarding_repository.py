@@ -12,8 +12,14 @@ class OnboardingRepository:
     def __init__(self, context: Context) -> None:
         self.session = context.db_session
 
+    @staticmethod
+    def new_key() -> str:
+        """A onboarding_key nasce antes da gravação, porque o cliente também a guarda (request_key)."""
+        return str(uuid4())
+
     def create(
         self,
+        onboarding_key: str,
         customer: Customer,
         onboarding_data: dict,
         idempotency_key: str,
@@ -23,7 +29,7 @@ class OnboardingRepository:
     ) -> Onboarding:
         onboarding = Onboarding()
 
-        onboarding.onboarding_key = str(uuid4())
+        onboarding.onboarding_key = onboarding_key
         onboarding.customer = customer
         onboarding.idempotency_key = idempotency_key
         onboarding.request_hash = request_hash

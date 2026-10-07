@@ -13,7 +13,7 @@ class Customer(Base):
 
     id = Column(BigInteger, primary_key=True)
     customer_key = Column(CHAR(36), nullable=False)
-    # Recebe a X-Idempotency-Key do pedido de abertura.
+    # Recebe a onboarding_key da abertura que criou o cliente.
     request_key = Column(CHAR(36), nullable=False)
     type_id = Column(BigInteger, ForeignKey(CustomerType.id), nullable=False)
     name = Column(String(255), nullable=False)

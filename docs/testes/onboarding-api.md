@@ -482,7 +482,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D17 | Falhas simuladas | `X-Fault-Injection: bucket_unavailable` e `redis_unavailable`, só com `FAULT_INJECTION_ENABLED=true` |
 | D18 | "Hoje" para idade e datas | O dia em `America/Sao_Paulo`, na API e nos testes, para o teste da borda não falhar à noite |
 | D19 | Prefixo dos códigos de erro | **Decidida em 06/10, na RFC 05 v0.6:** todo erro que a onboarding-api responde começa com `ONB` (`ONB000xxx` nos gerais, `ONB005xxx` nos dela). Os que só o gateway responde continuam `QIT` |
-| D20 | Onde moram as tabelas da onboarding | **Decidida em 06/10:** no banco único do grupo (`bootcamp`), seção 7 do `database/database.sql`. `customer` e `customer_document` seguem a definição do grupo; a onboarding preenche o `request_key` com a chave do pedido, e renda, ocupação e PEP ficam na tabela `onboarding` |
+| D20 | Onde moram as tabelas da onboarding | **Decidida em 06/10:** no banco único do grupo (`bootcamp`), seção 7 do `database/database.sql`. `customer` e `customer_document` seguem a definição do grupo; a onboarding preenche o `request_key` com a `onboarding_key` (como pede o `bancos.md`), e renda, ocupação e PEP ficam na tabela `onboarding` |
 | D21 | Onde ficam os documentos do RG | **Decidida em 06/10:** numa tabela da abertura, `onboarding_document`, ligada pelo `onboarding_id`, uma linha por imagem, com `UNIQUE(onboarding_id, side)`. A `customer_document` do grupo fica como está, e a onboarding não grava nela |
 
 **Pendências da RFC encontradas no caminho**
