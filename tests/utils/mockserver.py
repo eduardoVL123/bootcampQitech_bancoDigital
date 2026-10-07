@@ -12,7 +12,8 @@ O que tem aqui:
   - biros_regulares: os três birôs dizendo que está tudo certo;
   - receita_fora_do_ar, receita_demora e receita_derruba_a_conexao: a Receita
     sem resposta, só em algumas chamadas (F7);
-  - saude_do_biro: a chamada de teste de um birô, que a retentativa em lote faz (F7).
+  - saude_do_biro: a chamada de teste de um birô, que a retentativa em lote faz (F7);
+  - webhook_responde e eventos_da_abertura: a webhook-api, que recebe os eventos (F9).
 """
 import json
 import time
@@ -26,9 +27,10 @@ ROTA_DA_RECEITA = "/receita/v1/consulta"
 ROTA_DAS_SANCOES = "/sancoes/v1/consulta"
 ROTA_DO_PEP = "/pep/v1/consulta"
 ROTA_DA_ACCOUNT_API = "/internal/account"
+ROTA_DO_WEBHOOK = "/internal/event"
 
 # A chamada de teste de cada birô (RFC 05, decisão D29). O Mockserver sobe
-# com as três respondendo 200 (mockserver/saude-dos-biros.json).
+# com as três respondendo 200 (mockserver/respostas-padrao.json).
 ROTA_DA_SAUDE = {
     "receita": "/receita/v1/health",
     "sancoes": "/sancoes/v1/health",
@@ -293,3 +295,30 @@ def saude_do_biro(biro: str, status: int) -> None:
 
 def pedidos_a_account_api(abertura: dict) -> list:
     return Mockserver.pedidos({"customer_key": abertura["customer_key"]}, ROTA_DA_ACCOUNT_API)
+
+
+# ----------------------------------------------------------------------
+# A webhook-api (F9)
+#
+# O Mockserver sobe recebendo todo evento com 202 (mockserver/respostas-padrao.json).
+# O teste que precisa de outra resposta programa por cima, preso à
+# onboarding_key dele, que vai em data.
+# ----------------------------------------------------------------------
+
+def webhook_responde(abertura: dict, status: int, vezes: int = None, atraso_segundos: int = None) -> None:
+    """A webhook-api responde assim aos eventos desta abertura, nas próximas
+    `vezes` entregas (sem `vezes`, sempre), depois de `atraso_segundos`."""
+    Mockserver.programa(
+        ROTA_DO_WEBHOOK,
+        {"data": {"onboarding_key": abertura["onboarding_key"]}},
+        status,
+        {},
+        vezes,
+        PRIORIDADE_DA_FALHA,
+        atraso_segundos=atraso_segundos,
+    )
+
+
+def eventos_da_abertura(abertura: dict) -> list:
+    """As entregas que a webhook-api recebeu com esta abertura, na ordem em que chegaram."""
+    return Mockserver.pedidos({"data": {"onboarding_key": abertura["onboarding_key"]}}, ROTA_DO_WEBHOOK)

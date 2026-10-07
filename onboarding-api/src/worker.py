@@ -3,9 +3,9 @@
 Ele não tem rota. A cada WORKER_TICK_SECONDS (1 s), olha a fila: analisa o
 KYC das aberturas com o RG completo e pede a conta das aprovadas (F6). Com
 um birô sem resposta, a abertura espera a próxima tentativa, e o circuit
-breaker de cada birô fica no Redis, dividido pelas réplicas (F7). A cada
+breaker de cada birô fica no Redis, dividido pelas réplicas (F7). Depois,
+entrega à webhook-api os eventos da outbox (F9). A cada
 WORKER_INTERVAL_SECONDS (1 min), também vence as aberturas paradas (F5).
-Nas próximas fatias, ele entrega os eventos (F9).
 
 Cada tarefa abre o próprio contexto de banco e o fecha no fim, como o
 middleware faz a cada requisição da API (src/middlewares/session_manager.py).
@@ -14,7 +14,15 @@ cair numa só.
 """
 import time
 
-from constants import KYC_BATCH_SIZE, WORKER_INTERVAL_SECONDS, WORKER_REQUIRED_VARIABLES, WORKER_TICK_SECONDS, check_variables
+from constants import (
+    EVENT_BATCH_SIZE,
+    KYC_BATCH_SIZE,
+    WORKER_INTERVAL_SECONDS,
+    WORKER_REQUIRED_VARIABLES,
+    WORKER_TICK_SECONDS,
+    check_variables,
+)
+from controllers.event_controller import EventController
 from controllers.expiration_controller import ExpirationController
 from controllers.kyc_controller import KycController
 from database import clear_context, open_context
@@ -52,6 +60,15 @@ def analyze_queue() -> None:
             break
 
 
+def deliver_events() -> None:
+    """Entrega à webhook-api até EVENT_BATCH_SIZE eventos da outbox por vez."""
+    controller = EventController()
+
+    for _ in range(EVENT_BATCH_SIZE):
+        if not controller.deliver_next():
+            break
+
+
 def expire_overdue() -> None:
     erased = ExpirationController().expire_overdue()
     if erased:
@@ -66,7 +83,7 @@ def main() -> None:
     next_expiration = 0.0
 
     while True:
-        jobs = [analyze_queue]
+        jobs = [analyze_queue, deliver_events]
         if time.monotonic() >= next_expiration:
             jobs.append(expire_overdue)
             next_expiration = time.monotonic() + WORKER_INTERVAL_SECONDS

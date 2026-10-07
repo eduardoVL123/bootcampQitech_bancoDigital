@@ -6,3 +6,4 @@ from models.onboarding import Onboarding
 from models.onboarding_status_event import OnboardingStatusEvent
 from models.onboarding_document import OnboardingDocument
 from models.onboarding_check import OnboardingCheck
+from models.onboarding_outbox import OnboardingOutbox
