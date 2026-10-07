@@ -37,7 +37,7 @@ from errors import (
 from models import CustomerType, Onboarding, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
 from repositories import CustomerRepository, OnboardingRepository, RateLimitRepository
 from utils.access_token import issue_access_token
-from utils.clock import bank_today, now_utc
+from utils.clock import age_in_years, bank_today, now_utc
 from utils.credential import Credential
 from utils.document_number import is_valid_cnpj, is_valid_cpf
 from utils.image_type import detect_image_type
@@ -94,7 +94,7 @@ class OnboardingController(BaseController):
         birth_date = self._parse_past_date(onboarding_data, "birth_date")
         opening_date = self._parse_past_date(onboarding_data, "opening_date")
 
-        if birth_date is not None and self._age_in_years(birth_date) < MINIMUM_AGE:
+        if birth_date is not None and age_in_years(birth_date) < MINIMUM_AGE:
             raise UnderageCustomer(MINIMUM_AGE)
 
         request_hash = self._request_hash(onboarding_data)
@@ -351,13 +351,6 @@ class OnboardingController(BaseController):
             raise InvalidDate(field)
 
         return parsed
-
-    def _age_in_years(self, birth_date: date) -> int:
-        today = bank_today()
-        age = today.year - birth_date.year
-        if (today.month, today.day) < (birth_date.month, birth_date.day):
-            age = age - 1
-        return age
 
     def _request_hash(self, onboarding_data: dict) -> str:
         """SHA-256 do pedido, com os campos em ordem fixa: o mesmo conteúdo

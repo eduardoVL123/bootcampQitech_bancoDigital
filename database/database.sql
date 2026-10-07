@@ -526,3 +526,21 @@ CREATE TABLE onboarding_status_event(
 );
 
 CREATE INDEX onboarding_status_event_onboarding ON onboarding_status_event (onboarding_id);
+
+
+-- O resultado de cada verificacao da analise do KYC: Receita, sancoes,
+-- PEP e PLD. Sem os dados consultados: so o resultado, o motivo e o
+-- protocolo do biro, que nao identifica ninguem.
+CREATE TABLE onboarding_check(
+    id                  BIGSERIAL PRIMARY KEY,
+    onboarding_id       BIGINT NOT NULL REFERENCES onboarding(id),
+    check_type          VARCHAR(10) NOT NULL,
+    result              VARCHAR(12) NOT NULL,
+    reason_code         VARCHAR(40),
+    provider_reference  VARCHAR(64),
+    consulted_at        TIMESTAMPTZ NOT NULL,
+    -- Uma linha por verificacao em cada abertura.
+    UNIQUE(onboarding_id, check_type),
+    CHECK (check_type IN ('RECEITA', 'SANCTIONS', 'PEP', 'PLD')),
+    CHECK (result IN ('PASS', 'FAIL', 'REVIEW'))
+);

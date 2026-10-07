@@ -11,7 +11,7 @@ O que tem aqui:
   - credenciais: a do cliente vem da API; as outras o teste fabrica;
   - imagens do RG: JPEG, PNG e PDF de qualquer tamanho, feitos na hora;
   - datas: "hoje" e o dia de Sao Paulo, como na API, e o relogio simulado;
-  - espera_ate: espera o efeito do worker, que nao tem rota;
+  - espera_ate e espera_etapa: esperam o efeito do worker, que nao tem rota;
 """
 import base64
 import json
@@ -313,6 +313,11 @@ def amanha() -> str:
     return (hoje() + timedelta(days=1)).isoformat()
 
 
+def aberta_ha_dias(dias: int) -> str:
+    """A data de abertura de uma empresa aberta há `dias` dias, no dia de São Paulo."""
+    return (hoje() - timedelta(days=dias)).isoformat()
+
+
 def no_passado(minutos: float) -> dict:
     """O cabecalho que faz o pedido acontecer `minutos` atras (decisao D16).
     So vale com SIMULATED_CLOCK_ENABLED=true na API."""
@@ -339,6 +344,21 @@ def espera_ate(consulta, condicao, limite_segundos: float, intervalo_segundos: f
         if time.monotonic() > fim:
             raise AssertionError(f"Passaram {limite_segundos} s e a condicao nao valeu. Ultimo resultado: {resultado}")
         time.sleep(intervalo_segundos)
+
+
+# A análise do KYC acontece no worker. O teste repete o GET até a abertura
+# chegar a uma das etapas esperadas (o wait_for_status do plano).
+ESPERA_PELA_ANALISE_SEGUNDOS = float(environ.get("ESPERA_PELA_ANALISE_SEGUNDOS", "20"))
+
+
+def espera_etapa(abertura: dict, etapas: set, limite_segundos: float = ESPERA_PELA_ANALISE_SEGUNDOS) -> dict:
+    """Consulta a abertura até ela chegar a uma das `etapas` e devolve o corpo do GET."""
+    def consulta():
+        resposta = Onboarding.consulta_abertura(abertura["onboarding_key"], abertura["access_token"])
+        assert resposta.status_code == 200, resposta.text
+        return resposta.json()
+
+    return espera_ate(consulta, lambda corpo: corpo["status"] in etapas, limite_segundos)
 
 
 # ----------------------------------------------------------------------
