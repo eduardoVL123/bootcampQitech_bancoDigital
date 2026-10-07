@@ -144,7 +144,8 @@ class OnboardingController(BaseController):
 
         self._check_not_expired(onboarding, now_utc())
 
-        return OnboardingDTO.detail(onboarding)
+        # Só compliance vê a justificativa e quem decidiu (decisão D31).
+        return OnboardingDTO.detail(onboarding, credential.is_compliance)
 
     def send_document(
         self, onboarding_key: str, credential: Credential, files: List[Tuple[str, bytes]], now: datetime

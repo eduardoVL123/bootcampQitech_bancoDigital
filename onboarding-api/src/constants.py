@@ -38,6 +38,10 @@ S3_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 RG_BUCKET = os.environ.get("RG_BUCKET", "rg-documentos")
 BUCKET_TIMEOUT_SECONDS = 10
 
+# A fila de compliance (RFC 05, GET /onboardings): 10 por pagina, a partir da primeira.
+QUEUE_DEFAULT_LIMIT = 10
+QUEUE_DEFAULT_PAGE = 0
+
 # Cada imagem do RG tem ate 5 MB (RFC 05, Rotas).
 MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 

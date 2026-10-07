@@ -44,8 +44,21 @@ def retenta_em_lote(abertura: dict, cabecalhos: dict):
     return Onboarding.envia("POST", "/admin/onboardings/retry", cabecalhos, json=corpo)
 
 
+def le_a_fila(abertura: dict, cabecalhos: dict):
+    return Onboarding.envia("GET", "/onboardings", cabecalhos)
+
+
+def decide(abertura: dict, cabecalhos: dict):
+    """A decisão leva também o que o gateway manda e um corpo válido."""
+    cabecalhos = {**cabecalhos_do_gateway(), **cabecalhos}
+    corpo = {"decision": "REJECT", "justification": "Justificativa de teste da credencial"}
+    return Onboarding.envia("PUT", f"/onboarding/{abertura['onboarding_key']}/decision", cabecalhos, json=corpo)
+
+
 ROTAS_DE_COMPLIANCE = [
     pytest.param(retenta_em_lote, id="POST /admin/onboardings/retry"),
+    pytest.param(le_a_fila, id="GET /onboardings"),
+    pytest.param(decide, id="PUT /onboarding/{key}/decision"),
 ]
 
 ROTAS_COM_CREDENCIAL = [

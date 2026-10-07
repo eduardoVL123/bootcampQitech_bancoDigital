@@ -144,6 +144,23 @@ class Onboarding:
         return Onboarding.envia("POST", "/admin/onboardings/retry", cabecalhos, **extras)
 
     @staticmethod
+    def fila(credencial: str, parametros: dict = None) -> requests.Response:
+        """GET /onboardings: a fila de compliance, com os parâmetros da query string."""
+        return Onboarding.envia("GET", "/onboardings", cabecalhos_com_credencial(credencial), params=parametros)
+
+    @staticmethod
+    def decide(chave_da_abertura: str, credencial: str, corpo: dict, cabecalhos: dict = None) -> requests.Response:
+        """PUT /onboarding/{onboarding_key}/decision: compliance aprova ou recusa.
+        Sem `cabecalhos`, vai o que o gateway mandaria."""
+        if cabecalhos is None:
+            cabecalhos = cabecalhos_do_gateway()
+
+        if credencial is not None:
+            cabecalhos["Authorization"] = f"Bearer {credencial}"
+
+        return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/decision", cabecalhos, json=corpo)
+
+    @staticmethod
     def comeca_abertura(dados: dict = None, cabecalhos: dict = None) -> dict:
         """Prepara o mundo do teste: uma abertura nova em DRAFT, criada pela
         propria API (nunca por INSERT no banco). Devolve o corpo do 201."""
@@ -408,8 +425,13 @@ def fabrica_credencial(
     return jwt.encode(campos, segredo, algorithm="HS256")
 
 
+# Quem é o analista da credencial de compliance (o sub). É o que fica no
+# histórico como quem decidiu (decisão D31).
+ANALISTA_DE_COMPLIANCE = "compliance:ana.oliveira"
+
+
 def credencial_de_compliance() -> str:
-    return fabrica_credencial("compliance:ana.oliveira", "compliance")
+    return fabrica_credencial(ANALISTA_DE_COMPLIANCE, "compliance")
 
 
 def credencial_vencida(chave_do_cliente: str) -> str:

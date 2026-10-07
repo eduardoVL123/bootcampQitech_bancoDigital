@@ -49,7 +49,11 @@ def create_app() -> FastAPI:
 
     application.add_api_route("/customer/{customer_key}", customer_resource.on_get_by_key, methods=["GET"])
 
-    # Só de compliance: a retentativa em lote, quando o birô volta (F7).
+    # Só de compliance: a fila e a decisão (F8), e a retentativa em lote, quando o birô volta (F7).
+    application.add_api_route("/onboardings", compliance_resource.on_get_queue, methods=["GET"])
+    application.add_api_route(
+        "/onboarding/{onboarding_key}/decision", compliance_resource.on_put_decision, methods=["PUT"]
+    )
     application.add_api_route("/admin/onboardings/retry", compliance_resource.on_post_retry, methods=["POST"])
 
     register_error_handlers(application)
