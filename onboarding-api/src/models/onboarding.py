@@ -49,3 +49,8 @@ class Onboarding(Base):
         back_populates="onboarding",
         order_by="asc(OnboardingDocument.id)",
     )
+    checks = relationship(
+        "OnboardingCheck",
+        back_populates="onboarding",
+        order_by="asc(OnboardingCheck.id)",
+    )

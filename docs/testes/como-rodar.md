@@ -50,7 +50,7 @@ docker compose up -d --build --wait
 
 Na primeira vez demora alguns minutos, porque baixa as imagens (só a do LocalStack tem uns 460 MB) e instala as dependências. Depois fica rápido.
 
-Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `healthy`, menos o `onboarding-worker`, que não tem porta nem checagem de saúde e aparece só como `Up`:
+Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `healthy`, menos o `onboarding-worker` (duas réplicas) e o `mockserver`, que não têm checagem de saúde e aparecem só como `Up`:
 
 | Serviço | O que é | Porta na sua máquina |
 |---|---|---|
@@ -58,7 +58,8 @@ Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `he
 | `db` | PostgreSQL, com o banco único do grupo (`bootcamp`) | 5432 |
 | `redis` | Contadores dos limites de pedidos | nenhuma |
 | `localstack` | O S3 de mentira, com o bucket privado `rg-documentos` das fotos do RG. Só fica `healthy` depois que o bucket existe | nenhuma |
-| `onboarding-worker` | O mesmo código da onboarding-api, em outro processo. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
+| `onboarding-worker` | O mesmo código da onboarding-api, em outro processo, em duas réplicas. A cada segundo, analisa o KYC das aberturas com o RG completo e pede a conta das aprovadas. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
+| `mockserver` | Faz o papel da Receita, das listas de sanções e de PEP e da account-api. Cada teste programa a resposta para o documento dele | 1080 |
 | `api` | A API da raiz do repositório (pasta `src/`) | 3000 |
 
 **4. Rode os testes da onboarding-api:**
@@ -149,7 +150,7 @@ docker compose up -d --wait
 
 O `docker compose up` percebe que a variável mudou e recria a onboarding-api sozinho. Por isso, **todo** `docker compose up` precisa das variáveis no mesmo terminal: um `up` sem elas recria a API com as falsificações desligadas, e os testes delas falham. Para voltar ao normal, feche o terminal (ou rode `set FAULT_INJECTION_ENABLED=` no `cmd`, `Remove-Item Env:FAULT_INJECTION_ENABLED` no PowerShell ou `unset FAULT_INJECTION_ENABLED` no Git Bash, e o mesmo para `SIMULATED_CLOCK_ENABLED`) e suba de novo.
 
-Atenção: com o worker de pé, toda abertura de teste que ficou parada em `DRAFT` por mais de 20 minutos é vencida e tem o cadastro apagado. Isso vale também para as aberturas que as outras suítes deixam no banco local, e é o comportamento esperado da RFC 05.
+Atenção: com o worker de pé, toda abertura de teste que ficou parada em `DRAFT` por mais de 20 minutos é vencida e tem o cadastro apagado. E toda abertura com o RG completo é analisada: se o Mockserver foi recriado e perdeu as respostas programadas, ela fica em `ANALYSIS` e volta para a fila a cada minuto, até a F7 trazer as novas tentativas espaçadas. Isso vale também para as aberturas que as outras suítes deixam no banco local, e é o comportamento esperado da RFC 05.
 
 ## Mudei o código: preciso subir de novo?
 
@@ -198,3 +199,5 @@ No PowerShell, troque `grep` por `Select-String`; no `cmd`, por `findstr`.
 | `FAILED test_bucket_fora_responde_503...` com `assert 202 == 503` | O pytest está com `FAULT_INJECTION_ENABLED=true`, mas a API subiu sem | Suba de novo com a variável ligada no mesmo terminal |
 | `FAILED test_envio_depois_do_prazo_responde_410` com `assert 202 == 410` | O pytest está com `SIMULATED_CLOCK_ENABLED=true`, mas a API subiu sem | Suba de novo com a variável ligada no mesmo terminal |
 | `AssertionError: Passaram 90 s e a condicao nao valeu` num teste da F5 | O worker não está de pé, ou parou com erro | `docker compose ps` e `docker compose logs onboarding-worker --tail 30` |
+| `AssertionError: Passaram 20.0 s ... 'status': 'PENDING_KYC'` ou `'ANALYSIS'` num teste da F6 | O worker não analisou: está fora do ar, ou um birô não respondeu como o teste programou | `docker compose logs onboarding-worker --tail 30`; procure `Biro respondeu` ou `Biro sem resposta` |
+| `Nao consegui falar com o Mockserver em http://127.0.0.1:1080` | O Mockserver não subiu, ou a porta 1080 está ocupada | `docker compose ps`; para trocar a porta, `MOCKSERVER_PORT` no `.env` e `MOCKSERVER_URL` no pytest |

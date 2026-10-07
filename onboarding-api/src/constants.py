@@ -55,6 +55,37 @@ SIMULATED_CLOCK_ENABLED = os.environ.get("SIMULATED_CLOCK_ENABLED", "false").low
 WORKER_INTERVAL_SECONDS = int(os.environ.get("WORKER_INTERVAL_SECONDS", "60"))
 EXPIRATION_BATCH_SIZE = 50
 
+# A fila da analise e olhada a cada segundo: quem mandou o RG nao espera um
+# minuto para comecar a ser analisado.
+WORKER_TICK_SECONDS = float(os.environ.get("WORKER_TICK_SECONDS", "1"))
+KYC_BATCH_SIZE = 20
+
+# Posse do worker sobre uma abertura (lease_until): se ele cair no meio da
+# analise, outra replica pega a abertura quando a posse vence.
+WORKER_LEASE_SECONDS = 60
+
+# Os biros e a account-api (RFC 05, Contratos com as vizinhas). No
+# compose, todos sao o Mockserver.
+RECEITA_URL = os.environ.get("RECEITA_URL")
+SANCTIONS_URL = os.environ.get("SANCTIONS_URL")
+PEP_URL = os.environ.get("PEP_URL")
+ACCOUNT_API_URL = os.environ.get("ACCOUNT_API_URL")
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN")
+BUREAU_TIMEOUT_SECONDS = 2
+ACCOUNT_API_TIMEOUT_SECONDS = 5
+
+# A account-api nao respondeu: a abertura fica APPROVED e o worker tenta de
+# novo depois deste tempo, com a mesma chave idempotente.
+ACCOUNT_RETRY_SECONDS = 60
+
+# Regras de PLD (RFC 05). Valores de exemplo, definidos pela area de
+# compliance. Renda e faturamento em centavos, por mes.
+PLD_YOUNG_AGE = 21
+PLD_YOUNG_MAX_INCOME = 3000000
+PLD_MAX_INCOME = 50000000
+PLD_NEW_COMPANY_DAYS = 180
+PLD_NEW_COMPANY_MAX_INCOME = 30000000
+
 # Idade e datas no futuro sao conferidas no dia de Sao Paulo, e nao no do
 # servidor, que roda em UTC (decisao D18 do plano de testes).
 BANK_TIMEZONE = "America/Sao_Paulo"
@@ -70,9 +101,13 @@ BYPASS_ENDPOINTS = [
 REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET", "S3_ENDPOINT_URL"]
 
 
-def check_variables():
+# O worker precisa tambem dos vizinhos que ele chama.
+WORKER_REQUIRED_VARIABLES = REQUIRED_VARIABLES + ["RECEITA_URL", "SANCTIONS_URL", "PEP_URL", "ACCOUNT_API_URL", "SERVICE_TOKEN"]
+
+
+def check_variables(required=REQUIRED_VARIABLES):
     missing = []
-    for name in REQUIRED_VARIABLES:
+    for name in required:
         if not globals().get(name):
             missing.append(name)
 

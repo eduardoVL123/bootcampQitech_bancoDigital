@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Carlos Alberto Magalhães Neto · \<nome 2\> · \<nome 3\> |
 | **Data** | 06/10/2026 |
-| **Versão** | 0.8 (prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
+| **Versão** | 0.9 (análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP). Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
 
 ## Contextualização
 
@@ -73,7 +73,7 @@ flowchart LR
 **A onboarding-api no ecossistema.**
 - **Entrada:** tudo chega pelo **gateway-api**, que confere o token interno e a credencial JWT, guarda a `X-Idempotency-Key` no Redis por 24 horas, aplica os limites por origem e por credencial e corta pedidos longos demais.
 - **Cliente e abertura juntos:** cliente, RG e abertura moram no banco único do grupo (`bootcamp`, seção 7 do `database/database.sql`), em tabelas separadas. Por isso cadastrar o cliente e começar a abertura é **um único `COMMIT`**, sem saga entre APIs. As fotos ficam num bucket S3 privado, emulado pelo LocalStack.
-- **O onboarding-worker** é o mesmo código num processo separado. Ele analisa o KYC nos birôs, protegido por circuit breaker; vence as aberturas paradas; e entrega os eventos da outbox à webhook-api.
+- **O onboarding-worker** é o mesmo código num processo separado. Olha a fila a cada segundo e analisa o KYC nos birôs, protegido por circuit breaker; a cada minuto, vence as aberturas paradas; e entrega os eventos da outbox à webhook-api. Podem rodar várias réplicas: o `FOR UPDATE SKIP LOCKED` faz cada abertura cair numa só.
 - **Aprovação:** o worker pede a conta à account-api, que abre no máximo uma por cliente.
 - **Depois da abertura:** a transaction-api e a investment-api nunca falam com a onboarding-api. Elas usam a `account_key` e a `customer_key` que vêm da credencial.
 
@@ -549,12 +549,24 @@ sequenceDiagram
 
 1. **Toma posse** de uma abertura da fila com `FOR UPDATE SKIP LOCKED`, marca `ANALYSIS` e o prazo de posse, num `COMMIT` curto. Nenhuma trava fica aberta durante os birôs. Se o worker morrer, o prazo vence e outra réplica continua.
 2. **Lê o cadastro no próprio banco**, sem chamar outra API. CPF e renda não saem do banco, a não ser para a consulta ao birô.
-3. **Consulta, nesta ordem: Receita, sanções e PEP.** Nenhuma aprovação acontece sem as três. Uma recusa da Receita encerra a análise antes das listas. Cada resultado vira uma linha em `onboarding_check`, sem os dados consultados.
+3. **Consulta, nesta ordem: Receita, sanções e PEP.** Nenhuma aprovação acontece sem as três. Uma recusa da Receita encerra a análise antes das listas, e uma sanção encerra antes do PEP: depois de uma recusa, ninguém mais recebe o documento. Nome ou data diferentes dos da Receita não encerram: a análise segue, e a abertura vai para revisão. Cada resultado vira uma linha em `onboarding_check`, sem os dados consultados. PEP pela lista dá `PEP_MATCH`; declarado pela pessoa e fora da lista, `PEP_SELF_DECLARED`.
 4. **Aplica as regras de PLD** e calcula o nível de risco:
    - `LOW`: nenhuma regra disparou;
    - `MEDIUM`: uma regra de renda disparou;
    - `HIGH`: é PEP, ou duas regras ou mais dispararam.
-5. **Com a aprovação, abre a conta.** A account-api abre no máximo uma por cliente; a `onboarding_key` vai como chave idempotente. Se ela não responde, a abertura fica `APPROVED`, e o worker tenta de novo.
+5. **Com a aprovação, abre a conta.** A account-api abre no máximo uma por cliente; a `onboarding_key` vai como chave idempotente, com `customer_key` e `type` no corpo e o `SERVICE-TOKEN` no cabeçalho. Se ela não responde, ou responde fora de `200` e `201`, a abertura fica `APPROVED`, e o worker tenta de novo depois de 1 minuto, com a mesma chave.
+
+Contrato dos birôs, simulados no Mockserver com o mesmo formato (decisão D1 do plano de testes). Todos recebem um `POST` com JSON e respondem `200`; o documento vai só no corpo, nunca no endereço.
+
+| Birô | Rota | Pedido | Resposta |
+|---|---|---|---|
+| Receita | `POST /receita/v1/consulta` | `document_number` | `situacao`, `name`, `birth_date` (PF) ou `opening_date` (PJ) e `protocol` |
+| Sanções | `POST /sancoes/v1/consulta` | `document_number`, `name` | `match` (`true` ou `false`) e `protocol` |
+| PEP | `POST /pep/v1/consulta` | `document_number`; na PJ, o CNPJ (decisão D14) | `pep` (`true` ou `false`) e `protocol` |
+
+`situacao` no CPF: `REGULAR`, `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO`. No CNPJ: `ATIVA`, `SUSPENSA`, `INAPTA`, `BAIXADA`, `NULA`. Para os dois: `NAO_ENCONTRADO`. Uma resposta sem o campo principal (`situacao`, `match` ou `pep`) conta como birô sem resposta: na dúvida, não aprova nem recusa.
+
+O próximo passo (`next_step`) depois do RG completo é `WAIT` enquanto o banco trabalha (`PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW` e `APPROVED`), e `NONE` quando a abertura terminou (`ACTIVE` e `REJECTED`).
 
 Regras de PLD. Os valores são de exemplo, configuráveis e devem ser definidos pela área de compliance.
 

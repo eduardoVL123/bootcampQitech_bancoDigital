@@ -118,17 +118,30 @@ services:
         condition: service_healthy
 
   # O onboarding-worker: o mesmo codigo da onboarding-api, em outro
-  # processo e sem porta (RFC 05). A cada minuto, vence as aberturas
-  # paradas: apaga as fotos do bucket e os dados pessoais. O watchfiles
-  # faz o papel do --reload da API: salvou o arquivo, ele reinicia.
+  # processo e sem porta (RFC 05). Analisa o KYC da fila (Receita, sancoes
+  # e PEP), aplica o PLD e pede a conta a account-api. A cada minuto,
+  # tambem vence as aberturas paradas. Sobem duas replicas: o FOR UPDATE
+  # SKIP LOCKED garante que cada abertura e analisada por uma so. O
+  # watchfiles faz o papel do --reload da API: salvou o arquivo, reinicia.
   onboarding-worker:
     build:
       context: ./onboarding-api
       target: api
+    deploy:
+      replicas: 2
     environment:
       <<: *onboarding-environment
       SERVICE_NAME: onboarding-worker
       WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}
+      # Os biros e a account-api. No compose, todos sao o Mockserver; em
+      # producao, cada variavel aponta para o servico de verdade.
+      RECEITA_URL: http://mockserver:1080
+      SANCTIONS_URL: http://mockserver:1080
+      PEP_URL: http://mockserver:1080
+      ACCOUNT_API_URL: http://mockserver:1080
+      # A senha com que o worker se apresenta a account-api (RFC 02). Os
+      # testes leem a mesma variavel para conferir que ela chegou.
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-service_token_de_estudo}
     volumes:
       - ./onboarding-api/src:/app
     command: watchfiles --filter python "python worker.py"
@@ -137,6 +150,26 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      mockserver:
+        condition: service_started
+
+  # Faz o papel de quem esta fora do banco: a Receita, as listas de
+  # sancoes e de PEP, e a account-api (RFC 05). O teste programa a
+  # resposta de cada um pela porta 1080, preso ao documento dele. A imagem
+  # nao tem shell nem curl, entao nao ha checagem de saude: os testes
+  # esperam o Mockserver responder antes de programar.
+  mockserver:
+    image: mockserver/mockserver:mockserver-5.11.1
+    ports:
+      - "${MOCKSERVER_PORT:-1080}:1080"
+    environment:
+      # Os testes conferem os pedidos que chegaram, e cada um programa as
+      # proprias respostas. Os limites padrao do Mockserver dependem da
+      # memoria e, quando estouram, ele descarta os mais antigos sem avisar.
+      MOCKSERVER_MAX_EXPECTATIONS: "100000"
+      MOCKSERVER_MAX_LOG_ENTRIES: "100000"
+      # Sem isto, cada pedido sai inteiro no log do container.
+      MOCKSERVER_LOG_LEVEL: WARN
 
   # O S3 de mentira, onde moram as fotos do RG (RFC 05). Versao fixa: a
   # 4.14.0 e a ultima que sobe sem conta no LocalStack; as de 2026.03 em

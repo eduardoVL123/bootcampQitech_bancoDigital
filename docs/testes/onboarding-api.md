@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.8 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.9 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.3 (F5 verde: dois testes novos, F5-08 e F5-09, e as decisões D24 e D25). Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.4 (F6 verde e a decisão D26; D1, D2, D13 e D14 decididas). Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -24,7 +24,7 @@ Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da 
 | Peça | Endereço nos testes | Papel |
 |---|---|---|
 | onboarding-api | `http://127.0.0.1:3005` | Quem está sendo testado |
-| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos. Desde a F5, uma passada a cada minuto vence as aberturas paradas (`WORKER_INTERVAL_SECONDS`) |
+| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos. Duas réplicas. A fila da análise é olhada a cada segundo (`WORKER_TICK_SECONDS`, F6); o vencimento, a cada minuto (`WORKER_INTERVAL_SECONDS`, F5) |
 | PostgreSQL | `bootcamp` | O banco único do grupo; as tabelas da onboarding estão na seção 7 do `database/database.sql` (o teste não lê) |
 | Redis | só dentro do compose | Limites por documento e por origem, circuit breaker |
 | LocalStack | só dentro do compose | Bucket privado `rg-documentos`, criado por `localstack/init-bucket.sh`. Imagem fixa na 4.14.0, a última que sobe sem conta no LocalStack |
@@ -243,9 +243,9 @@ Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimo
 | F4-17 | `test_bucket_fora_responde_503_e_nao_grava_nada` | `X-Fault-Injection: bucket_unavailable`; depois repete sem a falha | `503 ONB005015` e `DRAFT` sem documentos; a repetição dá `202` | Bucket fora (`fault_injection`) |
 | F4-18 | `test_envios_simultaneos_do_mesmo_lado_gravam_um_so` | 5 envios de `front` juntos | Um `200`, quatro `409 ONB005009`, nenhum `500` | `UNIQUE(onboarding_id, side)` (`concurrency`) |
 | F4-19 | `test_envio_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
-| F4-20 | `test_rg_completo_entra_no_historico` | RG completo | `status_events`: `DRAFT`, `PENDING_KYC` | Histórico |
+| F4-20 | `test_rg_completo_entra_no_historico` | RG completo | `status_events` começa com `DRAFT`, `PENDING_KYC`, este gravado pela API; depois, o worker já pode ter seguido (F6) | Histórico |
 | F4-21 | `test_so_o_verso_mantem_draft_e_pede_a_frente` | Só `back` | `200`, `DRAFT`, `next_step` `SEND_FRONT` | Decisão D23 |
-| F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; cada abertura em `PENDING_KYC`, com um evento só | Trava da abertura (`concurrency`) |
+| F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; o histórico de cada abertura começa com `DRAFT`, `PENDING_KYC`, com um `PENDING_KYC` só | Trava da abertura (`concurrency`) |
 | F4-23 | `test_frente_e_imagem_com_os_dois_lados_juntas_gravam_uma_so` | `front` e `both` em pedidos separados, juntos, em cinco aberturas | Em cada abertura, um passa e o outro dá `409`; um documento só | Conferência depois da trava (`concurrency`) |
 
 **Mutação da F4 (07/10).** Cada regra foi quebrada de propósito no código, uma por vez, para ver se algum teste fica vermelho. Das 24 mutações, 21 morreram: limite de 5 MB e a borda dele, tipo pelos bytes, PNG, envio sem arquivo, lado repetido, `both` com os dois lados, o mesmo lado duas vezes no formulário, etapa `DRAFT`, só o dono (e não compliance) manda o RG, bucket fora sem gravar nada, chave idempotente, ida para `PENDING_KYC`, `SEND_FRONT`, `documents` sem o caminho no bucket, a trava da abertura e a conferência de lados depois dela. Sobreviveram três, e nenhuma é falta de teste de regra: a segunda conferência de etapa depois da trava (hoje a de lados já recusa, porque com o RG completo toda imagem repete um lado; ela passa a valer na F5, quando o vencimento apaga as imagens), o tratamento do `UNIQUE` sem a trava e o `rollback` antes do bucket (os dois na seção 5).
@@ -272,7 +272,7 @@ A mutação também achou um defeito, já corrigido: a passada do worker parava 
 
 ### F6. Worker: KYC, PLD e abertura da conta
 
-Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP para o documento dele, manda o RG completo e espera a etapa com `wait_for_status`.
+Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP para o documento dele, e a account-api para a `customer_key` dele, manda o RG completo e espera a etapa com `espera_etapa` (o `wait_for_status`, até 20 s; `ESPERA_PELA_ANALISE_SEGUNDOS` muda o limite). As ferramentas do Mockserver ficam em `tests/utils/mockserver.py`. **Verde em 07/10** (branch `feat/onboarding-kyc`).
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
@@ -280,14 +280,14 @@ Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP p
 | F6-02 | `test_biros_sao_consultados_em_ordem` | Tudo regular | No Mockserver: Receita, depois sanções, depois PEP, uma vez cada | Ordem |
 | F6-03 | `test_conta_e_pedida_com_a_chave_da_abertura` | Tudo regular | Uma chamada a `POST /internal/account` com `customer_key` e `type`, `SERVICE-TOKEN` e `X-Idempotency-Key` igual à `onboarding_key` | Contrato RFC 02 |
 | F6-04 | `test_empresa_regular_e_aprovada` | PJ `ATIVA` | `ACTIVE` | PJ |
-| F6-05 | `test_cpf_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO` | `REJECTED`, `RECEITA_<situação>` | Receita |
+| F6-05 | `test_cpf_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO` | `REJECTED`, `RECEITA_<situação>`, `next_step` `NONE` | Receita, decisão D26 |
 | F6-06 | `test_cnpj_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `INAPTA`, `BAIXADA`, `NULA` | `REJECTED`, `RECEITA_CNPJ_<situação>` | Receita |
-| F6-07 | `test_documento_desconhecido_e_recusado` | `NAO_ENCONTRADO` | `REJECTED`, `RECEITA_NAO_ENCONTRADO` | Receita |
-| F6-08 | `test_recusa_da_receita_para_antes_das_listas` | Qualquer recusa da Receita | Sanções, PEP e account-api: nenhuma chamada | Ordem |
+| F6-07 | `test_documento_desconhecido_e_recusado` | `NAO_ENCONTRADO`, parametrizado: CPF e CNPJ | `REJECTED`, `RECEITA_NAO_ENCONTRADO` nos dois | Receita |
+| F6-08 | `test_recusa_da_receita_para_antes_das_listas` | Parametrizado: `CANCELADA` e `NAO_ENCONTRADO`, com as listas programadas para responder | Sanções, PEP e account-api: nenhuma chamada | Ordem |
 | F6-09 | `test_dados_divergentes_vao_para_revisao` | Receita devolve outro nome; em outro caso, outra data | `MANUAL_REVIEW`, `RECEITA_DADOS_DIVERGENTES` | Receita |
 | F6-10 | `test_comparacao_do_nome_ignora_maiuscula_e_acento` | `JOSÉ DA SILVA` na Receita, `Jose da Silva` no cadastro | `ACTIVE` | Decisão D13 |
 | F6-11 | `test_pessoa_sancionada_e_recusada` | Sanções com `match` | `REJECTED`, `SANCTIONS_MATCH`; account-api nunca chamada | Sanções |
-| F6-12 | `test_pep_na_lista_vai_para_revisao` | PEP com `pep` | `MANUAL_REVIEW`, `PEP_MATCH`, `HIGH` | PEP |
+| F6-12 | `test_pep_na_lista_vai_para_revisao` | PEP com `pep` | `MANUAL_REVIEW`, `PEP_MATCH`, `HIGH`, `next_step` `WAIT` | PEP, decisão D26 |
 | F6-13 | `test_pep_declarado_vai_para_revisao` | `pep_self_declared` verdadeiro | `MANUAL_REVIEW`, `PEP_SELF_DECLARED`, `HIGH` | PEP |
 | F6-14 | `test_pf_jovem_com_renda_alta_vai_para_revisao` | 20 anos, renda 3.000.001 centavos | `MANUAL_REVIEW`, `INCOME_PROFILE`, `MEDIUM` | PLD |
 | F6-15 | `test_pf_jovem_no_limite_da_renda_e_aprovada` | 20 anos, renda 3.000.000 | `ACTIVE` | Borda da renda |
@@ -297,9 +297,11 @@ Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP p
 | F6-19 | `test_duas_regras_dao_risco_alto` | 20 anos, renda 50.000.001 (as duas regras de renda) | `MANUAL_REVIEW`, `HIGH` | Nível de risco |
 | F6-20 | `test_pep_e_renda_listam_os_dois_motivos` | PEP declarado e renda alta | `reason_codes` com os dois motivos, `HIGH` | Motivos |
 | F6-21 | `test_verificacoes_nunca_mostram_os_dados_consultados` | Qualquer análise | Cada `check` tem só `check_type`, `result` e `reason_code` | LGPD |
-| F6-22 | `test_account_api_fora_mantem_aprovada_e_tenta_de_novo` | account-api com `503` na primeira chamada e `201` depois | `APPROVED` enquanto falha; depois `ACTIVE`; duas chamadas com a mesma `X-Idempotency-Key` | Retentativa (`slow`) |
+| F6-22 | `test_account_api_fora_mantem_aprovada_e_tenta_de_novo` | account-api com `503` na primeira chamada e `201` depois | `APPROVED` e `WAIT` enquanto falha, e 3 s depois ainda uma chamada só; depois `ACTIVE`; duas chamadas com a mesma `X-Idempotency-Key` | Retentativa em 1 minuto (`slow`) |
 | F6-23 | `test_conta_que_ja_existe_e_reaproveitada` | account-api responde `200` com uma conta já existente | `ACTIVE` com essa `account_key` | Uma conta por cliente |
-| F6-24 | `test_cada_abertura_e_analisada_uma_vez` | 10 aberturas completas juntas | Cada documento consultado uma vez na Receita; uma conta pedida por abertura | `SKIP LOCKED` (`concurrency`) |
+| F6-24 | `test_cada_abertura_e_analisada_uma_vez` | 10 aberturas completas juntas, com duas réplicas do worker | Cada documento consultado uma vez na Receita; uma conta pedida por abertura | `SKIP LOCKED` (`concurrency`) |
+
+**Mutação da F6 (07/10).** Das 30 mutações, 29 morreram: recusa da Receita que não para a análise, CNPJ sem o prefixo próprio, "não encontrado" tratado como situação comum (só morre pelo caso de CNPJ do F6-07), nome ou data fora da comparação, nome sem tirar maiúscula, acento ou espaço, sanção que não recusa ou não para antes do PEP, PEP da lista ou declarado ignorado, as cinco bordas do PLD (21 anos, R$ 30.000, R$ 500.000, 180 dias e R$ 300.000), risco alto e médio, a chave idempotente, o tipo e o `SERVICE-TOKEN` da conta, conta que já existia recusada, nova tentativa na hora (só morre pela checagem de 3 s do F6-22) ou nunca, fila sem trava, protocolo do birô na resposta e o `next_step` de `ACTIVE` e `REJECTED`. Sobreviveu uma: a conferência de que a resposta do birô traz o campo do contrato (`situacao`, `match` ou `pep`). Nenhum teste manda resposta malformada; sem a conferência, a análise quebraria com um erro e a abertura ficaria em `ANALYSIS` do mesmo jeito. Fica para a F7, junto com os testes de birô fora.
 
 ### F7. Birô fora do ar
 
@@ -472,6 +474,8 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **As fotos apagadas no vencimento:** o worker apaga tudo em `rg/{onboarding_key}/`, mas o teste nunca lê o bucket. O que ele vê é o cadastro sumir (F5-04) e o CPF ficar livre (F5-05).
 - **Bucket fora durante o vencimento:** a abertura fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo. O worker não tem falha simulada; seria preciso derrubar o LocalStack (`docker compose stop localstack`) num roteiro manual.
 - **Foto que sobe no instante em que o worker vence a abertura:** se o envio do RG passa da conferência do prazo, e o worker marca `EXPIRED` e apaga o prefixo antes de a foto subir, ela fica no bucket sem linha. O envio recebe `410` depois da trava. É uma janela de milissegundos.
+- **Posse do worker vencida no meio da análise:** a abertura volta para a fila quando o `lease_until` passa. Provar isso pede derrubar o worker no meio da análise (`docker compose kill onboarding-worker`), num roteiro manual. Na F6, um birô que não responde como o contrato diz também deixa a abertura em `ANALYSIS` até a posse vencer; a F7 troca isso pelas novas tentativas em 1, 5, 15 e 60 minutos.
+- **O que o Mockserver guarda:** os limites padrão de expectativas e de pedidos gravados dependem da memória, e, quando estouram, ele descarta os mais antigos sem avisar. O compose fixa os dois em 100.000 (`MOCKSERVER_MAX_EXPECTATIONS` e `MOCKSERVER_MAX_LOG_ENTRIES`).
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
 ## 6. Decisões a confirmar com o time
@@ -480,8 +484,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 
 | | Ponto em aberto | Proposta deste plano |
 |---|---|---|
-| D1 | A RFC não define o contrato dos birôs | O da seção 2.2; entra na RFC 05 |
-| D2 | A RFC 05 manda só `customer_key` para `POST /internal/account`; a RFC 02 pede também `type` | Mandar `customer_key` e `type`, com `SERVICE-TOKEN` e `X-Idempotency-Key` |
+| D1 | A RFC não define o contrato dos birôs | **Decidida em 07/10, na RFC 05 v0.9:** o da seção 2.2 |
+| D2 | A RFC 05 manda só `customer_key` para `POST /internal/account`; a RFC 02 pede também `type` | **Decidida em 07/10, na RFC 05 v0.9:** `customer_key` e `type`, com `SERVICE-TOKEN` e `X-Idempotency-Key` |
 | D3 | Quem emite a credencial de compliance | **Decidida em 06/10 (opção a), na RFC 05 v0.6:** um JWT com `scope` `compliance`, assinado com a mesma `AUTH_SECRET`, que vence em 1 hora; o `sub` identifica o analista e fica no histórico como quem decidiu. Nos testes, o próprio teste fabrica. A senha fixa, como o `OPERATOR_TOKEN`, foi descartada |
 | D4 | Como o gateway informa o IP de origem | `X-Forwarded-For` (o primeiro IP); sem ele, o IP da conexão. O `X-Test-Client-Ip` fica só no gateway |
 | D5 | O que conta como "recusa da origem" | Só o `409 ONB005003` (documento que já é cliente), como diz a tabela de cenários |
@@ -492,8 +496,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D10 | O gateway guarda a resposta do `POST` por 24 h, mas o token vale 1 h, e o replay devolveria um token vencido | **Decidida em 06/10 (opção a), nas RFCs 00 e 05 v0.6:** no `POST /onboarding` o gateway só reserva a chave enquanto o pedido roda (`409 QIT000013`) e não guarda a resposta. A repetição segue para a onboarding-api, que devolve a mesma abertura com credencial nova (F1-27) |
 | D11 | Regra da mensagem de formato | `rule` só com `required`, `format`, `type`, `minimum` e `maximum`; campo a mais e valor fora da lista viram `format` |
 | D12 | Obrigatório e formato errados no mesmo pedido | Vence o `400 ONB005001` |
-| D13 | Como comparar nome e data com a Receita | Nome sem acento, sem diferença de maiúscula e sem espaço sobrando; data igual |
-| D14 | PEP na PJ | Consulta pelo CNPJ, porque a RFC não guarda os dados do sócio |
+| D13 | Como comparar nome e data com a Receita | **Decidida em 07/10 (F6):** nome sem acento, sem diferença de maiúscula e sem espaço sobrando; data igual |
+| D14 | PEP na PJ | **Decidida em 07/10, na RFC 05 v0.9:** consulta pelo CNPJ, porque a RFC não guarda os dados do sócio |
 | D15 | O que é uma falha que abre o circuito | Cada chamada que deu timeout, conexão recusada ou `5xx`. Um `4xx` que não é resposta prevista (como o `404` vazio de um mock sem expectativa) não abre o circuito, mas também não aprova: a abertura fica em `ANALYSIS` |
 | D16 | Relógio simulado | Cabeçalho `X-Simulated-Now` (data e hora ISO 8601), só com `SIMULATED_CLOCK_ENABLED=true`, aceito no `POST /onboarding` e no envio do RG |
 | D17 | Falhas simuladas | `X-Fault-Injection: bucket_unavailable` e `redis_unavailable`, só com `FAULT_INJECTION_ENABLED=true` |
@@ -505,6 +509,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D23 | A RFC diz `SEND_BACK` quando falta um lado, mas a pessoa pode mandar o verso primeiro | **Decidida em 07/10, na RFC 05 v0.7:** só a frente, `SEND_BACK`; só o verso, `SEND_FRONT` |
 | D24 | Depois que o worker apaga o cadastro, nada liga a abertura à credencial do dono (o `sub` é a `customer_key`), e ele receberia `404` | **Decidida em 07/10, na RFC 05 v0.8:** a tabela `onboarding` ganha `customer_key CHAR(36) NOT NULL`, que fica depois de vencer. Não é dado pessoal. O dono sempre recebe `410`; os outros, `404` |
 | D25 | A RFC dizia que o pedido depois do prazo "já marca a abertura como `EXPIRED`", o que faria o `GET` gravar e disputar a abertura com o worker | **Decidida em 07/10, na RFC 05 v0.8:** a API responde `410` pelo relógio (`expires_at`), sem gravar nada. Quem marca `EXPIRED` e apaga é só o worker, em até 1 minuto |
+| D26 | A RFC não diz o `next_step` das etapas depois do RG | **Decidida em 07/10, na RFC 05 v0.9:** `WAIT` enquanto o banco trabalha (`PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW`, `APPROVED`); `NONE` quando terminou (`ACTIVE`, `REJECTED`) |
 
 **Pendências da RFC encontradas no caminho**
 

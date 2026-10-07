@@ -36,6 +36,13 @@ def consulta(abertura: dict) -> dict:
     return resposta.json()
 
 
+def historico(corpo: dict) -> list:
+    """As etapas por onde a abertura passou, em ordem. Depois do RG completo, o
+    worker pode já ter seguido com ela (F6): por isso os testes desta fatia
+    conferem o começo do histórico, e não a etapa de agora."""
+    return [evento["status"] for evento in corpo["status_events"]]
+
+
 def lados_recebidos(abertura: dict) -> list:
     return [documento["side"] for documento in consulta(abertura)["documents"]]
 
@@ -142,14 +149,15 @@ class TestRgCompleto:
         assert depois_da_frente["next_step"] == "SEND_BACK"
 
         assert [documento["side"] for documento in depois_do_verso["documents"]] == ["FRONT", "BACK"]
-        assert depois_do_verso["status"] == "PENDING_KYC"
+        assert historico(depois_do_verso)[:2] == ["DRAFT", "PENDING_KYC"]
         assert depois_do_verso["next_step"] == "WAIT"
 
         for documento in depois_do_verso["documents"]:
             assert set(documento) == {"side", "content_type", "size_bytes", "created_at"}
 
     def test_rg_completo_entra_no_historico(self):
-        """F4-20. A ida para PENDING_KYC grava um evento no histórico, feito pela API."""
+        """F4-20. A ida para PENDING_KYC grava um evento no histórico, feito pela
+        API. Daí em diante, o worker pega a abertura da fila (F6), e o histórico segue."""
         # prepara
         abertura = Onboarding.comeca_abertura()
 
@@ -158,8 +166,8 @@ class TestRgCompleto:
 
         # confere
         eventos = consulta(abertura)["status_events"]
-        assert [evento["status"] for evento in eventos] == ["DRAFT", "PENDING_KYC"]
-        assert eventos[-1]["actor"] == "api"
+        assert [evento["status"] for evento in eventos][:2] == ["DRAFT", "PENDING_KYC"]
+        assert eventos[1]["actor"] == "api"
 
 
 class TestArquivos:
@@ -431,7 +439,8 @@ class TestEnviosSimultaneos:
         """F4-22. A frente e o verso em dois pedidos que chegam juntos: um deles
         vê o RG completo, e a abertura vai para PENDING_KYC uma vez só. Sem a
         trava da abertura, cada pedido veria só o próprio lado, e ela ficaria
-        presa em DRAFT. São cinco aberturas ao mesmo tempo, para o choque acontecer."""
+        presa em DRAFT. São cinco aberturas ao mesmo tempo, para o choque
+        acontecer. Depois do PENDING_KYC, o worker já pode ter pegado a abertura (F6)."""
         # prepara
         aberturas = [Onboarding.comeca_abertura() for _ in range(5)]
         chamadas = []
@@ -445,9 +454,9 @@ class TestEnviosSimultaneos:
         # confere
         assert sorted(resposta.status_code for resposta in respostas) == [200] * 5 + [202] * 5
         for abertura in aberturas:
-            corpo = consulta(abertura)
-            assert corpo["status"] == "PENDING_KYC"
-            assert [evento["status"] for evento in corpo["status_events"]] == ["DRAFT", "PENDING_KYC"]
+            etapas = historico(consulta(abertura))
+            assert etapas[:2] == ["DRAFT", "PENDING_KYC"]
+            assert etapas.count("PENDING_KYC") == 1
 
     @pytest.mark.concurrency
     def test_frente_e_imagem_com_os_dois_lados_juntas_gravam_uma_so(self):

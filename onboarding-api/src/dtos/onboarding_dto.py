@@ -1,4 +1,4 @@
-from models import Onboarding, OnboardingDocument, OnboardingStatus
+from models import Onboarding, OnboardingCheck, OnboardingDocument, OnboardingStatus
 
 
 # Em DRAFT, o próximo passo depende dos lados do RG que já chegaram (decisão D23).
@@ -8,9 +8,15 @@ NEXT_STEP_BY_SIDES_SHOWN = {
     frozenset({OnboardingDocument.BACK}): "SEND_FRONT",
 }
 
-# O próximo passo nas outras etapas (RFC 05, Rotas).
+# O próximo passo nas outras etapas (RFC 05, Rotas; decisão D26): esperar,
+# enquanto o banco trabalha, ou nada, quando a abertura terminou.
 NEXT_STEP_BY_STATUS = {
     OnboardingStatus.PENDING_KYC: "WAIT",
+    OnboardingStatus.ANALYSIS: "WAIT",
+    OnboardingStatus.MANUAL_REVIEW: "WAIT",
+    OnboardingStatus.APPROVED: "WAIT",
+    OnboardingStatus.ACTIVE: "NONE",
+    OnboardingStatus.REJECTED: "NONE",
 }
 
 
@@ -49,6 +55,16 @@ class OnboardingDTO:
         }
 
     @staticmethod
+    def check(check: OnboardingCheck) -> dict:
+        """Uma verificação como o cliente vê: o tipo, o resultado e o motivo.
+        Nunca o que o birô respondeu, nem o protocolo dele (LGPD)."""
+        return {
+            "check_type": check.check_type,
+            "result": check.result,
+            "reason_code": check.reason_code,
+        }
+
+    @staticmethod
     def document(document: OnboardingDocument) -> dict:
         """Uma imagem do RG como o cliente vê: sem o caminho no bucket (decisão D22)."""
         return {
@@ -84,7 +100,7 @@ class OnboardingDTO:
             "next_step": next_step(onboarding),
             "expires_at": onboarding.expires_at.isoformat(),
             "documents": [OnboardingDTO.document(document) for document in onboarding.documents],
-            "checks": [],
+            "checks": [OnboardingDTO.check(check) for check in onboarding.checks],
             "reason_codes": reason_codes,
             "risk_level": onboarding.risk_level,
             "account_key": onboarding.account_key,

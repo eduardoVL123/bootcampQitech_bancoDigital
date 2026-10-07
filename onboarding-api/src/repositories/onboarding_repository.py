@@ -5,7 +5,7 @@ from uuid import uuid4
 from sqlalchemy import and_, or_, tuple_
 
 from database import Context
-from models import Customer, Onboarding, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
+from models import Customer, Onboarding, OnboardingCheck, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
 
 
 class OnboardingRepository:
@@ -100,6 +100,60 @@ class OnboardingRepository:
             .populate_existing()
             .first()
         )
+
+    def take_for_analysis(self, now: datetime) -> Optional[Onboarding]:
+        """A próxima abertura da fila da análise, travada até o COMMIT, ou None.
+
+        Na fila: PENDING_KYC na hora de tentar, ou ANALYSIS com a posse vencida
+        (o worker que a pegou caiu no meio). SKIP LOCKED: duas réplicas nunca
+        pegam a mesma. O `of` trava só a linha da abertura: sem ele, o
+        Postgres travaria também a linha da etapa na onboarding_status, e a
+        segunda réplica pularia a fila inteira."""
+        waiting = and_(
+            OnboardingStatus.enumerator == OnboardingStatus.PENDING_KYC,
+            or_(Onboarding.next_attempt_at.is_(None), Onboarding.next_attempt_at <= now),
+        )
+        abandoned = and_(OnboardingStatus.enumerator == OnboardingStatus.ANALYSIS, Onboarding.lease_until < now)
+        return self._take(or_(waiting, abandoned))
+
+    def take_for_account(self, now: datetime) -> Optional[Onboarding]:
+        """A próxima abertura APPROVED que espera a conta, travada até o COMMIT,
+        ou None: na hora de tentar de novo e sem outro worker com a posse."""
+        due = and_(
+            OnboardingStatus.enumerator == OnboardingStatus.APPROVED,
+            or_(Onboarding.next_attempt_at.is_(None), Onboarding.next_attempt_at <= now),
+            or_(Onboarding.lease_until.is_(None), Onboarding.lease_until < now),
+        )
+        return self._take(due)
+
+    def _take(self, condition) -> Optional[Onboarding]:
+        return (
+            self.session.query(Onboarding)
+            .join(OnboardingStatus, Onboarding.status_id == OnboardingStatus.id)
+            .filter(condition)
+            .order_by(Onboarding.id)
+            .with_for_update(skip_locked=True, of=Onboarding)
+            .populate_existing()
+            .first()
+        )
+
+    def add_check(
+        self,
+        onboarding: Onboarding,
+        check_type: str,
+        result: str,
+        reason_code: Optional[str],
+        provider_reference: Optional[str],
+        consulted_at: datetime,
+    ) -> None:
+        """O resultado de uma verificação, sem os dados consultados."""
+        check = OnboardingCheck()
+        check.check_type = check_type
+        check.result = result
+        check.reason_code = reason_code
+        check.provider_reference = provider_reference
+        check.consulted_at = consulted_at
+        onboarding.checks.append(check)
 
     def overdue(self, now: datetime, after: Optional[Tuple[datetime, int]], limit: int) -> list:
         """As aberturas que o worker precisa vencer: em DRAFT depois do prazo,

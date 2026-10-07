@@ -12,3 +12,12 @@ def now_utc() -> datetime:
 def bank_today() -> date:
     """O dia de hoje em São Paulo: é nele que se conta a idade e se decide o que é futuro."""
     return now_utc().astimezone(ZoneInfo(BANK_TIMEZONE)).date()
+
+
+def age_in_years(birth_date: date) -> int:
+    """Os anos completos hoje, no dia de São Paulo. Quem faz aniversário hoje já completou."""
+    today = bank_today()
+    age = today.year - birth_date.year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age = age - 1
+    return age
