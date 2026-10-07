@@ -248,6 +248,8 @@ Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimo
 | F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; cada abertura em `PENDING_KYC`, com um evento só | Trava da abertura (`concurrency`) |
 | F4-23 | `test_frente_e_imagem_com_os_dois_lados_juntas_gravam_uma_so` | `front` e `both` em pedidos separados, juntos, em cinco aberturas | Em cada abertura, um passa e o outro dá `409`; um documento só | Conferência depois da trava (`concurrency`) |
 
+**Mutação da F4 (07/10).** Cada regra foi quebrada de propósito no código, uma por vez, para ver se algum teste fica vermelho. Das 24 mutações, 21 morreram: limite de 5 MB e a borda dele, tipo pelos bytes, PNG, envio sem arquivo, lado repetido, `both` com os dois lados, o mesmo lado duas vezes no formulário, etapa `DRAFT`, só o dono (e não compliance) manda o RG, bucket fora sem gravar nada, chave idempotente, ida para `PENDING_KYC`, `SEND_FRONT`, `documents` sem o caminho no bucket, a trava da abertura e a conferência de lados depois dela. Sobreviveram três, e nenhuma é falta de teste de regra: a segunda conferência de etapa depois da trava (hoje a de lados já recusa, porque com o RG completo toda imagem repete um lado; ela passa a valer na F5, quando o vencimento apaga as imagens), o tratamento do `UNIQUE` sem a trava e o `rollback` antes do bucket (os dois na seção 5).
+
 ### F5. Prazo de 20 minutos
 
 Arquivo `test_expiration.py`, marcador `simulated_clock`.
