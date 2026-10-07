@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from connectors import AccountApiError, AccountConnector, BureauError, PepConnector, ReceitaConnector, SanctionsConnector
 from constants import (
     ACCOUNT_RETRY_SECONDS,
+    ANALYSIS_RETRY_MINUTES,
+    BUREAU_WAIT_LIMIT_HOURS,
     PLD_MAX_INCOME,
     PLD_NEW_COMPANY_DAYS,
     PLD_NEW_COMPANY_MAX_INCOME,
@@ -13,7 +15,7 @@ from constants import (
     WORKER_LEASE_SECONDS,
 )
 from controllers.base_controller import BaseController
-from models import CustomerType, OnboardingCheck, OnboardingStatus, OnboardingStatusEvent
+from models import CustomerType, Onboarding, OnboardingCheck, OnboardingStatus, OnboardingStatusEvent
 from repositories import OnboardingRepository
 from utils.clock import age_in_years, bank_today, now_utc
 from utils.person_name import normalize_name
@@ -30,6 +32,7 @@ SANCTIONS_MATCH = "SANCTIONS_MATCH"
 PEP_MATCH = "PEP_MATCH"
 PEP_SELF_DECLARED = "PEP_SELF_DECLARED"
 INCOME_PROFILE = "INCOME_PROFILE"
+BUREAU_UNAVAILABLE = "BUREAU_UNAVAILABLE"
 
 RISK_LOW = "LOW"
 RISK_MEDIUM = "MEDIUM"
@@ -49,6 +52,8 @@ class Applicant:
     opening_date: Optional[date]
     monthly_income: int
     pep_self_declared: bool
+    # Quando a abertura entrou na fila: as 24 horas de espera pelo birô contam daqui.
+    queued_at: datetime
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,9 @@ class KycController(BaseController):
     Cada etapa é um COMMIT curto, e nenhuma trava fica aberta durante os
     birôs nem durante a account-api: primeiro toma posse e grava, depois
     chama, e só então trava de novo para gravar o resultado.
+
+    Com um birô sem resposta (RFC 05, Birô fora do ar), a análise para ali,
+    sem gravar nada dela, e a abertura espera a próxima tentativa.
     """
 
     def __init__(self) -> None:
@@ -91,9 +99,7 @@ class KycController(BaseController):
         try:
             verdict = self._analyze(applicant)
         except BureauError:
-            # Na dúvida, não aprova nem recusa: a abertura continua em
-            # ANALYSIS e volta para a fila quando a posse vencer.
-            self.logger.warning("Analise interrompida: um biro nao respondeu como o contrato diz")
+            self._wait_for_bureau(applicant)
             return True
 
         self._record(applicant.onboarding_key, verdict)
@@ -146,6 +152,7 @@ class KycController(BaseController):
             opening_date=customer.opening_date,
             monthly_income=onboarding.declared_monthly_income,
             pep_self_declared=onboarding.pep_self_declared,
+            queued_at=self._queued_at(onboarding),
         )
 
         self.session.commit()
@@ -269,9 +276,50 @@ class KycController(BaseController):
         onboarding.reason_codes = ",".join(verdict.reason_codes) or None
         onboarding.risk_level = verdict.risk_level
         onboarding.lease_until = None
+        onboarding.next_attempt_at = None
         onboarding.updated_at = now
         self.onboarding_repository.change_status(onboarding, verdict.status, OnboardingStatusEvent.WORKER, now)
         self.session.commit()
+
+    def _queued_at(self, onboarding: Onboarding) -> datetime:
+        """Quando a abertura entrou na fila pela última vez: o RG completo ou a
+        retentativa em lote, que recomeça a contagem das 24 horas (decisão D28)."""
+        queued = [event for event in onboarding.status_events if event.status.enumerator == OnboardingStatus.PENDING_KYC]
+        return queued[-1].event_datetime
+
+    def _wait_for_bureau(self, applicant: Applicant) -> None:
+        """Um birô não respondeu: na dúvida, não aprova nem recusa, e nada da
+        análise é gravado (decisão D28). A abertura espera em ANALYSIS, sem
+        posse, e tenta de novo em 1, 5, 15 e 60 minutos, e depois de hora em
+        hora. Com 24 horas na fila, a decisão passa a compliance."""
+        now = now_utc()
+        onboarding = self.onboarding_repository.get_by_key_for_update(applicant.onboarding_key)
+
+        # A posse venceu no meio e outra réplica já decidiu: nada a fazer aqui.
+        if onboarding.status.enumerator != OnboardingStatus.ANALYSIS:
+            self.session.rollback()
+            return
+
+        onboarding.analysis_attempts = onboarding.analysis_attempts + 1
+        onboarding.lease_until = None
+        onboarding.updated_at = now
+
+        if now - applicant.queued_at >= timedelta(hours=BUREAU_WAIT_LIMIT_HOURS):
+            onboarding.next_attempt_at = None
+            onboarding.reason_codes = BUREAU_UNAVAILABLE
+            self.onboarding_repository.change_status(onboarding, OnboardingStatus.MANUAL_REVIEW, OnboardingStatusEvent.WORKER, now)
+            self.logger.warning("Biro sem resposta ha 24 horas: a abertura vai para compliance")
+        else:
+            delay = self._retry_delay(onboarding.analysis_attempts)
+            onboarding.next_attempt_at = now + delay
+            self.logger.warning(f"Biro sem resposta: nova tentativa da abertura em {delay}")
+
+        self.session.commit()
+
+    def _retry_delay(self, attempts: int) -> timedelta:
+        """1, 5, 15 e 60 minutos, e depois de hora em hora."""
+        position = min(attempts, len(ANALYSIS_RETRY_MINUTES)) - 1
+        return timedelta(minutes=ANALYSIS_RETRY_MINUTES[position])
 
     def _retry_account_later(self, onboarding_key: str) -> None:
         """A account-api não respondeu: a abertura espera em APPROVED e o

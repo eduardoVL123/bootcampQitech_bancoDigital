@@ -126,6 +126,24 @@ class Onboarding:
         return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/document", cabecalhos, files=arquivos)
 
     @staticmethod
+    def retenta_em_lote(corpo, credencial: str, cabecalhos: dict = None) -> requests.Response:
+        """POST /admin/onboardings/retry: devolve à fila as aberturas paradas por birô fora.
+
+        `corpo` None manda o pedido sem corpo nenhum. Sem `cabecalhos`, vai o
+        que o gateway mandaria."""
+        if cabecalhos is None:
+            cabecalhos = cabecalhos_do_gateway()
+
+        if credencial is not None:
+            cabecalhos["Authorization"] = f"Bearer {credencial}"
+
+        extras = {}
+        if corpo is not None:
+            extras["json"] = corpo
+
+        return Onboarding.envia("POST", "/admin/onboardings/retry", cabecalhos, **extras)
+
+    @staticmethod
     def comeca_abertura(dados: dict = None, cabecalhos: dict = None) -> dict:
         """Prepara o mundo do teste: uma abertura nova em DRAFT, criada pela
         propria API (nunca por INSERT no banco). Devolve o corpo do 201."""

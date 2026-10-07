@@ -4,7 +4,7 @@ import jwt
 from fastapi import Request
 
 from constants import AUTH_SECRET
-from errors import ExpiredCredential, InvalidCredential, MissingCredential
+from errors import ExpiredCredential, InsufficientScope, InvalidCredential, MissingCredential
 
 
 ONBOARDING_SCOPE = "onboarding"
@@ -57,3 +57,14 @@ def read_credential(request: Request) -> Credential:
         raise InvalidCredential()
 
     return Credential(subject=claims["sub"], scope=claims["scope"])
+
+
+def read_compliance_credential(request: Request) -> Credential:
+    """A credencial de uma rota só de compliance: válida e com o escopo
+    compliance. A do cliente é válida, mas não basta: 403, escopo insuficiente."""
+    credential = read_credential(request)
+
+    if not credential.is_compliance:
+        raise InsufficientScope(COMPLIANCE_SCOPE)
+
+    return credential

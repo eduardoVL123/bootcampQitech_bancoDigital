@@ -9,7 +9,10 @@ O que tem aqui:
   - Mockserver: programar, consultar os pedidos recebidos e esperar ficar de pé;
   - receita_responde, sancoes_respondem, pep_responde e account_api_responde:
     a resposta de cada vizinho, no contrato da seção 2.2 do plano;
-  - biros_regulares: os três birôs dizendo que está tudo certo.
+  - biros_regulares: os três birôs dizendo que está tudo certo;
+  - receita_fora_do_ar, receita_demora e receita_derruba_a_conexao: a Receita
+    sem resposta, só em algumas chamadas (F7);
+  - saude_do_biro: a chamada de teste de um birô, que a retentativa em lote faz (F7).
 """
 import json
 import time
@@ -23,6 +26,17 @@ ROTA_DA_RECEITA = "/receita/v1/consulta"
 ROTA_DAS_SANCOES = "/sancoes/v1/consulta"
 ROTA_DO_PEP = "/pep/v1/consulta"
 ROTA_DA_ACCOUNT_API = "/internal/account"
+
+# A chamada de teste de cada birô (RFC 05, decisão D29). O Mockserver sobe
+# com as três respondendo 200 (mockserver/saude-dos-biros.json).
+ROTA_DA_SAUDE = {
+    "receita": "/receita/v1/health",
+    "sancoes": "/sancoes/v1/health",
+    "pep": "/pep/v1/health",
+}
+
+# A falha programada pelo teste ganha da resposta regular, que fica por baixo.
+PRIORIDADE_DA_FALHA = 10
 
 # A senha com que o worker se apresenta à account-api. O teste confere
 # que ela chegou, com o mesmo valor que o compose passa para o worker.
@@ -68,15 +82,20 @@ class Mockserver:
             time.sleep(0.5)
 
     @staticmethod
-    def programa(rota: str, corpo_esperado: dict, status: int, resposta: dict, vezes: int = None, prioridade: int = 0) -> None:
+    def programa(
+        rota: str,
+        corpo_esperado: dict,
+        status: int,
+        resposta: dict,
+        vezes: int = None,
+        prioridade: int = 0,
+        atraso_segundos: int = None,
+    ) -> None:
         """Quando chegar um POST na rota com estes campos no corpo, responde assim.
-        `vezes` limita quantas vezes a resposta vale; `prioridade` maior ganha."""
+        `vezes` limita quantas vezes a resposta vale; `prioridade` maior ganha;
+        `atraso_segundos` segura a resposta antes de mandar."""
         expectativa = {
-            "httpRequest": {
-                "method": "POST",
-                "path": rota,
-                "body": {"type": "JSON", "json": corpo_esperado, "matchType": "ONLY_MATCHING_FIELDS"},
-            },
+            "httpRequest": Mockserver.pedido_post(rota, corpo_esperado),
             "httpResponse": {
                 "statusCode": status,
                 "headers": {"Content-Type": ["application/json"]},
@@ -84,6 +103,45 @@ class Mockserver:
             },
             "priority": prioridade,
         }
+        if atraso_segundos is not None:
+            expectativa["httpResponse"]["delay"] = {"timeUnit": "SECONDS", "value": atraso_segundos}
+
+        Mockserver.registra(expectativa, vezes)
+
+    @staticmethod
+    def derruba_a_conexao(rota: str, corpo_esperado: dict, vezes: int, prioridade: int = PRIORIDADE_DA_FALHA) -> None:
+        """Quando chegar um POST na rota com estes campos no corpo, fecha a
+        conexão sem responder nada."""
+        expectativa = {
+            "httpRequest": Mockserver.pedido_post(rota, corpo_esperado),
+            "httpError": {"dropConnection": True},
+            "priority": prioridade,
+        }
+        Mockserver.registra(expectativa, vezes)
+
+    @staticmethod
+    def programa_get(rota: str, status: int, vezes: int, validade_segundos: int, prioridade: int = PRIORIDADE_DA_FALHA) -> None:
+        """Quando chegar um GET na rota, responde com este status, por no máximo
+        `vezes` vezes e `validade_segundos` segundos. A validade garante que a
+        resposta some sozinha, mesmo se ninguém a usar."""
+        expectativa = {
+            "httpRequest": {"method": "GET", "path": rota},
+            "httpResponse": {"statusCode": status},
+            "priority": prioridade,
+            "timeToLive": {"timeUnit": "SECONDS", "timeToLive": validade_segundos, "unlimited": False},
+        }
+        Mockserver.registra(expectativa, vezes)
+
+    @staticmethod
+    def pedido_post(rota: str, corpo_esperado: dict) -> dict:
+        return {
+            "method": "POST",
+            "path": rota,
+            "body": {"type": "JSON", "json": corpo_esperado, "matchType": "ONLY_MATCHING_FIELDS"},
+        }
+
+    @staticmethod
+    def registra(expectativa: dict, vezes: int = None) -> None:
         if vezes is not None:
             expectativa["times"] = {"remainingTimes": vezes, "unlimited": False}
 
@@ -177,6 +235,60 @@ def biros_regulares(dados: dict) -> None:
 def pedidos_aos_biros(dados: dict) -> list:
     """As rotas dos birôs consultadas para este documento, na ordem em que chegaram."""
     return [pedido["path"] for pedido in Mockserver.pedidos({"document_number": dados["document_number"]})]
+
+
+def pedidos_a_receita(dados: dict) -> list:
+    return Mockserver.pedidos({"document_number": dados["document_number"]}, ROTA_DA_RECEITA)
+
+
+# ----------------------------------------------------------------------
+# Birô fora do ar (F7)
+#
+# Cada falha vale só para o documento do teste e só pelas `vezes` pedidas,
+# com prioridade maior que a resposta regular. Quando as falhas acabam, a
+# Receita "volta": quem chama de novo recebe o que estiver por baixo.
+# ----------------------------------------------------------------------
+
+def receita_fora_do_ar(dados: dict, vezes: int) -> None:
+    """A Receita responde 503 para este documento nas próximas `vezes` chamadas."""
+    resposta = {"code": "RECEITA_INDISPONIVEL", "message": "Servico indisponivel"}
+    Mockserver.programa(
+        ROTA_DA_RECEITA, {"document_number": dados["document_number"]}, 503, resposta, vezes, PRIORIDADE_DA_FALHA
+    )
+
+
+def receita_demora(dados: dict, segundos: int, vezes: int) -> None:
+    """A Receita responde regular para este documento, mas só depois de `segundos`,
+    nas próximas `vezes` chamadas. Se chegasse a tempo, a resposta aprovaria."""
+    resposta = {
+        "situacao": "REGULAR" if dados["type"] == "PF" else "ATIVA",
+        "name": dados["name"],
+        "protocol": f"RF-{uuid4().hex[:12]}",
+    }
+    campo_da_data = "birth_date" if dados["type"] == "PF" else "opening_date"
+    resposta[campo_da_data] = dados[campo_da_data]
+
+    Mockserver.programa(
+        ROTA_DA_RECEITA,
+        {"document_number": dados["document_number"]},
+        200,
+        resposta,
+        vezes,
+        PRIORIDADE_DA_FALHA,
+        atraso_segundos=segundos,
+    )
+
+
+def receita_derruba_a_conexao(dados: dict, vezes: int) -> None:
+    """A Receita fecha a conexão sem responder, para este documento, nas próximas `vezes` chamadas."""
+    Mockserver.derruba_a_conexao(ROTA_DA_RECEITA, {"document_number": dados["document_number"]}, vezes)
+
+
+def saude_do_biro(biro: str, status: int) -> None:
+    """A próxima chamada de teste do birô (receita, sancoes ou pep) responde
+    com este status. Vale uma vez só, e some em 30 s se ninguém chamar: a
+    chamada de teste é de todos, e não pode sobrar para outro teste."""
+    Mockserver.programa_get(ROTA_DA_SAUDE[biro], status, vezes=1, validade_segundos=30)
 
 
 def pedidos_a_account_api(abertura: dict) -> list:

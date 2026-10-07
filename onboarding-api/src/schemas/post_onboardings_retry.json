@@ -1,0 +1,16 @@
+{
+  "title": "PostOnboardingsRetry",
+  "description": "RFC 05, POST /admin/onboardings/retry. Sem onboarding_keys, ou sem corpo, vale para todas as aberturas paradas por biro fora. A lista vazia e recusada, para nao ser confundida com todas (decisao D29).",
+  "type": "object",
+  "properties": {
+    "onboarding_keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      }
+    }
+  },
+  "additionalProperties": false
+}

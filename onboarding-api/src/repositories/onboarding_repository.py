@@ -104,17 +104,38 @@ class OnboardingRepository:
     def take_for_analysis(self, now: datetime) -> Optional[Onboarding]:
         """A próxima abertura da fila da análise, travada até o COMMIT, ou None.
 
-        Na fila: PENDING_KYC na hora de tentar, ou ANALYSIS com a posse vencida
-        (o worker que a pegou caiu no meio). SKIP LOCKED: duas réplicas nunca
-        pegam a mesma. O `of` trava só a linha da abertura: sem ele, o
+        Na fila: PENDING_KYC na hora de tentar; ANALYSIS sem posse, na hora da
+        nova tentativa depois de um birô sem resposta; ou ANALYSIS com a posse
+        vencida (o worker que a pegou caiu no meio). SKIP LOCKED: duas réplicas
+        nunca pegam a mesma. O `of` trava só a linha da abertura: sem ele, o
         Postgres travaria também a linha da etapa na onboarding_status, e a
         segunda réplica pularia a fila inteira."""
         waiting = and_(
             OnboardingStatus.enumerator == OnboardingStatus.PENDING_KYC,
             or_(Onboarding.next_attempt_at.is_(None), Onboarding.next_attempt_at <= now),
         )
+        retry_due = and_(
+            OnboardingStatus.enumerator == OnboardingStatus.ANALYSIS,
+            Onboarding.lease_until.is_(None),
+            Onboarding.next_attempt_at <= now,
+        )
         abandoned = and_(OnboardingStatus.enumerator == OnboardingStatus.ANALYSIS, Onboarding.lease_until < now)
-        return self._take(or_(waiting, abandoned))
+        return self._take(or_(waiting, retry_due, abandoned))
+
+    def in_review_only_for(self, reason_code: str, onboarding_keys: Optional[list]) -> list:
+        """As aberturas em MANUAL_REVIEW só por este motivo, travadas até o
+        COMMIT, em ordem de id: duas retentativas juntas travam na mesma ordem
+        e nunca uma esperando a outra. Com `onboarding_keys`, só entre elas."""
+        query = (
+            self.session.query(Onboarding)
+            .join(OnboardingStatus, Onboarding.status_id == OnboardingStatus.id)
+            .filter(OnboardingStatus.enumerator == OnboardingStatus.MANUAL_REVIEW, Onboarding.reason_codes == reason_code)
+        )
+
+        if onboarding_keys is not None:
+            query = query.filter(Onboarding.onboarding_key.in_(onboarding_keys))
+
+        return query.order_by(Onboarding.id).with_for_update(of=Onboarding).populate_existing().all()
 
     def take_for_account(self, now: datetime) -> Optional[Onboarding]:
         """A próxima abertura APPROVED que espera a conta, travada até o COMMIT,

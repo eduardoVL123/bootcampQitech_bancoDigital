@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Carlos Alberto Magalhães Neto · \<nome 2\> · \<nome 3\> |
 | **Data** | 06/10/2026 |
-| **Versão** | 0.9 (análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP). Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
+| **Versão** | 0.10 (birô fora do ar: o que conta como falha, circuito aberto só por 5 falhas seguidas, análise interrompida sem nada gravado, 24 horas contadas da entrada na fila, chamada de teste dos birôs e corpo da retentativa em lote). Na 0.9: análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP. Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
 
 ## Contextualização
 
@@ -103,7 +103,7 @@ Alternativas descartadas:
 | `GET` | `/customer/{customer_key}` | Devolve o cadastro do cliente, sem a credencial | Credencial do próprio cliente ou com escopo `compliance` | `200` com `customer_key`, `type`, `name`, `document_number`, `birth_date` ou `opening_date` e `created_at`; `401 ONB000003`, `ONB000006` ou `ONB000007`; `404 ONB005007` cliente inexistente ou de outra pessoa |
 | `GET` | `/onboardings` | Fila de compliance: lista as aberturas numa etapa, da mais antiga para a mais nova | `status` (padrão `MANUAL_REVIEW`), `reason_code` (opcional), `limit` (padrão 10, de 1 a 100), `page`; credencial com escopo `compliance` | `200` com `data`, `limit`, `page` e `is_last_page`; `400 ONB000001`; `401 ONB000003`; `403 ONB000008` escopo insuficiente |
 | `PUT` | `/onboarding/{onboarding_key}/decision` | Compliance decide uma abertura em `MANUAL_REVIEW`. Aprovar leva a `APPROVED`, e o worker abre a conta; recusar leva a `REJECTED`. A decisão, a justificativa e quem decidiu ficam no histórico | Cabeçalho `X-Idempotency-Key`; `decision` (`APPROVE` ou `REJECT`), `justification` (10 a 500 caracteres); credencial com escopo `compliance` | `202` com `status` `APPROVED`; `200` com `status` `REJECTED`; `400 ONB005001` sem decisão ou sem justificativa; `401 ONB000003`; `403 ONB000008`; `404 ONB005006`; `409 ONB005014` a abertura não está em `MANUAL_REVIEW` |
-| `POST` | `/admin/onboardings/retry` | Retentativa em lote: quando o birô voltou de uma instabilidade, devolve para a fila (`PENDING_KYC`) todas as aberturas que estão em `MANUAL_REVIEW` só porque o birô ficou fora. Antes, faz uma chamada de teste a cada birô obrigatório. Casos de PEP, renda ou divergência continuam com compliance | Cabeçalho `X-Idempotency-Key`; `onboarding_keys` (opcional: sem ela, vale para todas as aberturas com `BUREAU_UNAVAILABLE`); credencial com escopo `compliance` | `202` com `requeued_count`; `400 ONB000001`; `401 ONB000003`; `403 ONB000008`; `503 ONB005016` algum birô obrigatório ainda não responde, e nada muda |
+| `POST` | `/admin/onboardings/retry` | Retentativa em lote: quando o birô voltou de uma instabilidade, devolve para a fila (`PENDING_KYC`) todas as aberturas que estão em `MANUAL_REVIEW` só porque o birô ficou fora. Antes, faz uma chamada de teste a cada birô obrigatório. Casos de PEP, renda ou divergência continuam com compliance. A contagem das 24 horas recomeça | Cabeçalho `X-Idempotency-Key`; `onboarding_keys` (opcional: uma lista com pelo menos uma chave; sem ela, ou sem corpo, vale para todas as aberturas com `BUREAU_UNAVAILABLE`); credencial com escopo `compliance` | `202` com `requeued_count` (zero se nenhuma da lista estava parada por birô fora); `400 ONB000001` corpo fora do formato; `400 ONB000011` sem a chave idempotente; `401 ONB000003`, `ONB000006` ou `ONB000007`; `403 ONB000008`; `503 ONB005016` algum birô obrigatório ainda não responde, e nada muda |
 
 **O que o gateway-api faz antes (RFC 00).** Todas as rotas, menos `/` e `/health_check`, passam pelo gateway-api. Ele faz cinco coisas:
 
@@ -210,7 +210,7 @@ Contratos com as vizinhas, para conferir dos dois lados:
 |---|---|---|---|---|
 | gateway-api | o gateway chama a onboarding | Todas as rotas públicas acima, com `X-Idempotency-Key` repassada | Sempre | Replay em 24 horas, menos no `POST /onboarding`, que só reserva a chave enquanto roda; `UNIQUE` aqui como garantia final |
 | LocalStack S3 | onboarding-api | `PutObject`, `DeleteObjects` pelo prefixo da abertura e link assinado de 5 minutos no bucket privado `rg-documentos` | Envio do RG e vencimento | Primeiro o bucket, depois o `COMMIT`: nunca uma linha sem foto |
-| Receita, sanções e PEP | onboarding-worker | Consulta por documento, timeout 2 s, circuit breaker | Análise | Nenhuma aprovação sem as três |
+| Receita, sanções e PEP | onboarding-worker; na chamada de teste, a onboarding-api | Consulta por documento, timeout 2 s, 2 retentativas, circuit breaker; chamada de teste `GET .../health` | Análise; retentativa em lote | Nenhuma aprovação sem as três |
 | account-api | onboarding-worker | `POST /internal/account` com `customer_key`, `X-Idempotency-Key` igual à `onboarding_key` (RFC 02) | Depois de `APPROVED` | `201` conta nova ou `200` a que já existia: uma conta por cliente |
 | webhook-api | onboarding-worker | `POST /internal/event` com `event_id`, `event_type`, `occurred_at` e `data`, sem dado pessoal (contrato a confirmar na RFC da webhook-api) | Cada evento da outbox | O mesmo `event_id` duas vezes é recebido uma vez |
 | transaction-api e investment-api | não chamam a onboarding | Usam a `customer_key` e a `account_key` | Depois de `ACTIVE` | A onboarding não está no caminho do dinheiro |
@@ -236,7 +236,7 @@ Cenários de erro e tratamento:
 | Arquivo grande ou de outro tipo | `413 ONB005011` ou `422 ONB005012` | Nada é enviado | Manda JPEG ou PNG de até 5 MB |
 | Bucket fora do ar | `503 ONB005015` | Nada é gravado; a abertura continua em `DRAFT` | Repete com a mesma chave, dentro do prazo |
 | Passaram os 20 minutos | `410 ONB005010` | Nada é gravado no pedido; em até 1 minuto, o worker vence a abertura e apaga os dados pessoais e as fotos | Começa outra abertura |
-| Birô fora na análise | `GET` mostra `ANALYSIS` | O circuit breaker abre; o worker agenda outra tentativa | Espera |
+| Birô fora na análise | `GET` mostra `ANALYSIS` | Tenta de novo na hora, até 2 vezes; depois agenda outra tentativa em 1, 5, 15 ou 60 minutos, sem gravar nada da análise. Com 5 falhas seguidas, o circuito do birô abre por 30 s | Espera |
 | Birô fora por 24 horas | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE` | Evento `account.kyc.manual_review` | Espera; compliance retenta em lote quando o birô voltar |
 | Retentativa com o birô ainda fora | `503 ONB005016` | Nenhuma abertura muda | Compliance tenta mais tarde |
 | CPF suspenso, cancelado, nulo ou de titular falecido | `REJECTED`, `RECEITA_*` | Evento `account.rejected` | Regulariza na Receita e começa outra abertura |
@@ -299,7 +299,7 @@ erDiagram
         char(36) account_key "da account-api, sem FK: a tabela account é dela"
         varchar(6) risk_level "LOW, MEDIUM, HIGH"
         varchar(200) reason_codes
-        integer analysis_attempts
+        integer analysis_attempts "tentativas sem resposta de birô; zera na retentativa em lote"
         timestamptz next_attempt_at "quando o worker tenta de novo"
         timestamptz lease_until "posse do worker, sem trava aberta"
         timestamptz expires_at "20 minutos depois do POST"
@@ -549,7 +549,7 @@ sequenceDiagram
 
 1. **Toma posse** de uma abertura da fila com `FOR UPDATE SKIP LOCKED`, marca `ANALYSIS` e o prazo de posse, num `COMMIT` curto. Nenhuma trava fica aberta durante os birôs. Se o worker morrer, o prazo vence e outra réplica continua.
 2. **Lê o cadastro no próprio banco**, sem chamar outra API. CPF e renda não saem do banco, a não ser para a consulta ao birô.
-3. **Consulta, nesta ordem: Receita, sanções e PEP.** Nenhuma aprovação acontece sem as três. Uma recusa da Receita encerra a análise antes das listas, e uma sanção encerra antes do PEP: depois de uma recusa, ninguém mais recebe o documento. Nome ou data diferentes dos da Receita não encerram: a análise segue, e a abertura vai para revisão. Cada resultado vira uma linha em `onboarding_check`, sem os dados consultados. PEP pela lista dá `PEP_MATCH`; declarado pela pessoa e fora da lista, `PEP_SELF_DECLARED`.
+3. **Consulta, nesta ordem: Receita, sanções e PEP.** Nenhuma aprovação acontece sem as três. Uma recusa da Receita encerra a análise antes das listas, e uma sanção encerra antes do PEP: depois de uma recusa, ninguém mais recebe o documento. Um birô sem resposta também encerra a análise ali, sem gravar nada dela: a abertura continua em `ANALYSIS` e tenta tudo de novo depois (veja "Birô fora do ar"). Nome ou data diferentes dos da Receita não encerram: a análise segue, e a abertura vai para revisão. Cada resultado vira uma linha em `onboarding_check`, sem os dados consultados. PEP pela lista dá `PEP_MATCH`; declarado pela pessoa e fora da lista, `PEP_SELF_DECLARED`.
 4. **Aplica as regras de PLD** e calcula o nível de risco:
    - `LOW`: nenhuma regra disparou;
    - `MEDIUM`: uma regra de renda disparou;
@@ -563,8 +563,9 @@ Contrato dos birôs, simulados no Mockserver com o mesmo formato (decisão D1 do
 | Receita | `POST /receita/v1/consulta` | `document_number` | `situacao`, `name`, `birth_date` (PF) ou `opening_date` (PJ) e `protocol` |
 | Sanções | `POST /sancoes/v1/consulta` | `document_number`, `name` | `match` (`true` ou `false`) e `protocol` |
 | PEP | `POST /pep/v1/consulta` | `document_number`; na PJ, o CNPJ (decisão D14) | `pep` (`true` ou `false`) e `protocol` |
+| Os três, chamada de teste | `GET /receita/v1/health`, `GET /sancoes/v1/health` e `GET /pep/v1/health` | nada | `200` quando o birô está de pé. Só a retentativa em lote chama |
 
-`situacao` no CPF: `REGULAR`, `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO`. No CNPJ: `ATIVA`, `SUSPENSA`, `INAPTA`, `BAIXADA`, `NULA`. Para os dois: `NAO_ENCONTRADO`. Uma resposta sem o campo principal (`situacao`, `match` ou `pep`) conta como birô sem resposta: na dúvida, não aprova nem recusa.
+`situacao` no CPF: `REGULAR`, `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO`. No CNPJ: `ATIVA`, `SUSPENSA`, `INAPTA`, `BAIXADA`, `NULA`. Para os dois: `NAO_ENCONTRADO`. Uma resposta fora do contrato (status diferente de `200`, corpo que não é JSON, ou sem o campo principal: `situacao`, `match` ou `pep`) conta como birô sem resposta: na dúvida, não aprova nem recusa.
 
 O próximo passo (`next_step`) depois do RG completo é `WAIT` enquanto o banco trabalha (`PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW` e `APPROVED`), e `NONE` quando a abertura terminou (`ACTIVE` e `REJECTED`).
 
@@ -586,14 +587,15 @@ sequenceDiagram
     participant RF as Receita (Mockserver)
     participant K as Compliance
     participant O as onboarding-api
+    W->>R: circuito da Receita fechado?
     W->>RF: consulta, timeout 2 s, mais 2 retentativas
     RF-->>W: sem resposta
-    W->>R: INCR cb:receita:falhas
+    W->>R: INCR cb:receita:failures
     Note over R: 5 falhas seguidas: circuito aberto por 30 s
-    W->>W: continua ANALYSIS, nova tentativa em 1, 5, 15 ou 60 min
-    W->>W: 24 h sem resposta: MANUAL_REVIEW, BUREAU_UNAVAILABLE
+    W->>W: continua ANALYSIS, nada da análise gravado, nova tentativa em 1, 5, 15 ou 60 min
+    W->>W: 24 h na fila sem resposta: MANUAL_REVIEW, BUREAU_UNAVAILABLE
     K->>O: POST /admin/onboardings/retry
-    O->>RF: chamada de teste a cada birô obrigatório
+    O->>RF: GET /receita/v1/health, e o mesmo nas sanções e no PEP
     alt algum ainda não responde
         O-->>K: 503 ONB005016, nada muda
     else todos respondem
@@ -602,17 +604,25 @@ sequenceDiagram
     end
 ```
 
+1. **Cada consulta** tem 2 s de prazo. Se dá timeout, conexão recusada ou `5xx`, o worker repete na hora, até 2 vezes. Uma resposta fora do contrato não é repetida: repetir não muda a resposta.
+2. **Sem resposta, a análise para ali.** Nada dela é gravado: nem verificação, nem motivo, nem nível de risco. A abertura continua em `ANALYSIS`, com o próximo passo `WAIT`, e a nova tentativa refaz tudo, da Receita em diante.
+3. **A contagem das 24 horas** começa quando a abertura entra na fila: no RG completo ou na retentativa em lote. Passadas 24 horas, a próxima tentativa sem resposta leva a abertura a `MANUAL_REVIEW`, com `BUREAU_UNAVAILABLE`, sem aprovar nem recusar.
+4. **O circuito** é de cada birô, e não de cada abertura. Ele conta consultas, e não chamadas: uma consulta que, com as 2 retentativas, ficou sem resposta é uma falha. Uma resposta dentro do contrato zera a contagem e fecha o circuito.
+5. **A retentativa em lote** faz uma chamada de teste a cada birô (`GET .../health`, uma só, com 2 s de prazo, fora do circuito). Se todos respondem `200`, devolve à fila, no mesmo `COMMIT`, as aberturas com `BUREAU_UNAVAILABLE` e só esse motivo, cada uma com o evento e quem pediu (`compliance`).
+
 | Parâmetro | Valor | Por quê |
 |---|---|---|
 | Timeout por chamada | 2 s | Um birô lento não prende o worker |
-| Retentativas na mesma tentativa | 2, com 200 ms e 400 ms de espera mais uma variação aleatória | Cobre um soluço de rede sem martelar o birô |
-| O que conta como falha | Timeout, conexão recusada e `5xx` | `4xx` e "documento não encontrado" são respostas, e não falhas |
-| Quando o circuito abre | 5 falhas seguidas, ou 50% de falha em pelo menos 10 chamadas em 60 s | Para de insistir num birô que caiu |
-| Tempo aberto | 30 s; depois, meio aberto com uma chamada de teste | Volta sozinho quando o birô volta |
+| Retentativas na mesma tentativa | 2, com 200 ms e 400 ms de espera mais uma variação aleatória de até metade da espera | Cobre um soluço de rede sem martelar o birô |
+| O que conta como falha | Uma consulta que, depois das 2 retentativas, ainda deu timeout, conexão recusada ou `5xx` | `4xx` e resposta sem o campo do contrato não abrem nem fecham o circuito: o birô respondeu, mas a resposta não diz nada. Para a abertura, são birô sem resposta. "Documento não encontrado" (`NAO_ENCONTRADO`) é resposta do contrato |
+| Quando o circuito abre | 5 falhas seguidas | Para de insistir num birô que caiu |
+| Tempo aberto | 30 s; depois, meio aberto: a próxima consulta passa como teste, e as outras esperam; se ela tem resposta, o circuito fecha, e se falha, abre por mais 30 s | Volta sozinho quando o birô volta |
 | Nova tentativa da abertura | 1, 5, 15 e 60 minutos, depois de hora em hora | A abertura espera, sem gastar chamadas |
-| Limite de espera | 24 horas em `ANALYSIS` levam a `MANUAL_REVIEW`, com `BUREAU_UNAVAILABLE` | Na dúvida, não aprova nem recusa sozinho |
-| Retentativa em lote | `POST /admin/onboardings/retry` testa cada birô e devolve à fila só as aberturas com `BUREAU_UNAVAILABLE` | Uma instabilidade de minutos não vira trabalho manual, caso a caso |
-| Onde fica o estado | No Redis (`cb:{birô}`), compartilhado entre as réplicas; sem Redis, cada processo guarda o seu | As réplicas param juntas de chamar o birô caído |
+| Limite de espera | 24 horas desde que a abertura entrou na fila (RG completo ou retentativa em lote) levam a `MANUAL_REVIEW`, com `BUREAU_UNAVAILABLE` | Na dúvida, não aprova nem recusa sozinho |
+| Retentativa em lote | `POST /admin/onboardings/retry` testa cada birô e devolve à fila só as aberturas com `BUREAU_UNAVAILABLE`, recomeçando a contagem das 24 horas | Uma instabilidade de minutos não vira trabalho manual, caso a caso |
+| Onde fica o estado | No Redis (`cb:{birô}:failures`, `cb:{birô}:open` e `cb:{birô}:trial`), compartilhado entre as réplicas; sem Redis, cada processo guarda o seu | As réplicas param juntas de chamar o birô caído |
+
+Uma regra por taxa de falha (por exemplo, 50% em 10 chamadas) foi descartada nesta versão: com três birôs de baixo volume, as 5 falhas seguidas já cobrem o birô que cai, e a regra por taxa não tem teste black box barato (decisão D27 do plano de testes).
 
 **Revisão manual por compliance**
 

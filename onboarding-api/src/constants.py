@@ -74,6 +74,24 @@ SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN")
 BUREAU_TIMEOUT_SECONDS = 2
 ACCOUNT_API_TIMEOUT_SECONDS = 5
 
+# Birô fora do ar (RFC 05). Cada consulta sem resposta é repetida na hora
+# até 2 vezes, depois de 200 ms e de 400 ms, mais uma variação aleatória de
+# até metade da espera: as réplicas não voltam todas juntas.
+BUREAU_RETRY_DELAYS_SECONDS = (0.2, 0.4)
+BUREAU_RETRY_JITTER = 0.5
+
+# O circuit breaker de cada birô (decisão D27): 5 consultas seguidas sem
+# resposta abrem o circuito por 30 s. Depois, uma consulta de teste por vez,
+# com este prazo para terminar antes que outra possa tentar.
+CIRCUIT_FAILURES_TO_OPEN = 5
+CIRCUIT_OPEN_SECONDS = 30
+CIRCUIT_TRIAL_SECONDS = 10
+
+# A abertura que ficou sem resposta de um birô tenta de novo depois destes
+# minutos, e depois de hora em hora. Com 24 horas na fila, compliance decide.
+ANALYSIS_RETRY_MINUTES = (1, 5, 15, 60)
+BUREAU_WAIT_LIMIT_HOURS = 24
+
 # A account-api nao respondeu: a abertura fica APPROVED e o worker tenta de
 # novo depois deste tempo, com a mesma chave idempotente.
 ACCOUNT_RETRY_SECONDS = 60
@@ -98,11 +116,12 @@ BYPASS_ENDPOINTS = [
     "/health_check",
 ]
 
-REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET", "S3_ENDPOINT_URL"]
+# A API chama os biros na chamada de teste da retentativa em lote.
+REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET", "S3_ENDPOINT_URL", "RECEITA_URL", "SANCTIONS_URL", "PEP_URL"]
 
 
-# O worker precisa tambem dos vizinhos que ele chama.
-WORKER_REQUIRED_VARIABLES = REQUIRED_VARIABLES + ["RECEITA_URL", "SANCTIONS_URL", "PEP_URL", "ACCOUNT_API_URL", "SERVICE_TOKEN"]
+# O worker precisa tambem da account-api, que so ele chama.
+WORKER_REQUIRED_VARIABLES = REQUIRED_VARIABLES + ["ACCOUNT_API_URL", "SERVICE_TOKEN"]
 
 
 def check_variables(required=REQUIRED_VARIABLES):

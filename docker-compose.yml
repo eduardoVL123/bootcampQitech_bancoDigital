@@ -37,6 +37,12 @@ x-onboarding-environment: &onboarding-environment
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_DEFAULT_REGION: us-east-1
+  # Os biros: o worker consulta na analise, e a API faz a chamada de teste
+  # da retentativa em lote. No compose, todos sao o Mockserver; em producao,
+  # cada variavel aponta para o servico de verdade.
+  RECEITA_URL: http://mockserver:1080
+  SANCTIONS_URL: http://mockserver:1080
+  PEP_URL: http://mockserver:1080
 
 services:
   api:
@@ -119,10 +125,11 @@ services:
 
   # O onboarding-worker: o mesmo codigo da onboarding-api, em outro
   # processo e sem porta (RFC 05). Analisa o KYC da fila (Receita, sancoes
-  # e PEP), aplica o PLD e pede a conta a account-api. A cada minuto,
-  # tambem vence as aberturas paradas. Sobem duas replicas: o FOR UPDATE
-  # SKIP LOCKED garante que cada abertura e analisada por uma so. O
-  # watchfiles faz o papel do --reload da API: salvou o arquivo, reinicia.
+  # e PEP), aplica o PLD e pede a conta a account-api. Com um biro fora,
+  # tenta de novo depois, e o circuit breaker de cada biro fica no Redis.
+  # A cada minuto, tambem vence as aberturas paradas. Sobem duas replicas:
+  # o FOR UPDATE SKIP LOCKED garante que cada abertura e analisada por uma
+  # so. O watchfiles faz o papel do --reload da API: salvou o arquivo, reinicia.
   onboarding-worker:
     build:
       context: ./onboarding-api
@@ -133,11 +140,7 @@ services:
       <<: *onboarding-environment
       SERVICE_NAME: onboarding-worker
       WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}
-      # Os biros e a account-api. No compose, todos sao o Mockserver; em
-      # producao, cada variavel aponta para o servico de verdade.
-      RECEITA_URL: http://mockserver:1080
-      SANCTIONS_URL: http://mockserver:1080
-      PEP_URL: http://mockserver:1080
+      # A account-api. No compose, e o Mockserver, como os biros.
       ACCOUNT_API_URL: http://mockserver:1080
       # A senha com que o worker se apresenta a account-api (RFC 02). Os
       # testes leem a mesma variavel para conferir que ela chegou.
@@ -147,6 +150,8 @@ services:
     command: watchfiles --filter python "python worker.py"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       localstack:
         condition: service_healthy
@@ -162,7 +167,13 @@ services:
     image: mockserver/mockserver:mockserver-5.11.1
     ports:
       - "${MOCKSERVER_PORT:-1080}:1080"
+    volumes:
+      - ./mockserver/saude-dos-biros.json:/config/saude-dos-biros.json
     environment:
+      # A chamada de teste dos tres biros (GET .../health) responde 200
+      # desde que o Mockserver sobe. E a unica resposta que vale para todos:
+      # o resto, cada teste programa para o proprio documento.
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/saude-dos-biros.json
       # Os testes conferem os pedidos que chegaram, e cada um programa as
       # proprias respostas. Os limites padrao do Mockserver dependem da
       # memoria e, quando estouram, ele descarta os mais antigos sem avisar.
@@ -189,9 +200,9 @@ services:
       retries: 40
       start_period: 10s
 
-  # So dado pequeno, que pode ser perdido: contadores de limite e, depois,
-  # o estado do circuit breaker dos biros. Sem porta para fora: os testes
-  # nunca leem o Redis (R1).
+  # So dado pequeno, que pode ser perdido: contadores de limite e o estado
+  # do circuit breaker dos biros (cb:{biro}), que as duas replicas do
+  # worker dividem. Sem porta para fora: os testes nunca leem o Redis (R1).
   redis:
     image: redis:7.4-alpine
     healthcheck:
