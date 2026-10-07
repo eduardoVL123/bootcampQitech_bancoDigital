@@ -1,0 +1,62 @@
+# Faz o que a banca vai fazer, numa maquina Linux limpa, a cada push:
+# sobe tudo do zero com o compose e roda o pytest contra as APIs.
+#
+# Roda na main, nos branches da onboarding (feat/onboarding-...), nos da
+# conta (feat/account-...) e no branch de integracao do grupo. Tambem
+# roda em todo pull request aberto contra a main. O resultado aparece no
+# commit e no PR, com um visto verde ou um X vermelho. Tambem da para
+# rodar a mao, na aba Actions do GitHub ("Run workflow").
+#
+# A main entrou no gatilho porque e o branch que a banca clona, e era o
+# unico que nao rodava o CI. O pull_request entrou para o PR mostrar o
+# resultado ANTES de juntar, e nao depois.
+name: testes
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/onboarding-*"
+      - "feat/account-*"
+      - feat/database-schema-and-models
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Dois pushes seguidos no mesmo branch: a rodada antiga e cancelada, e
+# so a do commit mais novo continua. Economiza os minutos do Actions.
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # As duas falsificacoes de teste ligadas na API (o compose le daqui)
+      # e no pytest: sem elas, os testes do bucket fora, do Redis fora e
+      # do prazo de 20 minutos seriam pulados.
+      FAULT_INJECTION_ENABLED: "true"
+      SIMULATED_CLOCK_ENABLED: "true"
+      SERVER_LOCALHOST: "127.0.0.1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sobe as APIs, o banco, o Redis e o LocalStack do zero
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Instala as dependencias dos testes
+        run: pip install -r requirements-dev.txt
+
+      - name: Roda os testes
+        run: pytest -v
+
+      - name: Mostra os logs se algo falhou
+        if: failure()
+        run: docker compose logs --no-color
