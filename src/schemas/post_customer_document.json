@@ -1,0 +1,36 @@
+{
+  "title": "PostCustomerDocument",
+  "type": "object",
+  "properties": {
+    "document_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+    },
+    "side": {
+      "type": "string",
+      "enum": ["FRONT", "BACK"]
+    },
+    "object_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "content_type": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5242880
+    }
+  },
+  "required": [
+    "document_type",
+    "object_key",
+    "content_type",
+    "size_bytes"
+  ],
+  "additionalProperties": false
+}

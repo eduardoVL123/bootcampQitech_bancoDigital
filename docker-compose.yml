@@ -1,0 +1,155 @@
+# O docker compose sobe a aplicacao e o banco juntos, com um comando so:
+#
+#     docker compose up
+#
+# Os testes rodam na sua maquina, contra a API que subiu aqui:
+#
+#     pip install -r requirements-dev.txt
+#     pytest
+#
+# Nao precisa criar arquivo nenhum antes: cada configuracao abaixo tem um
+# valor padrao, escrito no proprio ${VARIAVEL:-padrao}. Le-se assim:
+# "use o que estiver na variavel VARIAVEL; se ela nao existir, use padrao".
+#
+# O .env continua valendo, e agora e OPCIONAL: se voce criar um (copiando
+# o .env.example), o compose le esse arquivo e o que estiver la ganha do
+# padrao. E o jeito de trocar uma porta ocupada ou o token, sem editar
+# este arquivo.
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      # Se a porta 3000 ja estiver ocupada na sua maquina, coloque
+      # API_PORT=3001 (ou outra livre) no seu .env.
+      - "${API_PORT:-3000}:3000"
+    environment:
+      # Dentro do compose, o banco atende pelo nome "db" — nao por localhost.
+      # Por isso esta linha nao tem padrao pra sobrescrever: aqui dentro o
+      # endereco do banco e sempre este.
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      APP_ENV: ${APP_ENV:-local}
+      SERVICE_NAME: ${SERVICE_NAME:-bootcamp-api}
+      # A senha que protege os endpoints internos. O padrao vale pra
+      # estudar; num sistema de verdade, isso nunca teria valor padrao.
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      # A API de boletos (assunto do sabado 4). Variavel que nao esta
+      # nesta lista NAO CHEGA no container: o compose repassa o que
+      # esta escrito aqui, e mais nada. Sem estas tres linhas, mexer
+      # nos BANKSLIP_* do .env nao teria efeito nenhum aqui dentro.
+      BANKSLIP_API_URL: ${BANKSLIP_API_URL:-http://localhost:8080}
+      BANKSLIP_API_INTERNAL_TOKEN: ${BANKSLIP_API_INTERNAL_TOKEN:-default_token}
+      BANKSLIP_API_TIMEOUT: ${BANKSLIP_API_TIMEOUT:-5}
+    volumes:
+      # Monta o codigo pra dentro do container: salvou o arquivo,
+      # a API recarrega sozinha (o --reload ali embaixo).
+      - ./src:/app
+    # --reload: salvou o arquivo, a API reinicia sozinha.
+    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --reload
+    healthcheck:
+      # "Subiu" nao e a mesma coisa que "ja responde". E esta checagem
+      # que diz quando a API passa a atender de verdade — espere ela
+      # ficar (healthy) antes de rodar o pytest, ou o primeiro teste
+      # bate numa porta que ainda nao responde.
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3000/health_check\")'"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # A onboarding-api: dona do cliente e da abertura de conta (RFC 05).
+  # Mesmo esqueleto da api de cima, no mesmo banco (bootcamp): as tabelas
+  # dela estao na secao 7 do database/database.sql.
+  onboarding-api:
+    build:
+      context: ./onboarding-api
+      target: api
+    ports:
+      - "${ONBOARDING_API_PORT:-3005}:3005"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      APP_ENV: ${APP_ENV:-local}
+      SERVICE_NAME: onboarding-api
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      # Assina o access_token (JWT). Os testes leem a mesma variavel para
+      # conferir a assinatura. O padrao serve so para estudo.
+      AUTH_SECRET: ${AUTH_SECRET:-auth_secret_de_estudo_troque_em_producao_0123456789}
+      ONBOARDING_TIMEOUT_MINUTES: ${ONBOARDING_TIMEOUT_MINUTES:-20}
+      # Limites por documento e por origem (RFC 05). Se o Redis cair, os
+      # limites desligam e a API continua respondendo.
+      REDIS_URL: redis://redis:6379/0
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-false}
+      # O bucket privado do RG, no LocalStack (S3 sem custo de AWS). As
+      # chaves "test" sao as que o LocalStack aceita, e nao valem na AWS.
+      S3_ENDPOINT_URL: http://localstack:4566
+      RG_BUCKET: rg-documentos
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./onboarding-api/src:/app
+    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3005/health_check\")'"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # O S3 de mentira, onde moram as fotos do RG (RFC 05). Versao fixa: a
+  # 4.14.0 e a ultima que sobe sem conta no LocalStack; as de 2026.03 em
+  # diante pedem um LOCALSTACK_AUTH_TOKEN. Sem porta para fora: os testes
+  # nunca leem o bucket (R1). O script de localstack/ cria o bucket quando
+  # ele fica pronto, e a checagem de saude so passa depois disso.
+  localstack:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3
+    volumes:
+      - ./localstack/init-bucket.sh:/etc/localstack/init/ready.d/init-bucket.sh
+    healthcheck:
+      test: ["CMD", "awslocal", "s3api", "head-bucket", "--bucket", "rg-documentos"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 10s
+
+  # So dado pequeno, que pode ser perdido: contadores de limite e, depois,
+  # o estado do circuit breaker dos biros. Sem porta para fora: os testes
+  # nunca leem o Redis (R1).
+  redis:
+    image: redis:7.4-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  db:
+    build: ./database/.
+    environment:
+      POSTGRES_USER: bootcamp
+      POSTGRES_PASSWORD: bootcamp
+      POSTGRES_DB: bootcamp
+    ports:
+      # Mesma ideia: DB_PORT=5433 no .env se a 5432 estiver ocupada.
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      # A API so sobe depois que o banco responder de verdade.
+      test: ["CMD-SHELL", "pg_isready -U bootcamp -d bootcamp"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
