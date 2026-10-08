@@ -141,3 +141,48 @@ A primeira é a mais instrutiva. Um teste de paginação que só lê não distin
 | F6-02 | `test_transferencias_cruzadas_nao_travam` | A para B e B para A juntas terminam, sem deadlock |
 | F6-03 | `test_varias_origens_para_um_destino_somam_exato` | o destino recebe a soma exata |
 | F6-04 | `test_conciliacao_fecha_em_zero_depois_da_corrida` | `total` 0 |
+
+### Resultado da F5
+
+As duas passaram de primeira, porque a rota `GET /internal/reconciliation` já existia desde a F2. Teste que nasce verde não prova nada, então o vermelho veio pela mutação.
+
+| Mutação | O que aconteceu |
+|---|---|
+| a conciliação passou a ignorar os lançamentos de conta técnica (`.filter(sequence IS NOT NULL)`) | o F5-02 falhou com `assert 149800 == 0`. É exatamente o buraco que importa: somar só o lado do cliente dá a ilusão de que dinheiro apareceu do nada |
+
+O F5-01 continuou verde na mutação, e está certo: no sistema vazio não há lançamento técnico para esquecer.
+
+O F5-01 é o único teste da fatia que começa com `DbUtils.rollback()`. A asserção é sobre o total do sistema inteiro, então ele precisa de um banco zerado. É a exceção que a Aula 3 permite: zerar, nunca montar cenário.
+
+### Resultado da F6, e o bug que ela achou
+
+**As três primeiras falharam de primeira, e não por pouco: nove de cada dez requisições voltaram `500`.** O log do Postgres disse o motivo em uma linha: `deadlock detected`.
+
+O que torna o caso interessante é que a trava já saía em ordem crescente de `id`, como a RFC manda, e ainda assim travava. A F2-11, que disputa a mesma conta com dez saques, sempre passou. A diferença entre as duas é o cabeçalho da transação.
+
+**A causa:** `transaction.origin_account_id` e `destination_account_id` são `FOREIGN KEY` para `account`. Por causa delas, o próprio `INSERT` do cabeçalho pega um `KEY SHARE` nas duas contas citadas. Como o cabeçalho era gravado **antes** do posting, duas transferências para o mesmo destino ficavam cada uma com o `KEY SHARE` daquela linha, e as duas pediam o upgrade para `FOR UPDATE`. Isso fecha um ciclo, e o Postgres mata uma das duas.
+
+Reproduzido fora da API, com duas conexões psycopg2 e nenhuma linha do nosso código:
+
+```
+contas: origem_A=4 origem_B=5 destino_comum=6
+as duas seguram KEY SHARE no destino comum
+  B: travou
+  A: DeadlockDetected: deadlock detected
+```
+
+**A correção:** pedir `FOR UPDATE` nas contas de cliente **antes** de gravar o cabeçalho. Aí o `KEY SHARE` da FK já está contido na trava que a transação tem, e não existe upgrade para formar ciclo. Está em `TransactionController._lock_accounts`. Depois dela, as quatro passaram e o tempo da fatia caiu de 37 s para 8 s, porque ninguém mais fica esperando o detector de deadlock.
+
+**A lição, que vale para a RFC:** ordem crescente de `id` resolve o ciclo entre duas travas **fortes**. Ela não resolve o upgrade de uma trava fraca que alguém pegou antes, nem que tenha sido o nosso próprio `INSERT` sem a gente pedir. A regra que sobra é mais ampla: a trava mais forte vem primeiro, e nada que referencie a conta é gravado antes dela.
+
+### A mutação que sobreviveu, e por quê
+
+| Mutação | O que aconteceu |
+|---|---|
+| tirei o `order_by(Account.id)` da trava | **as 15 testes continuaram verdes** |
+
+Isso contraria o que a RFC afirma, então vale dizer o que acontece de verdade. O `EXPLAIN` da consulta travada é `LockRows -> Seq Scan`: com uma consulta só, o plano é o mesmo para todas as sessões, então todas travam as linhas na mesma ordem (a física), mesmo sem `ORDER BY`. Não há ciclo porque não há divergência de ordem.
+
+O `order_by` continua no código, e o motivo honesto é outro: ele protege o dia em que a trava for partida em duas consultas, ou em que o plano mudar (um `Bitmap Heap Scan`, por exemplo, devolve em ordem física do bitmap, e um `Index Scan` em ordem de índice). Hoje ele não é o que segura o teste, e o plano de testes registra isso em vez de afirmar o contrário.
+
+**O que ainda não temos teste para pegar:** trava partida em duas consultas. De fora da API não dá para forçar isso, porque é decisão interna do repository. Fica anotado como limite conhecido.

@@ -44,6 +44,8 @@ class TransactionController(BaseController):
         politica = self.transaction_repo.get_current_fee_policy()
         tarifa = politica.transfer_fee_cents if payload["type"] == "TRANSFER" else 0
 
+        self._lock_accounts(origem, destino)
+
         try:
             transaction = self.transaction_repo.create(
                 {
@@ -82,6 +84,37 @@ class TransactionController(BaseController):
         self.transaction_repo.mark_completed(transaction)
         self.session.commit()
         return transaction, False
+
+    def _lock_accounts(self, origem, destino) -> None:
+        """Trava as contas ANTES de gravar o cabecalho da transacao.
+
+        O motivo e sutil e custou um deadlock para aparecer. A FK de
+        transaction para account faz o proprio INSERT do cabecalho
+        pegar um KEY SHARE nas duas contas citadas. Se a trava forte
+        viesse so depois, duas transferencias para o mesmo destino
+        segurariam cada uma o KEY SHARE daquela linha e as duas
+        pediriam o upgrade para FOR UPDATE: isso fecha um ciclo, e o
+        Postgres mata uma das duas com deadlock. O cliente receberia
+        500 numa operacao que deveria apenas esperar a vez.
+
+        Ordem crescente de id nao basta por si: ela resolve o ciclo
+        entre duas travas fortes, nao o upgrade de uma fraca que a FK
+        pegou antes. Pedindo FOR UPDATE primeiro, o KEY SHARE da FK ja
+        esta contido na trava que a transacao tem.
+
+        So conta de cliente entra: conta tecnica tem balance nulo,
+        nao tem linha de saldo para disputar, e travar a de tarifa
+        serializaria toda transferencia do sistema.
+        """
+        ids = sorted(
+            {
+                conta.id
+                for conta in (origem, destino)
+                if conta is not None and conta.balance is not None
+            }
+        )
+        if ids:
+            self.posting_repo.get_accounts_for_update(ids)
 
     def get_by_key(self, transaction_key: str):
         transaction = self.transaction_repo.get_by_key(transaction_key)
