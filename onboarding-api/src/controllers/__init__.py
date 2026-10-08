@@ -4,3 +4,4 @@ from controllers.onboarding_controller import OnboardingController
 from controllers.expiration_controller import ExpirationController
 from controllers.kyc_controller import KycController
 from controllers.compliance_controller import ComplianceController
+from controllers.event_controller import EventController

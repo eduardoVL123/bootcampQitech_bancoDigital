@@ -58,8 +58,8 @@ Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `he
 | `db` | PostgreSQL, com o banco único do grupo (`bootcamp`) | 5432 |
 | `redis` | Contadores dos limites de pedidos e o circuit breaker de cada birô, que as duas réplicas do worker dividem | nenhuma |
 | `localstack` | O S3 de mentira, com o bucket privado `rg-documentos` das fotos do RG. Só fica `healthy` depois que o bucket existe | nenhuma |
-| `onboarding-worker` | O mesmo código da onboarding-api, em outro processo, em duas réplicas. A cada segundo, analisa o KYC das aberturas com o RG completo e pede a conta das aprovadas. Com um birô fora, tenta de novo em 1, 5, 15 e 60 minutos, e com 24 horas passa a abertura a compliance. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
-| `mockserver` | Faz o papel da Receita, das listas de sanções e de PEP e da account-api. Cada teste programa a resposta para o documento dele. A chamada de teste dos birôs (`GET .../health`) já sobe respondendo `200`, pelo `mockserver/saude-dos-biros.json` | 1080 |
+| `onboarding-worker` | O mesmo código da onboarding-api, em outro processo, em duas réplicas. A cada segundo, analisa o KYC das aberturas com o RG completo e pede a conta das aprovadas. Com um birô fora, tenta de novo em 1, 5, 15 e 60 minutos, e com 24 horas passa a abertura a compliance. Também entrega os eventos da outbox à webhook-api, na ordem de cada abertura. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
+| `mockserver` | Faz o papel da Receita, das listas de sanções e de PEP, da account-api e da webhook-api. Cada teste programa a resposta para o documento ou a abertura dele. Duas respostas já sobem prontas, pelo `mockserver/respostas-padrao.json`: a chamada de teste dos birôs (`GET .../health`) responde `200`, e a webhook-api recebe todo evento com `202` | 1080 |
 | `api` | A API da raiz do repositório (pasta `src/`) | 3000 |
 
 **4. Rode os testes da onboarding-api:**
@@ -160,7 +160,7 @@ Atenção: com o worker de pé, toda abertura de teste que ficou parada em `DRAF
 | Só os testes (`tests/`) | Nada. Rode o pytest de novo |
 | Código Python da API (`onboarding-api/src/`) | Em geral a API e o worker recarregam sozinhos. Se o teste não enxergar a mudança: `docker compose restart onboarding-api onboarding-worker` |
 | `onboarding-api/requirements.txt` | `docker compose up -d --build --wait` |
-| `docker-compose.yml` ou `mockserver/saude-dos-biros.json` | `docker compose up -d --wait`, com as duas variáveis no mesmo comando. O Mockserver é recriado e perde as respostas que os testes tinham programado, o que é esperado |
+| `docker-compose.yml` ou `mockserver/respostas-padrao.json` | `docker compose up -d --wait`, com as duas variáveis no mesmo comando. O Mockserver é recriado e perde as respostas que os testes tinham programado, o que é esperado |
 | `database/database.sql` (tabelas) | `docker compose down -v` e depois `docker compose up -d --build --wait`. O SQL só roda num banco vazio, e o `-v` apaga os dados de teste |
 
 ## Ver o que a API fez
@@ -203,5 +203,5 @@ No PowerShell, troque `grep` por `Select-String`; no `cmd`, por `findstr`.
 | `AssertionError: Passaram 90 s e a condicao nao valeu` num teste da F5 | O worker não está de pé, ou parou com erro | `docker compose ps` e `docker compose logs onboarding-worker --tail 30` |
 | `AssertionError: Passaram 20.0 s ... 'status': 'PENDING_KYC'` ou `'ANALYSIS'` num teste da F6 | O worker não analisou: está fora do ar, ou um birô não respondeu como o teste programou | `docker compose logs onboarding-worker --tail 30`; procure `Biro respondeu` ou `Biro sem resposta` |
 | Um teste da F7 fica até 90 s na preparação, na fixture `circuito_da_receita_fechado` | O circuito da Receita estava aberto, por exemplo depois de um F7-07 interrompido no meio. A fixture espera a próxima tentativa (1 minuto), quando ele fecha sozinho | Nada: o teste segue depois |
-| `503` com `ONB005016` numa retentativa em lote fora do F7-11 | A chamada de teste de algum birô não respondeu `200`: o Mockserver subiu sem o `mockserver/saude-dos-biros.json` | `docker compose up -d --wait`, com as duas variáveis, para recriar o Mockserver |
+| `503` com `ONB005016` numa retentativa em lote fora do F7-11 | A chamada de teste de algum birô não respondeu `200`: o Mockserver subiu sem o `mockserver/respostas-padrao.json` | `docker compose up -d --wait`, com as duas variáveis, para recriar o Mockserver |
 | `Nao consegui falar com o Mockserver em http://127.0.0.1:1080` | O Mockserver não subiu, ou a porta 1080 está ocupada | `docker compose ps`; para trocar a porta, `MOCKSERVER_PORT` no `.env` e `MOCKSERVER_URL` no pytest |

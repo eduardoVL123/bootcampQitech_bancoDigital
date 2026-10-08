@@ -1,3 +1,4 @@
 from repositories.customer_repository import CustomerRepository
 from repositories.onboarding_repository import OnboardingRepository
 from repositories.rate_limit_repository import RateLimitRepository
+from repositories.outbox_repository import OutboxRepository

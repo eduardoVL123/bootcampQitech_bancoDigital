@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Carlos Alberto Magalhães Neto · \<nome 2\> · \<nome 3\> |
 | **Data** | 06/10/2026 |
-| **Versão** | 0.11 (compliance: campos e ordem da fila, quem decidiu no histórico e visível só a compliance, recusa troca os motivos por `COMPLIANCE_REJECTED`, aprovação de abertura parada por birô fora recusada com `ONB005017`). Na 0.10: birô fora do ar: o que conta como falha, circuito aberto só por 5 falhas seguidas, análise interrompida sem nada gravado, 24 horas contadas da entrada na fila, chamada de teste dos birôs e corpo da retentativa em lote). Na 0.9: análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP. Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
+| **Versão** | 0.12 (eventos: o envelope e os cabeçalhos do `POST /internal/event`, a ordem dos eventos de uma abertura, a posse de 60 s na entrega, `occurred_at` na outbox; o contrato com a webhook-api ainda se alinha com a RFC 06). Na 0.11: compliance: campos e ordem da fila, quem decidiu no histórico e visível só a compliance, recusa troca os motivos por `COMPLIANCE_REJECTED`, aprovação de abertura parada por birô fora recusada com `ONB005017`). Na 0.10: birô fora do ar: o que conta como falha, circuito aberto só por 5 falhas seguidas, análise interrompida sem nada gravado, 24 horas contadas da entrada na fila, chamada de teste dos birôs e corpo da retentativa em lote). Na 0.9: análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP. Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
 
 ## Contextualização
 
@@ -213,7 +213,7 @@ Contratos com as vizinhas, para conferir dos dois lados:
 | LocalStack S3 | onboarding-api | `PutObject`, `DeleteObjects` pelo prefixo da abertura e link assinado de 5 minutos no bucket privado `rg-documentos` | Envio do RG e vencimento | Primeiro o bucket, depois o `COMMIT`: nunca uma linha sem foto |
 | Receita, sanções e PEP | onboarding-worker; na chamada de teste, a onboarding-api | Consulta por documento, timeout 2 s, 2 retentativas, circuit breaker; chamada de teste `GET .../health` | Análise; retentativa em lote | Nenhuma aprovação sem as três |
 | account-api | onboarding-worker | `POST /internal/account` com `customer_key`, `X-Idempotency-Key` igual à `onboarding_key` (RFC 02) | Depois de `APPROVED` | `201` conta nova ou `200` a que já existia: uma conta por cliente |
-| webhook-api | onboarding-worker | `POST /internal/event` com `event_id`, `event_type`, `occurred_at` e `data`, sem dado pessoal (contrato a confirmar na RFC da webhook-api) | Cada evento da outbox | O mesmo `event_id` duas vezes é recebido uma vez |
+| webhook-api | onboarding-worker | `POST /internal/event` com `event_id`, `event_type`, `occurred_at` e `data`, sem dado pessoal, e o `SERVICE-TOKEN` no cabeçalho; timeout de 3 s; `202` recebido ou `200` já recebido (contrato a alinhar com a RFC 06, que propõe uma tabela compartilhada `webhook_outbox`) | Cada evento da outbox | O mesmo `event_id` duas vezes é recebido uma vez; os eventos de uma abertura chegam na ordem em que aconteceram |
 | transaction-api e investment-api | não chamam a onboarding | Usam a `customer_key` e a `account_key` | Depois de `ACTIVE` | A onboarding não está no caminho do dinheiro |
 
 Cenários de erro e tratamento:
@@ -355,10 +355,11 @@ erDiagram
         char(36) event_id UK "a webhook-api descarta repetidos por ele"
         bigint onboarding_id FK
         varchar(40) event_type "account.created, account.kyc.approved, ..."
-        jsonb payload "sem dado pessoal"
+        jsonb payload "o data do evento, sem dado pessoal"
+        timestamptz occurred_at "quando a etapa mudou"
         varchar(10) status "PENDING ou SENT"
         integer attempts
-        timestamptz next_attempt_at
+        timestamptz next_attempt_at "a próxima tentativa, ou o fim da posse de quem está entregando"
         timestamptz sent_at
         timestamptz created_at
     }
@@ -659,12 +660,12 @@ sequenceDiagram
     participant W as onboarding-worker
     participant P as PostgreSQL (bootcamp)
     participant H as webhook-api
-    W->>P: pega eventos PENDING vencidos ... SKIP LOCKED, COMMIT
-    W->>H: POST /internal/event {event_id, event_type, occurred_at, data}, timeout 3 s
+    W->>P: pega o evento PENDING vencido mais antigo de cada abertura ... SKIP LOCKED, posse de 60 s, COMMIT
+    W->>H: POST /internal/event {event_id, event_type, occurred_at, data}, SERVICE-TOKEN, timeout 3 s
     alt 202 recebido, ou 200 já recebido
         W->>P: SENT, COMMIT
-    else sem resposta
-        W->>P: attempts + 1, nova tentativa em 1, 5, 15, 60 min e 6 h, COMMIT
+    else sem resposta, timeout ou outro status
+        W->>P: attempts + 1, nova tentativa em 1, 5, 15, 60 min e depois a cada 6 h, COMMIT
     end
     Note over H: assinatura, entrega aos parceiros, retentativa e fila morta são da webhook-api
 ```
@@ -676,9 +677,12 @@ sequenceDiagram
 | `account.rejected` | Entrada em `REJECTED` | `onboarding_key`, `reason_codes` |
 | `account.kyc.manual_review` | Entrada em `MANUAL_REVIEW` | `onboarding_key`, `reason_codes` |
 
-1. **Grava junto:** o evento entra na outbox no mesmo `COMMIT` da mudança de etapa. Se a etapa mudou, o evento existe; se não mudou, não existe.
-2. **Entrega só à webhook-api:** a onboarding-api não fala com parceiros. Ela entrega à webhook-api, que recebe o mesmo `event_id` uma vez só.
-3. **Do parceiro cuida a webhook-api:** assinatura, retentativa, fila morta e cadastro de destinos valem igual para todas as APIs.
+1. **Grava junto:** o evento entra na outbox no mesmo `COMMIT` da mudança de etapa, pelo `change_status` do repositório, por onde toda mudança de etapa passa. Se a etapa mudou, o evento existe; se não mudou, não existe. `DRAFT`, `PENDING_KYC`, `ANALYSIS` e `EXPIRED` não publicam nada.
+2. **Entrega só à webhook-api:** a onboarding-api não fala com parceiros. O worker, a cada segundo, pega um evento por vez, marca a posse por 60 s (`next_attempt_at`), dá `COMMIT` e só então chama: nenhuma trava fica aberta durante a chamada. Se o worker cair no meio, a posse vence, e outra réplica entrega de novo, com o mesmo `event_id`.
+3. **O envelope:** `{"event_id": UUID, "event_type": ..., "occurred_at": ISO 8601, "data": {...}}`, com o `SERVICE-TOKEN` no cabeçalho. `data` tem só os campos da tabela acima.
+4. **Entregue é `202` ou `200`.** Qualquer outra resposta, timeout de 3 s ou conexão recusada é falha: o evento continua `PENDING`, e a próxima tentativa vem em 1, 5, 15 e 60 minutos e depois a cada 6 horas, com o mesmo `event_id`.
+5. **Na ordem, por abertura:** um evento só sai depois de os anteriores da mesma abertura terem saído. Assim, `account.created` nunca chega antes de `account.kyc.approved`, mesmo que o primeiro falhe e espere a nova tentativa. Aberturas diferentes não esperam umas pelas outras.
+6. **Do parceiro cuida a webhook-api:** assinatura, retentativa, fila morta e cadastro de destinos valem igual para todas as APIs. A RFC 06 (webhook-api) propõe outro caminho, uma tabela compartilhada `webhook_outbox` que a webhook-api lê direto. Até o time alinhar, a onboarding segue esta seção; se a RFC 06 vencer, muda só a entrega (o item 2), e a gravação junto com a etapa continua.
 
 **Prazo de 20 minutos: a abertura vence**
 
