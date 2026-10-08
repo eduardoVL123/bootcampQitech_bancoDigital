@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.11 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.13 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.6 (F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.8 (F10 verde; D34, log sem dado pessoal; com ela, as fatias F0 a F10 estão verdes). Na 0.7: F9 verde, com F9-09; D33; o contrato com a webhook-api se alinha com a RFC 06). Na 0.6: F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -368,29 +368,36 @@ A matriz de credencial da F3 ganha `GET /onboardings` e `PUT /onboarding/{key}/d
 
 ### F9. Outbox e eventos para a webhook-api
 
-Arquivo `test_events.py`. O teste lê no Mockserver os pedidos recebidos em `POST /internal/event` com a `onboarding_key` dele.
+Arquivo `test_events.py`. **Verde em 07/10** (branch `feat/onboarding-eventos`). O teste lê no Mockserver os pedidos recebidos em `POST /internal/event` com a `onboarding_key` dele em `data`. O Mockserver sobe respondendo `202` a todo evento (`mockserver/respostas-padrao.json`), para os eventos de todos os testes serem entregues; o teste que precisa de falha programa por cima, preso à `onboarding_key` dele. O contrato com a webhook-api ainda se alinha com a RFC 06 (pendência P2): se ele mudar, mudam a entrega e estes testes, e a gravação junto com a etapa continua.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F9-01 | `test_aprovacao_publica_aprovada_e_depois_criada` | Abertura aprovada | `account.kyc.approved` (`onboarding_key`, `customer_key`, `risk_level`) e depois `account.created` (mais `account_key`); cada um com `event_id` UUID e `occurred_at` | Eventos |
-| F9-02 | `test_recusa_publica_recusada` | Recusa da Receita | `account.rejected` com `onboarding_key` e `reason_codes` | Eventos |
-| F9-03 | `test_revisao_publica_revisao` | PEP | `account.kyc.manual_review` com `reason_codes` | Eventos |
-| F9-04 | `test_aprovacao_de_compliance_publica_aprovada` | Compliance aprova | `account.kyc.approved` | Eventos |
-| F9-05 | `test_eventos_nao_levam_dado_pessoal` | Todos os eventos acima | Nenhum traz CPF ou CNPJ, nome, renda ou data; `data` tem só os campos da tabela da RFC | LGPD |
-| F9-06 | `test_cada_mudanca_publica_uma_vez` | Abertura aprovada | Cada tipo de evento chega uma vez; `DRAFT`, `PENDING_KYC` e `ANALYSIS` não publicam nada | Outbox |
-| F9-07 | `test_webhook_fora_reenvia_o_mesmo_event_id` | webhook-api com `503` na primeira entrega | O evento chega de novo com o mesmo `event_id` | Retentativa (`slow`) |
-| F9-08 | `test_eventos_vao_com_service_token` | Qualquer evento | Cabeçalho `SERVICE-TOKEN` presente | Rotas internas |
+| F9-01 | `test_aprovacao_publica_aprovada_e_depois_criada` | Abertura aprovada | `account.kyc.approved` (`onboarding_key`, `customer_key`, `risk_level`) e depois `account.created` (`onboarding_key`, `customer_key`, `account_key`); cada um com `event_id` UUID e `occurred_at` ISO 8601 | Eventos |
+| F9-02 | `test_recusa_publica_recusada` | Parametrizado: recusa da Receita (`CANCELADA`); recusa de compliance | `account.rejected` com `onboarding_key` e `reason_codes` (`RECEITA_CANCELADA`; `COMPLIANCE_REJECTED`) | Eventos |
+| F9-03 | `test_revisao_publica_revisao` | PEP declarado | `account.kyc.manual_review` com `reason_codes` `PEP_SELF_DECLARED` | Eventos |
+| F9-04 | `test_aprovacao_de_compliance_publica_aprovada` | PEP declarado; compliance aprova | `account.kyc.manual_review`, `account.kyc.approved` e `account.created`, nessa ordem | Eventos |
+| F9-05 | `test_eventos_nao_levam_dado_pessoal` | Uma aprovada, uma recusada e uma em revisão, com nome e renda fáceis de reconhecer | Nenhum evento traz CPF (com e sem máscara), nome, renda nem data de nascimento; `data` tem exatamente os campos da tabela da RFC | LGPD |
+| F9-06 | `test_cada_mudanca_publica_uma_vez` | Abertura aprovada; espera o último evento e mais 3 s | Os tipos chegam exatamente uma vez cada, `account.kyc.approved` e `account.created`; `DRAFT`, `PENDING_KYC` e `ANALYSIS` não publicam nada | Outbox |
+| F9-07 | `test_webhook_fora_reenvia_o_mesmo_event_id` | Parametrizado: a webhook-api responde `503` ao primeiro evento da abertura; demora 4 s (timeout de 3 s) | O evento chega de novo, com o mesmo `event_id`, perto de 1 minuto depois; `account.created` só chega depois da nova tentativa do `account.kyc.approved` | Retentativa e ordem por abertura (`slow`), decisão D33 |
+| F9-08 | `test_eventos_vao_com_service_token` | Qualquer evento | Cabeçalho `SERVICE-TOKEN` presente, com o valor do compose | Rotas internas |
+| F9-09 | `test_evento_ja_recebido_nao_e_reenviado` | A webhook-api responde `200` (já recebido) a todo evento da abertura; espera mais de 1 minuto | Cada evento chegou uma vez só: `200` também é entregue | Entrega (`slow`), decisão D33 |
+
+**Mutação da F9 (07/10).** Das 15 mutações, 14 morreram, todas conferidas pelo motivo da falha: evento não gravado junto com a etapa, `ANALYSIS` publicando, evento com o nome, aprovada sem `risk_level`, criada sem `account_key`, recusa sem motivos, `200` que não conta como entregue, `503` que conta, timeout de 5 s, nova entrega na hora e em 5 minutos, sem ordem por abertura, sem `SERVICE-TOKEN` e `event_id` novo a cada entrega. Sobreviveu uma, explicada na seção 5: a posse do evento antes de chamar a webhook-api.
 
 ### F10. LGPD, transversal
 
-Arquivo `test_lgpd.py`. Junta o que os outros já provam e acrescenta dois testes.
+Arquivo `test_lgpd.py`. **Verde em 07/10** (branch `feat/onboarding-lgpd`). Junta o que os outros já provam e acrescenta dois testes. O F10-02 lê o log pelo `docker compose logs`, como faria quem cuida do serviço: não lê o banco nem importa o código (R1), e pula se não houver `docker`.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F10-01 | `test_nenhuma_rota_recebe_dado_pessoal_na_url` | `GET /onboardings?document_number=...` | `400 ONB000001` (parâmetro desconhecido) | Nada pessoal na URL |
-| F10-02 | `test_log_nunca_tem_documento_nem_renda` | Jornada completa com recusas no meio; lê `docker compose logs` da API e do worker | Nem o CPF (com e sem máscara) nem a renda aparecem | Nada pessoal no log (pula se não houver `docker`) |
+| F10-01 | `test_nenhuma_rota_recebe_dado_pessoal_na_url` | `GET /onboardings?document_number=...` com credencial de compliance | `400 ONB000001`, apontando o parâmetro | Nada pessoal na URL |
+| F10-02 | `test_log_nunca_tem_documento_nem_renda` | Jornada completa de uma pessoa com nome e renda fáceis de reconhecer, com recusas no meio: data impossível (`422`), documento repetido (`409`), o CPF mandado na URL da fila, como valor e como nome de parâmetro (`400` nos dois), RG, análise até `ACTIVE` e leitura do cadastro; depois, lê o log da API e do worker desde o começo do teste | Nem o CPF (com e sem máscara), nem o nome, nem a renda, nem a data de nascimento aparecem no log | Nada pessoal no log, decisão D34 (pula sem `docker`) |
 
 Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros (F1-34), verificações (F6-21), fila (F8-06), eventos (F9-05) e dados apagados no prazo (F5-04).
+
+O F10-02 achou um vazamento de verdade: a URL `GET /onboardings?document_number=...`, que o F8-05 manda para provar que ela é recusada, ia inteira para o log da API e para o access log do uvicorn, com o CPF. O F10-01 já passava antes do código, porque a rota já recusava o parâmetro desde a F8.
+
+**Mutação da F10 (07/10).** As 5 mutações morreram, todas com o CPF aparecendo no log: query string inteira no log, nome do parâmetro desconhecido no log (só morre pelo caso do CPF usado como nome), valor do parâmetro desconhecido no log, `document_number` na lista do que pode ir para o log e o access log do uvicorn ligado de novo.
 
 ## 4. Matriz de cobertura
 
@@ -501,6 +508,8 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **Bucket fora durante o vencimento:** a abertura fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo. O worker não tem falha simulada; seria preciso derrubar o LocalStack (`docker compose stop localstack`) num roteiro manual.
 - **Foto que sobe no instante em que o worker vence a abertura:** se o envio do RG passa da conferência do prazo, e o worker marca `EXPIRED` e apaga o prefixo antes de a foto subir, ela fica no bucket sem linha. O envio recebe `410` depois da trava. É uma janela de milissegundos.
 - **Posse do worker vencida no meio da análise:** a abertura volta para a fila quando o `lease_until` passa. Provar isso pede derrubar o worker no meio da análise (`docker compose kill onboarding-worker`), num roteiro manual. Desde a F7, um birô sem resposta não depende mais da posse: a abertura fica em `ANALYSIS` sem posse, com a nova tentativa marcada em 1, 5, 15 ou 60 minutos.
+- **A posse do evento na entrega:** o worker marca a posse (`next_attempt_at` 60 s à frente) antes de chamar a webhook-api. Sem ela, outra réplica poderia pegar o mesmo evento durante a chamada, que leva milissegundos, e entregar em dobro; a webhook-api descartaria o repetido pelo `event_id`. A janela é pequena demais para um teste provocar, e a mutação que tira a posse sobrevive por isso.
+- **As novas entregas de 5, 15 e 60 minutos e de 6 horas:** o F9-07 prova só a primeira, de 1 minuto.
 - **O que o Mockserver guarda:** os limites padrão de expectativas e de pedidos gravados dependem da memória, e, quando estouram, ele descarta os mais antigos sem avisar. O compose fixa os dois em 100.000 (`MOCKSERVER_MAX_EXPECTATIONS` e `MOCKSERVER_MAX_LOG_ENTRIES`).
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
@@ -542,11 +551,13 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D30 | A RFC não dizia o que cada item da fila mostra, como a fila se ordena nem como o filtro de motivo funciona | **Decidida em 07/10, na RFC 05 v0.11:** cada item tem `onboarding_key`, `customer_key`, `status`, `reason_codes`, `risk_level` e `created_at`, nunca dado pessoal; a ordem é a de criação da abertura, da mais antiga para a mais nova; `reason_code` acha a abertura que tem esse motivo entre os dela; `page` começa em 0 |
 | D31 | A RFC dizia que a decisão, a justificativa e quem decidiu ficam no histórico, mas a tabela de eventos não tinha onde guardar quem decidiu, e não dizia quem vê | **Decidida em 07/10, na RFC 05 v0.11:** coluna nova `decided_by` em `onboarding_status_event`, com o `sub` da credencial de compliance (também na retentativa em lote). Só compliance vê `justification` e `decided_by`; o cliente vê a etapa e o motivo, porque avisar o suspeito de uma suspeita de lavagem é proibido. Recusar troca os motivos por `COMPLIANCE_REJECTED`; aprovar mantém os motivos e o risco |
 | D32 | A RFC deixava compliance aprovar qualquer abertura em `MANUAL_REVIEW`, inclusive a parada por birô fora, que nunca terminou as consultas obrigatórias | **Decidida em 07/10, na RFC 05 v0.11:** aprovar uma abertura com `BUREAU_UNAVAILABLE` responde `409 ONB005017` e nada muda: o caminho é a retentativa em lote. Recusar continua valendo |
+| D33 | A RFC não dizia o envelope do evento, o que conta como entregue, nem a ordem dos eventos de uma abertura | **Decidida em 07/10, na RFC 05 v0.12:** envelope `event_id`, `event_type`, `occurred_at` e `data`, com o `SERVICE-TOKEN`; entregue é `202` ou `200`, e o resto é falha, com nova tentativa em 1, 5, 15 e 60 minutos e depois a cada 6 horas; o worker toma posse do evento por 60 s antes de chamar; um evento só sai depois dos anteriores da mesma abertura |
+| D34 | A RFC proibia dado pessoal no log, mas o log de cada pedido gravava a URL inteira, com a query string, e o uvicorn também | **Decidida em 07/10, na RFC 05 v0.13:** o log mostra o caminho e os nomes dos parâmetros; o valor, só de `limit`, `page`, `status` e `reason_code`; os outros viram `***`. O access log do uvicorn fica desligado na onboarding-api |
 
 **Pendências da RFC encontradas no caminho**
 
 - **P1.** A RFC cita o link assinado do RG para compliance, mas não há rota para ele.
-- **P2.** O contrato da webhook-api ainda é "a confirmar" (RFC da webhook-api não escrita).
+- **P2.** O contrato da webhook-api: a RFC 06 do Eduardo (no `main` desde 07/10) propõe uma tabela compartilhada `webhook_outbox` que a webhook-api lê direto, sem `POST /internal/event`. A F9 segue a RFC 05 até o time alinhar; se a RFC 06 vencer, muda só a entrega.
 - **P3.** Resolvida pela D10: o gateway não guarda mais a resposta do `POST /onboarding`.
 
 ## 7. Ordem de trabalho
@@ -562,7 +573,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F6 | 24 | F4, worker e Mockserver |
 | F7 | 16 | F6 |
 | F8 | 17 | F6 e F7 (a credencial de compliance e a coluna de quem decidiu) |
-| F9 | 8 | F6 |
+| F9 | 9 | F6 e F8 (a aprovação de compliance) |
 | F10 | 2 | Todas |
 
-São 160 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 161 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

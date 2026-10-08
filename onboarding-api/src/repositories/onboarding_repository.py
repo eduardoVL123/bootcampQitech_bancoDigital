@@ -5,7 +5,18 @@ from uuid import uuid4
 from sqlalchemy import and_, func, or_, tuple_
 
 from database import Context
-from models import Customer, Onboarding, OnboardingCheck, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
+from dtos import EventDTO
+from models import Customer, Onboarding, OnboardingCheck, OnboardingDocument, OnboardingOutbox, OnboardingStatus, OnboardingStatusEvent
+
+
+# As etapas que o parceiro precisa saber, e o evento de cada uma (RFC 05,
+# Eventos). DRAFT, PENDING_KYC, ANALYSIS e EXPIRED não publicam nada.
+EVENT_TYPE_BY_STATUS = {
+    OnboardingStatus.APPROVED: OnboardingOutbox.KYC_APPROVED,
+    OnboardingStatus.ACTIVE: OnboardingOutbox.CREATED,
+    OnboardingStatus.REJECTED: OnboardingOutbox.REJECTED,
+    OnboardingStatus.MANUAL_REVIEW: OnboardingOutbox.KYC_MANUAL_REVIEW,
+}
 
 
 class OnboardingRepository:
@@ -55,9 +66,14 @@ class OnboardingRepository:
         justification: Optional[str] = None,
         decided_by: Optional[str] = None,
     ) -> None:
-        """Muda a etapa e grava o evento junto: as duas coisas entram no mesmo
-        COMMIT. Quando quem muda é compliance, o evento guarda também a
-        justificativa e quem decidiu."""
+        """Muda a etapa e grava o histórico junto, e, se o parceiro precisa
+        saber, o evento na outbox (regra 12): tudo entra no mesmo COMMIT. Se a
+        etapa mudou, o evento existe; se não mudou, não existe. Quando quem
+        muda é compliance, o histórico guarda também a justificativa e quem
+        decidiu.
+
+        O evento leva o que a abertura tem agora: quem chama já gravou os
+        motivos, o risco ou a conta antes de mudar a etapa."""
         status = self.get_status(enumerator)
         onboarding.status = status
 
@@ -68,6 +84,18 @@ class OnboardingRepository:
         event.decided_by = decided_by
         event.event_datetime = now
         onboarding.status_events.append(event)
+
+        event_type = EVENT_TYPE_BY_STATUS.get(enumerator)
+        if event_type is not None:
+            outbox = OnboardingOutbox()
+            outbox.event_id = str(uuid4())
+            outbox.onboarding = onboarding
+            outbox.event_type = event_type
+            outbox.payload = EventDTO.data(onboarding, event_type)
+            outbox.occurred_at = now
+            outbox.status = OnboardingOutbox.PENDING
+            outbox.attempts = 0
+            self.session.add(outbox)
 
     def add_document(
         self,

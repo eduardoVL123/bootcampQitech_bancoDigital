@@ -96,6 +96,16 @@ CIRCUIT_TRIAL_SECONDS = 10
 ANALYSIS_RETRY_MINUTES = (1, 5, 15, 60)
 BUREAU_WAIT_LIMIT_HOURS = 24
 
+# A webhook-api, que recebe os eventos da outbox (RFC 05, Eventos). No
+# compose, e o Mockserver. O worker toma posse de um evento por 60 s antes de
+# chamar, e um evento que falha tenta de novo em 1, 5, 15 e 60 minutos e
+# depois a cada 6 horas, sempre com o mesmo event_id.
+WEBHOOK_API_URL = os.environ.get("WEBHOOK_API_URL")
+WEBHOOK_TIMEOUT_SECONDS = 3
+EVENT_LEASE_SECONDS = 60
+EVENT_RETRY_MINUTES = (1, 5, 15, 60, 360)
+EVENT_BATCH_SIZE = 20
+
 # A account-api nao respondeu: a abertura fica APPROVED e o worker tenta de
 # novo depois deste tempo, com a mesma chave idempotente.
 ACCOUNT_RETRY_SECONDS = 60
@@ -112,6 +122,11 @@ PLD_NEW_COMPANY_MAX_INCOME = 30000000
 # servidor, que roda em UTC (decisao D18 do plano de testes).
 BANK_TIMEZONE = "America/Sao_Paulo"
 
+# Os parametros da URL cujo valor pode ir para o log (RFC 05, Log sem dado
+# pessoal, decisao D34). Sao os da fila de compliance, e nenhum e pessoal. O
+# resto vira *** no log: um CPF mandado por engano na URL nao fica gravado.
+LOGGED_QUERY_PARAMS = {"limit", "page", "status", "reason_code"}
+
 # Rotas publicas: nao exigem o INTERNAL-TOKEN. A raiz diz quem e este
 # servico, e o health check e o que o Docker consulta para saber se a API
 # ja esta de pe.
@@ -124,8 +139,8 @@ BYPASS_ENDPOINTS = [
 REQUIRED_VARIABLES = ["DATABASE_URL", "INTERNAL_TOKEN", "AUTH_SECRET", "S3_ENDPOINT_URL", "RECEITA_URL", "SANCTIONS_URL", "PEP_URL"]
 
 
-# O worker precisa tambem da account-api, que so ele chama.
-WORKER_REQUIRED_VARIABLES = REQUIRED_VARIABLES + ["ACCOUNT_API_URL", "SERVICE_TOKEN"]
+# O worker precisa tambem da account-api e da webhook-api, que so ele chama.
+WORKER_REQUIRED_VARIABLES = REQUIRED_VARIABLES + ["ACCOUNT_API_URL", "WEBHOOK_API_URL", "SERVICE_TOKEN"]
 
 
 def check_variables(required=REQUIRED_VARIABLES):

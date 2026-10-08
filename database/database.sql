@@ -550,6 +550,35 @@ CREATE TABLE onboarding_check(
 );
 
 
+-- Os eventos que o parceiro precisa saber, gravados no mesmo COMMIT da
+-- mudanca de etapa (regra 12 e RFC 05, Eventos). O onboarding-worker
+-- entrega cada um a webhook-api e repete, com o mesmo event_id, ate ela
+-- confirmar. Nada aqui e dado pessoal.
+CREATE TABLE onboarding_outbox(
+    id                  BIGSERIAL PRIMARY KEY,
+    -- A webhook-api descarta o mesmo event_id recebido duas vezes.
+    event_id            CHAR(36) NOT NULL,
+    onboarding_id       BIGINT NOT NULL REFERENCES onboarding(id),
+    event_type          VARCHAR(40) NOT NULL,
+    -- O data do evento: so chaves, risco e motivos.
+    payload             JSONB NOT NULL,
+    occurred_at         TIMESTAMPTZ NOT NULL,
+    status              VARCHAR(10) NOT NULL,
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    -- A proxima tentativa, ou o fim da posse de quem esta entregando.
+    next_attempt_at     TIMESTAMPTZ,
+    sent_at             TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    UNIQUE(event_id),
+    CHECK (event_type IN ('account.kyc.approved', 'account.created', 'account.rejected', 'account.kyc.manual_review')),
+    CHECK (status IN ('PENDING', 'SENT')),
+    CHECK (attempts >= 0)
+);
+
+-- O worker so procura os que faltam entregar, e por abertura, na ordem.
+CREATE INDEX onboarding_outbox_pending ON onboarding_outbox (onboarding_id, id) WHERE status = 'PENDING';
+
+
 -- =====================================================================
 -- 8. WEBHOOKS OUTGOING (webhook-api, RFC 06)
 --
