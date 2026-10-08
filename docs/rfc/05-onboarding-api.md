@@ -161,7 +161,7 @@ Se o Redis cair, esses limites ficam desligados e o problema é registrado no lo
 
 **Log sem dado pessoal.** O log de cada pedido mostra o método, o caminho e os nomes dos parâmetros da URL. O valor só aparece nos parâmetros que a API conhece e não são pessoais (`limit`, `page`, `status` e `reason_code`); qualquer outro vira `***`. Assim, um CPF mandado por engano na URL, que a API recusa com `400 ONB000001`, também não fica no log. O access log do uvicorn fica desligado, porque ele grava a URL inteira, e o log da própria API já registra a entrada e a saída de cada pedido, com o status e o tempo. Duas proteções valem para toda linha de log, da API e do worker, inclusive as do uvicorn, que passam pelo mesmo caminho:
 
-- **CPF e CNPJ viram `***`**, com ou sem pontuação, venham de onde vierem. Um documento posto por engano no caminho da URL (`GET /customer/{documento}`), por exemplo, recebe `404` e não fica no log.
+- **CPF e CNPJ são mascarados:** com ou sem pontuação, viram `***`, venham de onde vierem. Um documento posto por engano no caminho da URL (`GET /customer/{documento}`), por exemplo, recebe `404` e não fica no log.
 - **A mensagem de um erro do banco nunca vai para o log.** Quando uma restrição barra uma gravação, o PostgreSQL repete na mensagem a linha que tentou gravar, com nome, documento e data de nascimento, e o SQLAlchemy acrescenta os valores do comando. No lugar dela, o log mostra o tipo do erro, o SQLSTATE, a tabela, a restrição que barrou e o caminho no código: o bastante para achar o defeito, sem guardar dado de ninguém.
 
 **Formato de erro.** Todo erro tem `code`, `title`, `description`, `translation` (em português), `request_id` (o protocolo, para o atendimento) e `errors`, uma lista com `field`, `rule` e `message`:
