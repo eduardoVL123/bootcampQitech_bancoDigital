@@ -12,7 +12,7 @@ from errors import (
     TransactionShapeInvalid,
 )
 from models import Account
-from repositories import PostingRepository, TransactionRepository
+from repositories import CustomerRepository, PostingRepository, TransactionRepository
 
 
 class TransactionController(BaseController):
@@ -27,10 +27,15 @@ class TransactionController(BaseController):
         super().__init__(__name__)
         self.transaction_repo = TransactionRepository(self.context)
         self.posting_repo = PostingRepository(self.context)
+        self.customer_repo = CustomerRepository(self.context)
         self.posting_controller = PostingController()
 
-    def create(self, idempotency_key: str, payload: dict):
-        """Devolve (transacao, ja_existia). O resource traduz em 201 ou 200."""
+    def create(self, idempotency_key: str, payload: dict, caller):
+        """Devolve (transacao, ja_existia). O resource traduz em 201 ou 200.
+
+        O caller nao tem valor padrao: operacao que mexe em dinheiro
+        nao pode nascer sem saber quem pediu.
+        """
         if not idempotency_key:
             raise MissingIdempotencyKey()
 
@@ -41,6 +46,7 @@ class TransactionController(BaseController):
             return self._mesma_ou_conflito(existente, idempotency_key, request_hash)
 
         origem, destino = self._resolve_accounts(payload)
+        self._require_permission(payload, origem, caller)
         politica = self.transaction_repo.get_current_fee_policy()
         tarifa = politica.transfer_fee_cents if payload["type"] == "TRANSFER" else 0
 
@@ -116,11 +122,51 @@ class TransactionController(BaseController):
         if ids:
             self.posting_repo.get_accounts_for_update(ids)
 
-    def get_by_key(self, transaction_key: str):
+    def get_by_key(self, transaction_key: str, caller):
+        """O comprovante, se a transacao envolve uma conta de quem pede."""
         transaction = self.transaction_repo.get_by_key(transaction_key)
         if not transaction:
             raise NotFoundAccount(transaction_key)
+
+        if caller.is_operator:
+            return transaction
+
+        customer = self.customer_repo.get_by_key(caller.subject)
+        donos = {
+            conta.customer_id
+            for conta in (transaction.origin_account, transaction.destination_account)
+            if conta is not None
+        }
+        if customer is None or customer.id not in donos:
+            # 404, e nao 403: comprovante de transferencia alheia conta
+            # quem mandou quanto para quem.
+            raise NotFoundAccount(transaction_key)
+
         return transaction
+
+    def _require_permission(self, payload: dict, origem, caller) -> None:
+        """Quem pode pedir esta operacao.
+
+        Deposito cria dinheiro no sistema: a contrapartida sai da conta
+        tecnica SETTLEMENT, que nao tem saldo. Se o proprio cliente
+        pudesse pedir um, ele se creditaria o quanto quisesse. Entao
+        deposito e operacao de operador, e isso e 403: falta permissao
+        para a operacao, nao existe recurso alheio a esconder.
+
+        Transferencia sai de uma conta, e ela tem de ser a de quem
+        pede. Aqui a recusa e 404, porque dizer 403 confirmaria que a
+        conta de origem existe.
+        """
+        if payload["type"] == "DEPOSIT":
+            caller.require_operator()
+            return
+
+        if caller.is_operator:
+            return
+
+        customer = self.customer_repo.get_by_key(caller.subject)
+        if customer is None or origem is None or origem.customer_id != customer.id:
+            raise NotFoundAccount(payload["origin_account_key"])
 
     def create_fee_policy(self, payload: dict):
         politica = self.transaction_repo.create_fee_policy(payload["transfer_fee_cents"])

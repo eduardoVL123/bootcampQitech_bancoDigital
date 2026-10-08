@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from controllers import AccountController
 from dtos import AccountDTO, StatementDTO
+from utils.credential import read_caller
 from utils.schema_handler import SchemaHandler
 
 
@@ -25,9 +26,9 @@ class AccountResource:
             status_code=codigo,
         )
 
-    def on_get_by_key(self, account_key: str) -> JSONResponse:
+    def on_get_by_key(self, request: Request, account_key: str) -> JSONResponse:
         controller = AccountController()
-        account = controller.get_by_key(account_key)
+        account = controller.get_by_key(account_key, read_caller(request))
 
         return JSONResponse(
             content=jsonable_encoder(AccountDTO.full_response(account)),
@@ -37,7 +38,9 @@ class AccountResource:
     @SchemaHandler.validate_query_params("get_statement.json")
     def on_get_statement(self, request: Request, account_key: str) -> JSONResponse:
         controller = AccountController()
-        linhas, next_cursor = controller.statement(account_key, dict(request.query_params))
+        linhas, next_cursor = controller.statement(
+            account_key, dict(request.query_params), read_caller(request)
+        )
 
         return JSONResponse(
             content=jsonable_encoder(StatementDTO.page(linhas, next_cursor)),

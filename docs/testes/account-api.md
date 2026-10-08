@@ -186,3 +186,74 @@ Isso contraria o que a RFC afirma, então vale dizer o que acontece de verdade. 
 O `order_by` continua no código, e o motivo honesto é outro: ele protege o dia em que a trava for partida em duas consultas, ou em que o plano mudar (um `Bitmap Heap Scan`, por exemplo, devolve em ordem física do bitmap, e um `Index Scan` em ordem de índice). Hoje ele não é o que segura o teste, e o plano de testes registra isso em vez de afirmar o contrário.
 
 **O que ainda não temos teste para pegar:** trava partida em duas consultas. De fora da API não dá para forçar isso, porque é decisão interna do repository. Fica anotado como limite conhecido.
+
+## F7. Autorização por titular (R8)
+
+A restrição R8 e o item #1 do OWASP API Security Top 10 2023 (*Broken Object Level Authorization*). Hoje qualquer um com o `INTERNAL-TOKEN` lê o saldo e o extrato de qualquer conta, e deposita em qualquer conta. O `INTERNAL-TOKEN` diz **que aplicação** está falando; ele não diz **quem**.
+
+### O contrato que esta fatia cria
+
+Três camadas, como a 4.12 do contexto já define:
+
+| Camada | Cabeçalho | Responde o quê |
+|---|---|---|
+| aplicação | `INTERNAL-TOKEN` | é um cliente nosso que está chamando |
+| identidade | `Authorization: Bearer <credencial>` | **quem** está chamando |
+| rota interna | só `INTERNAL-TOKEN` | quem chama é outra API, não um cliente |
+
+A credencial é a mesma que a onboarding-api já emite: JWT assinado em HS256 com a `AUTH_SECRET`, com `sub` igual à `customer_key`. **A conta confere sozinha, sem chamar ninguém.**
+
+Dois escopos:
+- `onboarding`, que é o cliente. Vê a própria conta e mais nada.
+- `operator`, que é o operador. Lê qualquer conta e é o único que pode depositar.
+
+**A recusa é `404`, não `403`.** A MDN diz a frase exata: *"Os servidores também podem enviar esta resposta em vez de `403 Forbidden` para ocultar a existência de um recurso de um cliente não autorizado."* Um `403` na conta de outro cliente confirma que aquela conta existe, e isso já é vazamento.
+
+Rotas que mudam: `GET /account/{key}`, `GET /account/{key}/statement`, `POST /transaction` e `GET /transaction/{key}`. As `/internal/...` não mudam.
+
+### Casos de teste
+
+| # | Teste | Espera |
+|---|---|---|
+| F7-01 | `test_dono_le_a_propria_conta` | `200` com o saldo |
+| F7-02 | `test_conta_de_outro_cliente_responde_404` | `404 QIT002010`, e o corpo não diz que a conta existe |
+| F7-03 | `test_extrato_de_outro_cliente_responde_404` | `404 QIT002010` |
+| F7-04 | `test_sem_credencial_a_conta_nao_abre` | `401 QIT000003` com `WWW-Authenticate` |
+| F7-05 | `test_credencial_assinada_com_outro_segredo_e_recusada` | `401 QIT000004` |
+| F7-06 | `test_credencial_vencida_e_recusada` | `401 QIT000005` |
+| F7-07 | `test_credencial_com_alg_none_e_recusada` | `401 QIT000004`. É o ataque clássico de JWT: trocar o algoritmo por `none` e mandar sem assinatura |
+| F7-08 | `test_transferencia_de_conta_que_nao_e_sua_responde_404` | `404 QIT002010`, e nenhum saldo muda |
+| F7-09 | `test_transferencia_para_conta_de_outro_e_permitida` | `201`. O destino não precisa ser seu, senão transferência não existiria |
+| F7-10 | `test_deposito_com_credencial_de_cliente_e_recusado` | `403 QIT000006`. Aqui é `403` e não `404`: o que falta é permissão para a operação, e não existe recurso de outra pessoa a esconder |
+| F7-11 | `test_operador_deposita_em_qualquer_conta` | `201` |
+| F7-12 | `test_comprovante_de_transacao_alheia_responde_404` | `404 QIT002010` |
+
+### Decisão que o time precisa confirmar
+
+O escopo do cliente se chama `onboarding`, porque é o nome que a credencial da onboarding-api já carrega. Para a conta, o nome certo seria `customer`. Trocar exige mexer na onboarding-api do Carlos, então fica como está e com esta linha registrada. E ninguém emite credencial de `operator` hoje: a conta sabe conferir uma, e quem emite é decisão em aberto.
+
+### Resultado da F7
+
+Os 12 casos foram escritos antes do código. O vermelho veio pelo motivo certo: **9 falharam e 3 passaram**, e os três que passavam eram justamente os que já deviam passar (o dono lendo a própria conta, a transferência para a conta de outro, o depósito). O que falhava era o buraco: ler a conta de outro cliente respondia `200` com o saldo dele.
+
+Depois do código, 12 em 12. A suíte inteira foi de 235 para **247**, e os 235 antigos não mudaram uma linha.
+
+Como os 235 continuaram passando sem mudança: o `RequestGenerator` passou a lembrar quem abriu cada conta (`tests/utils/donos.py`) e manda a credencial do titular por padrão. Quem quer agir como outra pessoa passa a credencial na mão, e é exatamente o que a F7 faz. Isso é preparação, não asserção: nenhum teste prova nada por causa desse registro, e quem prova que a credencial é obrigatória é o F7-04, que manda a requisição sem nenhuma.
+
+### Mutações da F7
+
+| Mutação | O que aconteceu |
+|---|---|
+| `algorithms=["HS256", "none"]` na conferência do token | o F7-07 falhou. É o ataque de JWT com `alg: none`: sem fixar o algoritmo, a API acredita no `sub` que o atacante escreveu |
+| a conferência de titular passou a nunca acontecer | o F7-02 e o F7-03 falharam: a conta e o extrato de outro cliente voltaram a responder `200` |
+| a recusa passou a ser `403` em vez de `404` | **quatro** falharam: F7-02, F7-03, F7-08 e F7-12. É o que prova que os testes cobram o `404` da R8, e não apenas "recusou de algum jeito" |
+
+Nenhuma mutação sobreviveu nesta fatia.
+
+A suíte inteira rodou três vezes em ordem aleatória, 247 verdes nas três. Importa porque a F7 também cria política de tarifa, que é configuração global e append-only.
+
+### O que a F7 não cobre
+
+- **Ninguém emite credencial de `operator`.** A conta sabe conferir uma, e os testes assinam a sua. Quem emite, e com que validade, é decisão em aberto do time.
+- **O escopo do cliente se chama `onboarding`**, porque é o nome que a credencial da onboarding-api carrega. Para a conta, o nome certo seria `customer`. Trocar mexe no código do Carlos.
+- **A rota `POST /internal/posting` continua só com o `INTERNAL-TOKEN`**, e está certo: quem a chama é outra API, não um cliente. O risco de ela escapar pelo gateway continua valendo e tem teste próprio previsto na RFC 00, que não é desta fatia.

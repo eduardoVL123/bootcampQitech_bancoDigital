@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from controllers import TransactionController
 from dtos import FeePolicyDTO, TransactionDTO
+from utils.credential import read_caller
 from utils.schema_handler import SchemaHandler
 
 
@@ -17,7 +18,9 @@ class TransactionResource:
         idempotency_key = request.headers.get("Idempotency-Key")
 
         controller = TransactionController()
-        transaction, ja_existia = controller.create(idempotency_key, payload)
+        transaction, ja_existia = controller.create(
+            idempotency_key, payload, read_caller(request)
+        )
 
         codigo = http_status.HTTP_200_OK if ja_existia else http_status.HTTP_201_CREATED
 
@@ -26,9 +29,9 @@ class TransactionResource:
             status_code=codigo,
         )
 
-    def on_get_by_key(self, transaction_key: str) -> JSONResponse:
+    def on_get_by_key(self, request: Request, transaction_key: str) -> JSONResponse:
         controller = TransactionController()
-        transaction = controller.get_by_key(transaction_key)
+        transaction = controller.get_by_key(transaction_key, read_caller(request))
 
         return JSONResponse(
             content=jsonable_encoder(TransactionDTO.response(transaction)),
