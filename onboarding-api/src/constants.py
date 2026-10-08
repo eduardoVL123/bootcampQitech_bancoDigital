@@ -122,6 +122,11 @@ PLD_NEW_COMPANY_MAX_INCOME = 30000000
 # servidor, que roda em UTC (decisao D18 do plano de testes).
 BANK_TIMEZONE = "America/Sao_Paulo"
 
+# Os parametros da URL cujo valor pode ir para o log (RFC 05, Log sem dado
+# pessoal, decisao D34). Sao os da fila de compliance, e nenhum e pessoal. O
+# resto vira *** no log: um CPF mandado por engano na URL nao fica gravado.
+LOGGED_QUERY_PARAMS = {"limit", "page", "status", "reason_code"}
+
 # Rotas publicas: nao exigem o INTERNAL-TOKEN. A raiz diz quem e este
 # servico, e o health check e o que o Docker consulta para saber se a API
 # ja esta de pe.

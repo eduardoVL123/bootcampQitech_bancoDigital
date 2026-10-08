@@ -2,7 +2,7 @@ import time
 
 from fastapi import FastAPI, Request
 
-from constants import BYPASS_ENDPOINTS
+from constants import BYPASS_ENDPOINTS, LOGGED_QUERY_PARAMS
 from utils.logger import get_logger
 
 
@@ -37,17 +37,15 @@ def register_request_logger_middleware(application: FastAPI) -> None:
         if request.url.path in BYPASS_ENDPOINTS:
             return await call_next(request)
 
-        # O que veio depois do "?" no endereço entra no log de entrada:
-        # é metade do pedido, e sem ele a linha "GET /sample_entities"
-        # não diz qual página alguém pediu.
-        #
-        # E fica a lição pelo avesso: se a query string vai parar no
-        # log, ela NÃO é lugar para segredo. Um token na URL acaba
-        # gravado aqui, no histórico do navegador e no log de todo proxy
-        # do caminho. Segredo viaja em cabeçalho, como o INTERNAL-TOKEN.
+        # O que veio depois do "?" no endereço entra no log de entrada,
+        # mas só o que a API conhece e não é pessoal (decisão D34): sem
+        # isso, a linha "GET /onboardings" não diz qual página alguém
+        # pediu. Todo o resto vira ***, até o nome do parâmetro, que
+        # também vem do cliente: um CPF mandado por engano na URL é
+        # recusado pela API e também não fica gravado aqui.
         requested_path = request.url.path
         if request.url.query:
-            requested_path = f"{requested_path}?{request.url.query}"
+            requested_path = f"{requested_path}?{describe_query(request.query_params)}"
 
         started_at = time.perf_counter()
         logger.info(f"ENTROU {request.method} {requested_path}")
@@ -58,3 +56,15 @@ def register_request_logger_middleware(application: FastAPI) -> None:
         logger.info(f"SAIU {response.status_code} {request.method} {request.url.path} - {elapsed_ms:.1f} ms")
 
         return response
+
+
+def describe_query(query_params) -> str:
+    """A query string como entra no log: nome e valor só dos parâmetros de
+    LOGGED_QUERY_PARAMS; cada um dos outros vira ***."""
+    parts = []
+    for name, value in query_params.multi_items():
+        if name in LOGGED_QUERY_PARAMS:
+            parts.append(f"{name}={value}")
+        else:
+            parts.append("***")
+    return "&".join(parts)
