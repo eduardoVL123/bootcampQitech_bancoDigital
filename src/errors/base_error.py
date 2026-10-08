@@ -23,12 +23,17 @@ def error_verification():
 
 
 class QIException(Exception):
-    def __init__(self, title, code, http_status, description, translation) -> None:
+    def __init__(self, title, code, http_status, description, translation, headers=None) -> None:
         self.title = title
         self.description = description
         self.translation = translation
         self.code = code
         self.http_status = http_status
+        # Alguns erros precisam de cabecalho na resposta. O 401 e o
+        # caso: a RFC 9110 diz que uma resposta 401 TEM de trazer o
+        # WWW-Authenticate dizendo que esquema de autenticacao o
+        # servidor aceita. Sem ele, o cliente nao sabe o que mandar.
+        self.headers = headers or {}
 
 
 class MethodNotAllowed(QIException):
@@ -93,4 +98,71 @@ class InvalidParameter(QIException):
         title = "Invalid Parameter"
         http_status = 400
         translation = "Parâmetros inválidos foram fornecidos na requisição."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+# A credencial do cliente, conferida em src/utils/credential.py.
+# A faixa QIT000 e a dos erros gerais: credencial nao e assunto de
+# conta, e toda API do ecossistema precisa dos mesmos quatro.
+BEARER_REALM = 'Bearer realm="bootcamp"'
+
+
+class MissingCredential(QIException):
+    code = "QIT000003"
+
+    def __init__(self) -> None:
+        title = "Missing credential"
+        http_status = 401
+        description = "Send the credential in the Authorization header, as a Bearer token."
+        translation = "Envie a credencial no cabeçalho Authorization, no formato Bearer."
+        super().__init__(
+            title, self.code, http_status, description, translation,
+            headers={"WWW-Authenticate": BEARER_REALM},
+        )
+
+
+class InvalidCredential(QIException):
+    code = "QIT000004"
+
+    def __init__(self) -> None:
+        title = "Invalid credential"
+        http_status = 401
+        description = "The credential is malformed or its signature does not match."
+        translation = "A credencial está malformada ou a assinatura não confere."
+        super().__init__(
+            title, self.code, http_status, description, translation,
+            headers={"WWW-Authenticate": BEARER_REALM + ', error="invalid_token"'},
+        )
+
+
+class ExpiredCredential(QIException):
+    code = "QIT000005"
+
+    def __init__(self) -> None:
+        title = "Expired credential"
+        http_status = 401
+        description = "The credential has expired. Ask for a new one."
+        translation = "A credencial venceu. Peça uma nova."
+        super().__init__(
+            title, self.code, http_status, description, translation,
+            headers={"WWW-Authenticate": BEARER_REALM + ', error="invalid_token"'},
+        )
+
+
+class OperatorScopeRequired(QIException):
+    """403 e nao 404, de proposito.
+
+    A R8 manda esconder recurso de outra pessoa com 404. Aqui nao ha
+    recurso alheio a esconder: a conta e do proprio cliente, e o que
+    falta e permissao para a OPERACAO. Um 404 aqui mentiria dizendo
+    que a conta dele nao existe.
+    """
+
+    code = "QIT000006"
+
+    def __init__(self) -> None:
+        title = "Operator scope required"
+        http_status = 403
+        description = "This operation requires a credential with the operator scope."
+        translation = "Esta operação exige uma credencial com escopo de operador."
         super().__init__(title, self.code, http_status, description, translation)

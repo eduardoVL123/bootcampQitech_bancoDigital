@@ -32,7 +32,13 @@ def qi_exception_to_response(exception: QIException) -> JSONResponse:
         "request_id": get_request_id(),
         "errors": getattr(exception, "errors", []),
     }
-    return JSONResponse(status_code=exception.http_status, content=body)
+    # O 401 leva o WWW-Authenticate, que a RFC 9110 exige. Quem diz
+    # qual cabecalho e o proprio erro; aqui so se repassa.
+    return JSONResponse(
+        status_code=exception.http_status,
+        content=body,
+        headers=getattr(exception, "headers", None) or None,
+    )
 
 
 def describe_validation_error(error: dict) -> str:

@@ -1,3 +1,8 @@
 from repositories.sample_entity_repository import SampleEntityRepository
 
 
+from repositories.customer_repository import CustomerRepository
+from repositories.customer_document_repository import CustomerDocumentRepository
+from repositories.account_repository import AccountRepository
+from repositories.posting_repository import PostingRepository
+from repositories.transaction_repository import TransactionRepository

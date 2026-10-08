@@ -1,0 +1,9 @@
+{
+  "title": "PostFeePolicy",
+  "type": "object",
+  "properties": {
+    "transfer_fee_cents": {"type": "integer", "minimum": 0}
+  },
+  "required": ["transfer_fee_cents"],
+  "additionalProperties": false
+}

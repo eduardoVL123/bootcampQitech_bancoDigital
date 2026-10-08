@@ -19,3 +19,7 @@ psycopg2-binary==2.9.10
 # So os connectors (src/connectors/) podem usa-lo — nenhuma chamada
 # externa fica solta no meio do codigo.
 requests==2.32.3
+# O PyJWT confere a credencial do cliente (R8). E a mesma versao da
+# onboarding-api, que e quem emite essa credencial: as duas pontas
+# precisam concordar no formato.
+PyJWT==2.15.1
