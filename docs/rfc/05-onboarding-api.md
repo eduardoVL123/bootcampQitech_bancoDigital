@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Time** | Carlos Alberto Magalhães Neto · \<nome 2\> · \<nome 3\> |
-| **Data** | 06/10/2026 |
-| **Versão** | 0.13 (log sem dado pessoal: o log de cada pedido mostra o caminho e os nomes dos parâmetros, e o valor só dos que não são pessoais; sem o access log do uvicorn). Na 0.12: eventos: o envelope e os cabeçalhos do `POST /internal/event`, a ordem dos eventos de uma abertura, a posse de 60 s na entrega, `occurred_at` na outbox; o contrato com a webhook-api ainda se alinha com a RFC 06). Na 0.11: compliance: campos e ordem da fila, quem decidiu no histórico e visível só a compliance, recusa troca os motivos por `COMPLIANCE_REJECTED`, aprovação de abertura parada por birô fora recusada com `ONB005017`). Na 0.10: birô fora do ar: o que conta como falha, circuito aberto só por 5 falhas seguidas, análise interrompida sem nada gravado, 24 horas contadas da entrada na fila, chamada de teste dos birôs e corpo da retentativa em lote). Na 0.9: análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo, sanção encerra a análise antes do PEP. Na 0.8: prazo de 20 minutos: a abertura guarda a `customer_key` e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura). Na 0.7: envio do RG: `SEND_FRONT` quando só o verso chegou; formato de `documents` no `GET`; trava da abertura no envio). Na 0.6: o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura). Na 0.5: absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote |
+| **Time** | Carlos Alberto Magalhães Neto · Enrico · Eduardo |
+| **Data** | 08/10/2026 |
+| **Versão** | 0.14 (o histórico de versões está no fim do documento) |
 
 ## Contextualização
 
@@ -158,7 +158,10 @@ Depois que o RG fica completo, o prazo deixa de valer: a análise é tempo do ba
 
 Se o Redis cair, esses limites ficam desligados e o problema é registrado no log. A aprovação continua dependendo do KYC. Nos testes, `X-Test-Client-Ip` simula a origem, mas só vale com `RATE_LIMIT_TEST_MODE=true`.
 
-**Log sem dado pessoal.** O log de cada pedido mostra o método, o caminho e os nomes dos parâmetros da URL. O valor só aparece nos parâmetros que a API conhece e não são pessoais (`limit`, `page`, `status` e `reason_code`); qualquer outro vira `***`. Assim, um CPF mandado por engano na URL, que a API recusa com `400 ONB000001`, também não fica no log. O access log do uvicorn fica desligado, porque ele grava a URL inteira, e o log da própria API já registra a entrada e a saída de cada pedido, com o status e o tempo.
+**Log sem dado pessoal.** O log de cada pedido mostra o método, o caminho e os nomes dos parâmetros da URL. O valor só aparece nos parâmetros que a API conhece e não são pessoais (`limit`, `page`, `status` e `reason_code`); qualquer outro vira `***`. Assim, um CPF mandado por engano na URL, que a API recusa com `400 ONB000001`, também não fica no log. O access log do uvicorn fica desligado, porque ele grava a URL inteira, e o log da própria API já registra a entrada e a saída de cada pedido, com o status e o tempo. Duas proteções valem para toda linha de log, da API e do worker, inclusive as do uvicorn, que passam pelo mesmo caminho:
+
+- **CPF e CNPJ viram `***`**, com ou sem pontuação, venham de onde vierem. Um documento posto por engano no caminho da URL (`GET /customer/{documento}`), por exemplo, recebe `404` e não fica no log.
+- **A mensagem de um erro do banco nunca vai para o log.** Quando uma restrição barra uma gravação, o PostgreSQL repete na mensagem a linha que tentou gravar, com nome, documento e data de nascimento, e o SQLAlchemy acrescenta os valores do comando. No lugar dela, o log mostra o tipo do erro, o SQLSTATE, a tabela, a restrição que barrou e o caminho no código: o bastante para achar o defeito, sem guardar dado de ninguém.
 
 **Formato de erro.** Todo erro tem `code`, `title`, `description`, `translation` (em português), `request_id` (o protocolo, para o atendimento) e `errors`, uma lista com `field`, `rule` e `message`:
 
@@ -171,7 +174,7 @@ Nenhuma mensagem traz CPF, renda ou documento.
 
 **Testes.** Cada código, cada motivo e cada fluxo desta RFC têm um teste black box escrito antes do código. A account-api, a webhook-api, a Receita e as listas ficam no Mockserver, e o bucket no LocalStack.
 
-**Prefixo dos códigos.** Todo erro que a onboarding-api responde começa com `ONB`: os gerais usam os números da RFC 00 (`ONB000001` formato, `ONB000002` token interno, `ONB000003`, `ONB000006`, `ONB000007` e `ONB000008` credencial, `ONB000011` e `ONB000012` chave idempotente, `ONB000404` rota inexistente) e os desta API ficam em `ONB005xxx`. Os que só o gateway responde continuam `QIT` (`QIT000013`, `QIT000014` e `QIT000015`), porque são de outra API.
+**Prefixo dos códigos.** Todo erro que a onboarding-api responde começa com `ONB`: os gerais usam os números da RFC 00 (`ONB000001` formato, `ONB000002` token interno, `ONB000003`, `ONB000006`, `ONB000007` e `ONB000008` credencial, `ONB000011` e `ONB000012` chave idempotente, `ONB000404` rota inexistente, `ONB000500` erro inesperado) e os desta API ficam em `ONB005xxx`. Os que só o gateway responde continuam `QIT` (`QIT000013`, `QIT000014` e `QIT000015`), porque são de outra API.
 
 | Código | Status | Quando |
 |---|---|---|
@@ -748,3 +751,16 @@ sequenceDiagram
 >   - Cada mudança de etapa grava o evento na outbox no mesmo `COMMIT`, e a webhook-api entrega.
 >   - O gateway faz o replay das chaves, e os `UNIQUE` garantem o resto.
 >   - O prazo de 20 minutos apaga o que foi abandonado.
+
+## Histórico de versões
+
+- **0.14 (08/10):** log sem dado pessoal em toda linha: CPF e CNPJ, com ou sem pontuação, viram `***`, inclusive no caminho da URL; a mensagem de um erro do banco não vai para o log, só o tipo, o SQLSTATE, a tabela e a restrição; o log do uvicorn passa pelo mesmo caminho (decisão D35). O histórico de versões passou para o fim.
+- **0.13 (07/10):** log sem dado pessoal: o log de cada pedido mostra o caminho e os nomes dos parâmetros, e o valor só dos que não são pessoais; sem o access log do uvicorn (D34).
+- **0.12 (07/10):** eventos: o envelope e os cabeçalhos do `POST /internal/event`, a ordem dos eventos de uma abertura, a posse de 60 s na entrega e o `occurred_at` na outbox; o contrato com a webhook-api ainda se alinha com a RFC 06 (D33).
+- **0.11 (07/10):** compliance: campos e ordem da fila, quem decidiu no histórico, visível só a compliance, recusa que troca os motivos por `COMPLIANCE_REJECTED` e aprovação de abertura parada por birô fora recusada com `ONB005017` (D30 a D32).
+- **0.10 (07/10):** birô fora do ar: o que conta como falha, circuito aberto só por 5 falhas seguidas, análise interrompida sem nada gravado, 24 horas contadas da entrada na fila, chamada de teste dos birôs e corpo da retentativa em lote (D15 e D27 a D29).
+- **0.9 (07/10):** análise do KYC: contrato dos birôs, `next_step` depois do RG, fila do worker a cada segundo e sanção que encerra a análise antes do PEP (D1, D2, D14 e D26).
+- **0.8 (07/10):** prazo de 20 minutos: a abertura guarda a `customer_key`, e o dono recebe `410` mesmo depois de o worker apagar o cadastro; quem marca `EXPIRED` e apaga é só o worker; as fotos saem pelo prefixo da abertura (D24 e D25).
+- **0.7 (07/10):** envio do RG: `SEND_FRONT` quando só o verso chegou, formato de `documents` no `GET` e trava da abertura no envio (D22 e D23).
+- **0.6 (06/10):** o gateway não guarda a resposta do `POST /onboarding`; credencial de compliance definida; todo erro da onboarding-api com prefixo `ONB`; tabelas no banco único do grupo, com renda, ocupação e PEP na abertura; o RG em `onboarding_document`, ligado à abertura.
+- **0.5 (05/10):** absorve a customer-api; idempotência no gateway-api; eventos pela webhook-api; prazo de 20 minutos; retentativa em lote.

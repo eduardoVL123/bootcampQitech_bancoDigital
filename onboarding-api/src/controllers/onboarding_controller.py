@@ -72,7 +72,9 @@ class OnboardingController(BaseController):
 
     def __init__(self, fault_injection: frozenset = frozenset()) -> None:
         super().__init__(__name__)
-        self.customer_repository = CustomerRepository(self.context)
+        self.customer_repository = CustomerRepository(
+            self.context, simulate_database_error="database_error" in fault_injection
+        )
         self.onboarding_repository = OnboardingRepository(self.context)
         self.rate_limit_repository = RateLimitRepository(available="redis_unavailable" not in fault_injection)
         self.bucket_connector = BucketConnector(available="bucket_unavailable" not in fault_injection)

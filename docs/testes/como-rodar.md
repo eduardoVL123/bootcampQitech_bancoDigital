@@ -118,7 +118,7 @@ tests/onboarding_api/test_service.py::TestService::test_requires_internal_token 
 
 ## Testes com falha simulada
 
-Alguns testes fingem que algo caiu: hoje, o F2-06, com o Redis fora do ar, e o F4-17, com o bucket do RG fora do ar. Eles só rodam com `FAULT_INJECTION_ENABLED=true` **nos dois lados**: na API, para ela obedecer ao cabeçalho `X-Fault-Injection`, e no pytest, para o teste não ser pulado. É assim que o CI roda.
+Alguns testes fingem que algo caiu: hoje, o F2-06, com o Redis fora do ar, o F4-17, com o bucket do RG fora do ar, e o F10-04, com um erro inesperado do banco que leva os dados da pessoa na mensagem. Eles só rodam com `FAULT_INJECTION_ENABLED=true` **nos dois lados**: na API, para ela obedecer ao cabeçalho `X-Fault-Injection`, e no pytest, para o teste não ser pulado. É assim que o CI roda.
 
 Os testes do prazo de 20 minutos (F5) e os da F7 que precisam de 24 horas sem birô seguem a mesma ideia, com `SIMULATED_CLOCK_ENABLED=true`: com ela, o teste manda `X-Simulated-Now` e o pedido acontece "no passado", sem esperar 20 minutos (ou 24 horas) de verdade. Ligue as duas juntas.
 

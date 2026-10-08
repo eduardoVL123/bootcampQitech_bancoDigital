@@ -103,5 +103,8 @@ def register_error_handlers(application: FastAPI) -> None:
 
     @application.exception_handler(Exception)
     def handle_unexpected_error(request: Request, exception: Exception) -> JSONResponse:
-        logger.exception(f"Erro inesperado em {request.method} {request.url.path}")
+        # Esta função roda numa thread do FastAPI, fora do "except": o
+        # logger.exception não veria o erro e escreveria "NoneType: None".
+        # Quem tira do traceback o que for pessoal é o formatador do log.
+        logger.error(f"Erro inesperado em {request.method} {request.url.path}", exc_info=exception)
         return qi_exception_to_response(InternalError())
