@@ -108,7 +108,11 @@ services:
       SIMULATED_CLOCK_ENABLED: ${SIMULATED_CLOCK_ENABLED:-false}
     volumes:
       - ./onboarding-api/src:/app
-    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
+    # --no-access-log: o access log do uvicorn grava a URL inteira, com a
+    # query string, e um dado pessoal mandado ali iria junto (RFC 05, Log sem
+    # dado pessoal). O log da propria API ja registra a entrada e a saida de
+    # cada pedido, com o status e o tempo.
+    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload --no-access-log
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3005/health_check\")'"]
       interval: 3s

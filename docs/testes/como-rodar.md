@@ -165,7 +165,7 @@ Atenção: com o worker de pé, toda abertura de teste que ficou parada em `DRAF
 
 ## Ver o que a API fez
 
-O log mostra cada pedido que entrou e saiu, com o status e o tempo:
+O log mostra cada pedido que entrou e saiu, com o status e o tempo. Da URL, ele mostra o caminho e só os parâmetros que não são pessoais (`limit`, `page`, `status` e `reason_code`); qualquer outro aparece como `***`, para um CPF mandado por engano na URL não ficar gravado (RFC 05, Log sem dado pessoal). Pelo mesmo motivo, o access log do uvicorn fica desligado na onboarding-api:
 
 ```bash
 docker compose logs onboarding-api --tail 50

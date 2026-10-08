@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.12 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.13 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.7 (F9 verde, com F9-09; D33; o contrato com a webhook-api se alinha com a RFC 06). Na 0.6: F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.8 (F10 verde; D34, log sem dado pessoal; com ela, as fatias F0 a F10 estão verdes). Na 0.7: F9 verde, com F9-09; D33; o contrato com a webhook-api se alinha com a RFC 06). Na 0.6: F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -386,14 +386,18 @@ Arquivo `test_events.py`. **Verde em 07/10** (branch `feat/onboarding-eventos`).
 
 ### F10. LGPD, transversal
 
-Arquivo `test_lgpd.py`. Junta o que os outros já provam e acrescenta dois testes.
+Arquivo `test_lgpd.py`. **Verde em 07/10** (branch `feat/onboarding-lgpd`). Junta o que os outros já provam e acrescenta dois testes. O F10-02 lê o log pelo `docker compose logs`, como faria quem cuida do serviço: não lê o banco nem importa o código (R1), e pula se não houver `docker`.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F10-01 | `test_nenhuma_rota_recebe_dado_pessoal_na_url` | `GET /onboardings?document_number=...` | `400 ONB000001` (parâmetro desconhecido) | Nada pessoal na URL |
-| F10-02 | `test_log_nunca_tem_documento_nem_renda` | Jornada completa com recusas no meio; lê `docker compose logs` da API e do worker | Nem o CPF (com e sem máscara) nem a renda aparecem | Nada pessoal no log (pula se não houver `docker`) |
+| F10-01 | `test_nenhuma_rota_recebe_dado_pessoal_na_url` | `GET /onboardings?document_number=...` com credencial de compliance | `400 ONB000001`, apontando o parâmetro | Nada pessoal na URL |
+| F10-02 | `test_log_nunca_tem_documento_nem_renda` | Jornada completa de uma pessoa com nome e renda fáceis de reconhecer, com recusas no meio: data impossível (`422`), documento repetido (`409`), o CPF mandado na URL da fila, como valor e como nome de parâmetro (`400` nos dois), RG, análise até `ACTIVE` e leitura do cadastro; depois, lê o log da API e do worker desde o começo do teste | Nem o CPF (com e sem máscara), nem o nome, nem a renda, nem a data de nascimento aparecem no log | Nada pessoal no log, decisão D34 (pula sem `docker`) |
 
 Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros (F1-34), verificações (F6-21), fila (F8-06), eventos (F9-05) e dados apagados no prazo (F5-04).
+
+O F10-02 achou um vazamento de verdade: a URL `GET /onboardings?document_number=...`, que o F8-05 manda para provar que ela é recusada, ia inteira para o log da API e para o access log do uvicorn, com o CPF. O F10-01 já passava antes do código, porque a rota já recusava o parâmetro desde a F8.
+
+**Mutação da F10 (07/10).** As 5 mutações morreram, todas com o CPF aparecendo no log: query string inteira no log, nome do parâmetro desconhecido no log (só morre pelo caso do CPF usado como nome), valor do parâmetro desconhecido no log, `document_number` na lista do que pode ir para o log e o access log do uvicorn ligado de novo.
 
 ## 4. Matriz de cobertura
 
@@ -548,6 +552,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D31 | A RFC dizia que a decisão, a justificativa e quem decidiu ficam no histórico, mas a tabela de eventos não tinha onde guardar quem decidiu, e não dizia quem vê | **Decidida em 07/10, na RFC 05 v0.11:** coluna nova `decided_by` em `onboarding_status_event`, com o `sub` da credencial de compliance (também na retentativa em lote). Só compliance vê `justification` e `decided_by`; o cliente vê a etapa e o motivo, porque avisar o suspeito de uma suspeita de lavagem é proibido. Recusar troca os motivos por `COMPLIANCE_REJECTED`; aprovar mantém os motivos e o risco |
 | D32 | A RFC deixava compliance aprovar qualquer abertura em `MANUAL_REVIEW`, inclusive a parada por birô fora, que nunca terminou as consultas obrigatórias | **Decidida em 07/10, na RFC 05 v0.11:** aprovar uma abertura com `BUREAU_UNAVAILABLE` responde `409 ONB005017` e nada muda: o caminho é a retentativa em lote. Recusar continua valendo |
 | D33 | A RFC não dizia o envelope do evento, o que conta como entregue, nem a ordem dos eventos de uma abertura | **Decidida em 07/10, na RFC 05 v0.12:** envelope `event_id`, `event_type`, `occurred_at` e `data`, com o `SERVICE-TOKEN`; entregue é `202` ou `200`, e o resto é falha, com nova tentativa em 1, 5, 15 e 60 minutos e depois a cada 6 horas; o worker toma posse do evento por 60 s antes de chamar; um evento só sai depois dos anteriores da mesma abertura |
+| D34 | A RFC proibia dado pessoal no log, mas o log de cada pedido gravava a URL inteira, com a query string, e o uvicorn também | **Decidida em 07/10, na RFC 05 v0.13:** o log mostra o caminho e os nomes dos parâmetros; o valor, só de `limit`, `page`, `status` e `reason_code`; os outros viram `***`. O access log do uvicorn fica desligado na onboarding-api |
 
 **Pendências da RFC encontradas no caminho**
 
