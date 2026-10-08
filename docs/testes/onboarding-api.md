@@ -4,7 +4,7 @@
 |---|---|
 | **Base** | RFC 05 v0.13 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.8 (F10 verde; D34, log sem dado pessoal; com ela, as fatias F0 a F10 estão verdes). Na 0.7: F9 verde, com F9-09; D33; o contrato com a webhook-api se alinha com a RFC 06). Na 0.6: F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
+| **Versão** | 0.9 (P1 resolvida em parte: o link assinado do RG entrou no `main` pelo Eduardo, com três testes em `test_get_document_url.py`). Na 0.8: F10 verde; D34, log sem dado pessoal; com ela, as fatias F0 a F10 estão verdes. Na 0.7: F9 verde, com F9-09; D33; o contrato com a webhook-api se alinha com a RFC 06). Na 0.6: F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -431,6 +431,7 @@ O F10-02 achou um vazamento de verdade: a URL `GET /onboardings?document_number=
 | `ONB005015` | 503 | F4-17 |
 | `ONB005016` | 503 | F7-11 |
 | `ONB005017` | 409 | F8-17 |
+| `ONB005018` | 404 | `test_get_document_url.py` (do Eduardo, sem ID neste plano) |
 
 **Motivos (`reason_codes`)**
 
@@ -500,7 +501,7 @@ Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro 
 - **Uma consulta de teste por vez no meio aberto:** com duas réplicas, a segunda consulta que chega no mesmo instante espera a próxima tentativa. A janela é pequena demais para um teste provocar.
 - **Comunicação ao Coaf registrada** no caso de sanção: nenhuma rota mostra esse registro.
 - **Chave do Redis com o SHA-256 do documento, e não o CPF puro:** é detalhe interno.
-- **Link assinado de 5 minutos do RG para compliance:** a RFC cita o link e o registro de cada acesso, mas a tabela de rotas não tem essa rota (pendência P1 abaixo).
+- **Link assinado de 5 minutos do RG para compliance:** a rota entrou no `main` pelo Eduardo (`GET /internal/onboarding/{onboarding_key}/document/{side}/url`), com três testes em `test_get_document_url.py`, fora dos IDs deste plano. O black box não alcança o registro de cada acesso, que a RFC pede e nenhuma rota mostra, nem a validade de 5 minutos do link (pendência P1 abaixo).
 - **Foto sem linha no bucket:** quando o envio é recusado depois de a foto subir (outro envio da mesma abertura ganhou a trava), a foto fica no bucket sem linha no banco. A RFC aceita esse pior caso ("nunca uma linha sem foto"). O caminho começa com `rg/{onboarding_key}/`, e o vencimento da F5 pode apagar pelo prefixo. O teste não vê, porque nunca lê o bucket.
 - **`UNIQUE(onboarding_id, side)` como última garantia no envio do RG:** a conferência depois da trava já recusa o lado repetido, e a janela que sobra para o `UNIQUE` é pequena demais para um teste provocar. A mutação que tira a trava e o tratamento do `UNIQUE` juntos sobrevive por isso.
 - **A conexão devolvida antes de chamar o bucket:** o envio do RG encerra a leitura (`rollback`, sem nada gravado) antes do `PutObject`, para não segurar conexão nem trava durante até 10 s. Não aparece por HTTP.
@@ -556,7 +557,7 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 
 **Pendências da RFC encontradas no caminho**
 
-- **P1.** A RFC cita o link assinado do RG para compliance, mas não há rota para ele.
+- **P1.** Resolvida em parte no `main` de 07/10: o Eduardo criou `GET /internal/onboarding/{onboarding_key}/document/{side}/url`, só para compliance (`404 ONB005006` para quem não é; `404 ONB005018` quando a abertura não tem o lado pedido). Faltam dois pontos a combinar com o time: o registro de cada acesso, que a RFC pede, e o caminho em `/internal`, que o gateway nunca expõe (RFC 00), numa rota que compliance chama com a credencial dela.
 - **P2.** O contrato da webhook-api: a RFC 06 do Eduardo (no `main` desde 07/10) propõe uma tabela compartilhada `webhook_outbox` que a webhook-api lê direto, sem `POST /internal/event`. A F9 segue a RFC 05 até o time alinhar; se a RFC 06 vencer, muda só a entrega.
 - **P3.** Resolvida pela D10: o gateway não guarda mais a resposta do `POST /onboarding`.
 

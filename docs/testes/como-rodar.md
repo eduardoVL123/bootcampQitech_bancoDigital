@@ -61,6 +61,7 @@ Para conferir, rode `docker compose ps`. Os serviços precisam aparecer como `he
 | `onboarding-worker` | O mesmo código da onboarding-api, em outro processo, em duas réplicas. A cada segundo, analisa o KYC das aberturas com o RG completo e pede a conta das aprovadas. Com um birô fora, tenta de novo em 1, 5, 15 e 60 minutos, e com 24 horas passa a abertura a compliance. Também entrega os eventos da outbox à webhook-api, na ordem de cada abertura. A cada minuto, vence as aberturas paradas há mais de 20 minutos e apaga as fotos e os dados pessoais delas | nenhuma |
 | `mockserver` | Faz o papel da Receita, das listas de sanções e de PEP, da account-api e da webhook-api. Cada teste programa a resposta para o documento ou a abertura dele. Duas respostas já sobem prontas, pelo `mockserver/respostas-padrao.json`: a chamada de teste dos birôs (`GET .../health`) responde `200`, e a webhook-api recebe todo evento com `202` | 1080 |
 | `api` | A API da raiz do repositório (pasta `src/`) | 3000 |
+| `customer-api` | A API de cliente do Eduardo (pasta `customer-api/`), que veio com o `main` de 07/10 | 3010 |
 
 **4. Rode os testes da onboarding-api:**
 
