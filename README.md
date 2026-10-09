@@ -305,6 +305,7 @@ saldo:
 | `POST /internal/account` | abre a conta do cliente | `201` nova, `200` a que já existia |
 | `GET /account/{key}` | saldo e estado atual | `200`; `404 QIT002010` se não existe ou não é sua |
 | `GET /account/{key}/statement` | extrato por cursor assinado | `200`; `400 QIT002015` cursor adulterado |
+| `PATCH /account/{key}` | bloqueia, desbloqueia ou encerra. Só operador | `200`; `409 QIT002014` encerrar com saldo; `422 QIT002018` sair de `CLOSED` |
 | `POST /transaction` | depósito e transferência com tarifa | `201`; `409 QIT002012` saldo insuficiente; `422 QIT002019` formato errado por tipo |
 | `GET /transaction/{key}` | o comprovante | `200`; `404 QIT002010` |
 | `POST /internal/posting` | **a única rota que move dinheiro** | `201`; `422 QIT002017` se os lançamentos não somam zero |
