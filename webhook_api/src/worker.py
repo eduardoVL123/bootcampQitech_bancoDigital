@@ -1,65 +1,156 @@
-import requests
-import hmac
+"""O worker que entrega os eventos aos parceiros.
+
+Ele roda como um processo separado, igual ao onboarding-worker: um
+laco que acorda, pega o que esta na hora de entregar, tenta, e volta a
+dormir. Se morrer no meio, nada se perde: o que nao foi entregue
+continua na tabela, com a hora da proxima tentativa.
+
+Tres decisoes que ficam visiveis no codigo:
+
+1. Qualquer 2xx e sucesso. Um parceiro que responde 201, 202 ou 204
+   esta aceitando o evento, e tratar so o 200 como sucesso faria o
+   mesmo evento ser entregue cinco vezes e depois dado como perdido.
+
+2. Um COMMIT por evento. Com um commit so no fim do lote, o processo
+   morrer no meio faz o lote inteiro voltar a PENDING, inclusive o que
+   ja chegou ao parceiro: entrega dobrada de graca.
+
+3. A trava e SKIP LOCKED. Assim duas replicas do worker nunca pegam o
+   mesmo evento, e nenhuma fica esperando a outra.
+"""
 import hashlib
+import hmac
 import json
 import logging
-from typing import List
+import time
+from datetime import datetime, timedelta, timezone
 
+import requests
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from webhook_api.src import config
 from webhook_api.src.models.webhook_outbox import WebhookOutbox
 
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] webhook-worker - %(message)s")
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 5
+PENDENTES = ("PENDING", "QUEUED_FOR_RETRY")
 
-def process_outbox_events(db_session):
+
+def agora():
+    return datetime.now(timezone.utc)
+
+
+def assina(corpo: str) -> str:
+    """HMAC-SHA256 do corpo exato que vai na requisicao.
+
+    Tem de ser do corpo EXATO, byte a byte: se o worker assinar um
+    JSON e mandar outro, com os campos em outra ordem, a conta do
+    parceiro nao fecha e ele recusa um evento legitimo.
     """
-    Processa os eventos pendentes no outbox enviando-os para os webhooks de destino.
-    Implementa retentativas com recuo (na vida real, o tempo seria gerenciado pelo Redis)
-    e geração de assinatura HMAC para segurança.
-    """
-    # Busca os eventos pendentes
-    events_to_process: List[WebhookOutbox] = db_session.query(WebhookOutbox).filter(
-        WebhookOutbox.status.in_(["PENDING", "QUEUED_FOR_RETRY"])
-    ).all()
+    return hmac.new(config.SECRET.encode(), corpo.encode(), hashlib.sha256).hexdigest()
 
-    for event in events_to_process:
-        headers = {"Content-Type": "application/json"}
-        payload_str = json.dumps(event.payload, separators=(',', ':'))
 
-        # Se tiver secret_key, geramos a assinatura matemática para garantir autenticidade
-        if event.secret_key:
-            signature = hmac.new(
-                event.secret_key.encode('utf-8'),
-                payload_str.encode('utf-8'),
-                hashlib.sha256
-            ).hexdigest()
-            headers["X-Banco-Signature"] = signature
+def entrega(evento: WebhookOutbox) -> tuple:
+    """Manda o evento. Devolve (entregue, motivo)."""
+    corpo = json.dumps(
+        {
+            "event_id": evento.event_id.strip(),
+            "event_type": evento.event_type,
+            "payload": evento.payload,
+        },
+        separators=(",", ":"),
+    )
+    cabecalhos = {
+        "Content-Type": "application/json",
+        "X-Banco-Signature": assina(corpo),
+        "X-Banco-Event-Id": evento.event_id.strip(),
+    }
 
+    try:
+        resposta = requests.post(
+            evento.target_url,
+            data=corpo.encode(),
+            headers=cabecalhos,
+            timeout=config.TIMEOUT_SECONDS,
+        )
+    except requests.exceptions.RequestException as erro:
+        return False, type(erro).__name__
+
+    if 200 <= resposta.status_code < 300:
+        return True, None
+    return False, f"HTTP {resposta.status_code}"
+
+
+def marca_falha(evento: WebhookOutbox, motivo: str) -> None:
+    """Conta a tentativa e agenda a proxima, com recuo exponencial."""
+    evento.retries += 1
+    evento.last_error = (motivo or "")[:255]
+    evento.updated_at = agora()
+
+    if evento.retries >= config.MAX_RETRIES:
+        evento.status = "FAILED"
+        logger.warning("evento %s dado como perdido depois de %s tentativas", evento.event_id, evento.retries)
+        return
+
+    espera = config.RETRY_BASE_SECONDS * (2 ** (evento.retries - 1))
+    evento.status = "QUEUED_FOR_RETRY"
+    evento.next_attempt_at = agora() + timedelta(seconds=espera)
+
+
+def process_outbox_events(db_session) -> int:
+    """Uma varredura. Devolve quantos eventos foram tratados."""
+    eventos = (
+        db_session.query(WebhookOutbox)
+        .filter(
+            WebhookOutbox.status.in_(PENDENTES),
+            WebhookOutbox.next_attempt_at <= agora(),
+        )
+        .order_by(WebhookOutbox.next_attempt_at)
+        .limit(config.BATCH_SIZE)
+        .with_for_update(skip_locked=True)
+        .all()
+    )
+
+    for evento in eventos:
+        entregue, motivo = entrega(evento)
+        if entregue:
+            evento.status = "DELIVERED"
+            evento.updated_at = agora()
+            logger.info("evento %s entregue (%s)", evento.event_id, evento.event_type)
+        else:
+            marca_falha(evento, motivo)
+        # Um COMMIT por evento: ver a decisao 2 no topo do arquivo.
+        db_session.commit()
+
+    return len(eventos)
+
+
+def main() -> None:
+    engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+
+    logger.info(
+        "de pe: varrendo a cada %ss, recuo de %ss, ate %s tentativas",
+        config.POLL_SECONDS, config.RETRY_BASE_SECONDS, config.MAX_RETRIES,
+    )
+
+    while True:
+        session = Session()
         try:
-            # Enviamos pela rede!
-            response = requests.post(
-                event.target_url,
-                json=event.payload,
-                headers=headers,
-                timeout=10
-            )
+            process_outbox_events(session)
+        except Exception as erro:
+            # Um erro numa varredura nao pode derrubar o worker: ele
+            # dorme e tenta de novo. O que estava na fila continua la.
+            logger.error("falha na varredura: %s: %s", type(erro).__name__, erro)
+            session.rollback()
+        finally:
+            session.close()
 
-            if response.status_code == 200:
-                event.status = "DELIVERED"
-            else:
-                _handle_failure(event)
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erro ao entregar webhook ID {event.id}: {str(e)}")
-            _handle_failure(event)
+        time.sleep(config.POLL_SECONDS)
 
-    # Commita as mudanças no final
-    db_session.commit()
 
-def _handle_failure(event: WebhookOutbox):
-    """Lida com a falha de entrega aplicando política de retentativa"""
-    event.retries += 1
-    if event.retries >= MAX_RETRIES:
-        event.status = "FAILED"
-    else:
-        event.status = "QUEUED_FOR_RETRY"
+if __name__ == "__main__":
+    main()

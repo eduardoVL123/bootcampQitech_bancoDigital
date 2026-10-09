@@ -553,23 +553,42 @@ CREATE INDEX onboarding_outbox_pending ON onboarding_outbox (onboarding_id, id) 
 -- =====================================================================
 -- 8. WEBHOOKS OUTGOING (webhook-api, RFC 06)
 --
--- A tabela webhook_outbox é responsável por armazenar eventos que devem 
--- ser despachados para a internet (Transactional Outbox Pattern). O worker 
--- lida com os status (PENDING, QUEUED_FOR_RETRY, DELIVERED, FAILED).
+-- A caixa de saida de eventos (Transactional Outbox). Quem muda o
+-- estado do negocio grava o evento aqui NA MESMA TRANSACAO: ou as duas
+-- coisas acontecem, ou nenhuma. O worker le daqui e entrega.
+--
+-- O segredo do parceiro NAO mora aqui. Ele e configuracao, vem do
+-- ambiente, e uma coluna de segredo copiada em cada linha da fila
+-- seria um segredo a mais para vazar a cada evento.
 -- =====================================================================
 
 CREATE TABLE webhook_outbox(
     id                  BIGSERIAL PRIMARY KEY,
+    -- O identificador do evento para QUEM RECEBE. A entrega por HTTP e
+    -- "ao menos uma vez": se o parceiro responder e o nosso COMMIT
+    -- falhar logo depois, o evento sai de novo. E por este id que ele
+    -- descarta a repeticao.
+    event_id            CHAR(36) NOT NULL,
     target_url          VARCHAR(500) NOT NULL,
     event_type          VARCHAR(100) NOT NULL,
     payload             JSONB NOT NULL,
     status              VARCHAR(30) NOT NULL DEFAULT 'PENDING',
-    secret_key          VARCHAR(255),
     retries             INTEGER NOT NULL DEFAULT 0,
+    -- Quando tentar de novo. Sem esta coluna nao existe recuo: o worker
+    -- reenviaria na varredura seguinte, e as cinco tentativas
+    -- queimariam em segundos contra um parceiro que ainda esta fora.
+    next_attempt_at     TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+    last_error          VARCHAR(255),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
     updated_at          TIMESTAMPTZ,
+    UNIQUE(event_id),
     CHECK (status IN ('PENDING', 'QUEUED_FOR_RETRY', 'DELIVERED', 'FAILED')),
     CHECK (retries >= 0)
 );
 
-CREATE INDEX webhook_outbox_status_idx ON webhook_outbox (status) WHERE status IN ('PENDING', 'QUEUED_FOR_RETRY');
+-- O worker so procura o que esta na hora de tentar. O indice parcial
+-- deixa de fora o que ja foi entregue e o que foi dado como perdido,
+-- que e o que mais cresce com o tempo.
+CREATE INDEX webhook_outbox_a_entregar
+    ON webhook_outbox (next_attempt_at)
+    WHERE status IN ('PENDING', 'QUEUED_FOR_RETRY');

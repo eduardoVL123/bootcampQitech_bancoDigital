@@ -73,10 +73,18 @@ services:
       BANKSLIP_API_URL: ${BANKSLIP_API_URL:-http://localhost:8080}
       BANKSLIP_API_INTERNAL_TOKEN: ${BANKSLIP_API_INTERNAL_TOKEN:-default_token}
       BANKSLIP_API_TIMEOUT: ${BANKSLIP_API_TIMEOUT:-5}
+      # Para onde o evento publicado vai. Quem entrega e o
+      # webhook-worker; a api so precisa saber o destino para gravar
+      # junto com o evento (RFC 06).
+      WEBHOOK_TARGET_URL: ${WEBHOOK_TARGET_URL:-http://mockserver:1080/parceiro/webhook}
     volumes:
       # Monta o codigo pra dentro do container: salvou o arquivo,
       # a API recarrega sozinha (o --reload ali embaixo).
       - ./src:/app
+      # O publicador de eventos, que a api usa para gravar na
+      # webhook_outbox no mesmo COMMIT da transacao (RFC 06). Nao e um
+      # servico aqui dentro: quem entrega e o webhook-worker.
+      - ./webhook_api:/app/webhook_api
     # --reload: salvou o arquivo, a API reinicia sozinha.
     command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --reload
     healthcheck:
@@ -187,6 +195,42 @@ services:
       redis:
         condition: service_healthy
       localstack:
+        condition: service_healthy
+      mockserver:
+        condition: service_started
+
+  # Entrega os eventos da webhook_outbox aos parceiros (RFC 06). E um
+  # processo sem porta, como o onboarding-worker: um laco que varre a
+  # caixa de saida, assina e manda. Se ele cair, nada se perde, porque
+  # o que nao foi entregue continua na tabela com a hora da proxima
+  # tentativa.
+  webhook-worker:
+    build:
+      context: .
+      dockerfile: webhook_api/Dockerfile
+      target: worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      # O parceiro. No compose e o Mockserver, como os biros: em
+      # producao seria o endereco de verdade, e viria do ambiente.
+      WEBHOOK_TARGET_URL: ${WEBHOOK_TARGET_URL:-http://mockserver:1080/parceiro/webhook}
+      # A chave com que o evento e assinado em HMAC-SHA256. Os testes
+      # leem a mesma variavel para refazer a conta e comparar. O padrao
+      # serve so para estudo.
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-webhook_secret_de_estudo}
+      WEBHOOK_POLL_SECONDS: ${WEBHOOK_POLL_SECONDS:-1}
+      # O recuo exponencial e base * 2^(tentativas - 1). Aqui a base e
+      # 2 segundos, para o ambiente local e os testes nao levarem
+      # minutos; em producao seria 60, e a sequencia viraria 1, 2, 4, 8
+      # e 16 minutos. Fica no compose, visivel, e nao escondido no
+      # codigo.
+      WEBHOOK_RETRY_BASE_SECONDS: ${WEBHOOK_RETRY_BASE_SECONDS:-2}
+      WEBHOOK_MAX_RETRIES: ${WEBHOOK_MAX_RETRIES:-5}
+    volumes:
+      - ./webhook_api:/app/webhook_api
+    command: watchfiles --filter python "python -m webhook_api.src.worker"
+    depends_on:
+      db:
         condition: service_healthy
       mockserver:
         condition: service_started

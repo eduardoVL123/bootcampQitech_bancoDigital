@@ -64,7 +64,7 @@ antes: as configurações já vêm com valor padrão dentro do
 O Docker baixa o Python, sobe o banco, cria as tabelas e liga a API. Na
 primeira vez demora alguns minutos; depois é quase instantâneo.
 
-São oito coisas de pé, e vale saber o nome de cada uma:
+São nove coisas de pé, e vale saber o nome de cada uma:
 
 | Serviço | Porta | O que é |
 |---|---|---|
@@ -72,6 +72,7 @@ São oito coisas de pé, e vale saber o nome de cada uma:
 | `customer-api` | 3010 | o cliente: cadastro, consulta e documento |
 | `onboarding-api` | 3005 | abertura de conta em etapas, retomável, com RG e KYC |
 | `onboarding-worker` | sem porta | processo separado, mesmo código: analisa KYC, vence aberturas paradas, entrega a caixa de saída |
+| `webhook-worker` | sem porta | entrega aos parceiros os eventos da `webhook_outbox`, assinados, com retentativa de recuo exponencial |
 | `db` | 5432 | o banco (PostgreSQL 16). Um banco só, chamado `bootcamp`, com uma seção por API |
 | `redis` | 6379 | só dado pequeno e reconstruível: limites por origem e estado do circuit breaker. **Nunca saldo** |
 | `localstack` | 4566 | emula o S3 para a foto do RG, sem custo de AWS |
@@ -79,7 +80,9 @@ São oito coisas de pé, e vale saber o nome de cada uma:
 
 Se o `redis` cair, tudo continua funcionando, só mais devagar. Se o
 `localstack` cair, o envio do RG falha e a abertura fica na etapa, sem
-perder o que já foi feito.
+perder o que já foi feito. Se o `webhook-worker` cair, nenhum evento se
+perde: o que não foi entregue continua na tabela, com a hora da
+próxima tentativa, e a entrega retoma quando ele voltar.
 
 Quando aparecer `Application startup complete`, a API está no ar. Abra
 no navegador:

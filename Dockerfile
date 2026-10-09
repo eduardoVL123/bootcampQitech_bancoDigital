@@ -15,6 +15,11 @@ RUN pip install --upgrade pip && pip install -r /requirements.txt
 
 WORKDIR /app
 COPY src /app
+# O publicador de eventos (RFC 06). Nao e um servico aqui dentro: e a
+# biblioteca que grava na webhook_outbox usando a MESMA sessao do
+# controller, para o evento entrar no mesmo COMMIT da transacao. Quem
+# entrega e o webhook-worker, que e outro container.
+COPY webhook_api /app/webhook_api
 
 FROM base AS api
 RUN chown -R user /app
