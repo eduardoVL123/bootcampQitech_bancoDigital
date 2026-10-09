@@ -32,9 +32,16 @@ on:
 
 # Dois pushes seguidos no mesmo branch: a rodada antiga e cancelada, e
 # so a do commit mais novo continua. Economiza os minutos do Actions.
+#
+# MENOS NA MAIN. La a rodada nunca e cancelada, e o motivo apareceu na
+# pratica: dois merges com dois minutos de diferenca fizeram a rodada
+# do primeiro ser cancelada no meio, e o commit ficou com um X
+# vermelho que parecia teste quebrado e nao era. A main e o branch que
+# a banca clona: o visto dela precisa dizer a verdade, e um minuto de
+# Actions e barato perto de um X vermelho que assusta sem motivo.
 concurrency:
   group: testes-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   pytest:
