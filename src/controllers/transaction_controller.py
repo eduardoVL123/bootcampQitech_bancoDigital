@@ -13,6 +13,7 @@ from errors import (
 )
 from models import Account
 from repositories import CustomerRepository, PostingRepository, TransactionRepository
+from webhook_api.src.outbox_publisher import publish_webhook
 
 
 class TransactionController(BaseController):
@@ -88,6 +89,7 @@ class TransactionController(BaseController):
         )
 
         self.transaction_repo.mark_completed(transaction)
+        self._publica_o_evento(transaction)
         self.session.commit()
         return transaction, False
 
@@ -121,6 +123,37 @@ class TransactionController(BaseController):
         )
         if ids:
             self.posting_repo.get_accounts_for_update(ids)
+
+    def _publica_o_evento(self, transaction) -> None:
+        """Avisa o parceiro, no MESMO COMMIT da transacao.
+
+        Esta linha e o padrao Outbox inteiro. O evento nao e enviado
+        aqui: ele e GRAVADO numa caixa de saida, usando a mesma sessao
+        de banco. Ou a transferencia e o aviso acontecem juntos, ou
+        nenhum dos dois acontece.
+
+        Os dois jeitos obvios sao piores, e por motivos opostos:
+
+        - mandar o HTTP aqui dentro, antes do commit: se o parceiro
+          responder e o commit falhar, avisamos de uma transferencia
+          que nao existe;
+        - mandar o HTTP depois do commit: se o processo morrer entre
+          uma coisa e outra, a transferencia aconteceu e ninguem foi
+          avisado, e nao sobra registro de que faltou avisar.
+
+        Gravando junto, o pior caso e o parceiro receber duas vezes, e
+        para isso o evento leva um event_id proprio.
+        """
+        publish_webhook(
+            self.session,
+            "transaction.success",
+            {
+                "transaction_key": transaction.transaction_key.strip(),
+                "type": transaction.type.enumerator,
+                "amount": transaction.amount,
+                "fee_amount": transaction.fee_amount,
+            },
+        )
 
     def get_by_key(self, transaction_key: str, caller):
         """O comprovante, se a transacao envolve uma conta de quem pede."""
