@@ -175,8 +175,6 @@ def create_app() -> FastAPI:
         methods=["GET"]
     )
 
-
-
     register_error_handlers(application)
 
     return application
