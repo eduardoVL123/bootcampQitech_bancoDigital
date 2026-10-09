@@ -326,6 +326,20 @@ As rotas `/internal/...` são chamadas por outra API, nunca por um
 cliente. Todas, menos `/` e `/health_check`, exigem o `INTERNAL-TOKEN`
 (seção 6).
 
+### As RFCs
+
+Cada API tem a sua, e o markdown é a fonte. Para gerar o `.docx` e o
+**PDF** das quatro, com os diagramas renderizados:
+
+```bash
+bash docs/rfc/gerar-pdf.sh
+```
+
+Precisa de `pandoc`, `npx`, ImageMagick e LibreOffice. Para gerar uma
+só, passe o arquivo: `bash docs/rfc/gerar-pdf.sh 02-conta.md`. Os
+binários gerados não vão para o git, de propósito: o markdown é que é
+a fonte, e duas versões da mesma coisa viram uma desatualizada.
+
 
 ## 2. Rodando os testes
 
