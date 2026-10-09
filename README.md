@@ -308,6 +308,7 @@ saldo:
 | `POST /internal/account` | abre a conta do cliente | `201` nova, `200` a que já existia |
 | `GET /account/{key}` | saldo e estado atual | `200`; `404 QIT002010` se não existe ou não é sua |
 | `GET /account/{key}/statement` | extrato por cursor assinado | `200`; `400 QIT002015` cursor adulterado |
+| `PATCH /account/{key}` | bloqueia, desbloqueia ou encerra. Só operador | `200`; `409 QIT002014` encerrar com saldo; `422 QIT002018` sair de `CLOSED` |
 | `POST /transaction` | depósito e transferência com tarifa | `201`; `409 QIT002012` saldo insuficiente; `422 QIT002019` formato errado por tipo |
 | `GET /transaction/{key}` | o comprovante | `200`; `404 QIT002010` |
 | `POST /internal/posting` | **a única rota que move dinheiro** | `201`; `422 QIT002017` se os lançamentos não somam zero |
@@ -327,6 +328,20 @@ Contrato na `RFC 06 - API de Webhooks Outgoing.md`.
 As rotas `/internal/...` são chamadas por outra API, nunca por um
 cliente. Todas, menos `/` e `/health_check`, exigem o `INTERNAL-TOKEN`
 (seção 6).
+
+### As RFCs
+
+Cada API tem a sua, e o markdown é a fonte. Para gerar o `.docx` e o
+**PDF** das quatro, com os diagramas renderizados:
+
+```bash
+bash docs/rfc/gerar-pdf.sh
+```
+
+Precisa de `pandoc`, `npx`, ImageMagick e LibreOffice. Para gerar uma
+só, passe o arquivo: `bash docs/rfc/gerar-pdf.sh 02-conta.md`. Os
+binários gerados não vão para o git, de propósito: o markdown é que é
+a fonte, e duas versões da mesma coisa viram uma desatualizada.
 
 
 ## 2. Rodando os testes

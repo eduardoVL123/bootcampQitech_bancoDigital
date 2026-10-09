@@ -1,5 +1,8 @@
-# O .docx e o .pdf sao gerados pelo gerar-docx.sh a partir do 02-conta.md.
-# O markdown e a fonte; os dois binarios ficam fora do git para nao
-# virarem duas versoes da mesma coisa, uma delas desatualizada.
-RFC 02 - API de conta e transacao.docx
-RFC 02 - API de conta e transacao.pdf
+# O .docx e o PDF sao gerados pelo gerar-pdf.sh a partir do markdown.
+# O markdown e a fonte; os binarios ficam fora do git para nao virarem
+# duas versoes da mesma coisa, uma delas desatualizada.
+#
+#   bash docs/rfc/gerar-pdf.sh
+*.docx
+*.pdf
+!.build/reference.docx
