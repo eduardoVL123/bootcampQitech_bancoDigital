@@ -648,29 +648,33 @@ Todo erro da API responde no mesmo formato, com um código próprio:
 |-------------|--------------------------------------------------|
 | `QIT000001` | o JSON enviado está fora do formato              |
 | `QIT000002` | faltou o `INTERNAL-TOKEN`, ou ele está errado    |
+| `QIT000003` | faltou a credencial no `Authorization`           |
+| `QIT000004` | a credencial está malformada ou a assinatura não confere |
+| `QIT000005` | a credencial venceu                              |
+| `QIT000006` | a operação exige escopo de operador              |
 | `QIT000010` | os parâmetros do endereço se contradizem         |
 | `QIT000404` | essa rota não existe                             |
 | `QIT000405` | a rota existe, mas não aceita esse método        |
 | `QIT000500` | erro inesperado (o time é avisado)               |
-| `QIT001001` | a entidade procurada não existe                  |
-| `QIT001002` | a entidade já está num status final              |
-| `QIT001003` | o CPF tem o formato certo, mas não é um CPF      |
-| `QIT001004` | já existe um cadastro com esse CPF               |
-| `QIT001005` | já existe um cadastro com esse e-mail            |
-| `QIT001006` | a pessoa é menor de idade                        |
-| `QIT001007` | a data de nascimento não existe no calendário    |
 
 Um código estável vale mais que uma mensagem bonita: quem integra com a
 API programa em cima do código, não do texto.
 
-Os números não são sorteados. Eles vêm em duas faixas:
+Os números não são sorteados. Eles vêm em faixas, uma por domínio:
 
-- **`QIT000…`** — os erros que **toda** API tem: JSON errado, sem token,
-  rota inexistente. Estão em `src/errors/base_error.py` e você não
-  precisa mexer neles.
-- **`QIT001…`** — os erros das **regras deste projeto**. Estão em
-  `src/errors/custom_errors.py`, e é aí que os seus entram: o próximo
-  livre é o `QIT001008`.
+- **`QIT000…`** os erros que **toda** API tem: JSON fora do schema, sem
+  token, credencial ausente ou vencida, rota inexistente. Estão em
+  `src/errors/base_error.py`.
+- **`QIT001…`** faixa **reservada**. Era a da `sample_entity`, a
+  entidade de exemplo do projeto base, que saiu antes da entrega junto
+  com o código dela. Os números ficam vazios para não mudarem de
+  significado no meio do caminho.
+- **`QIT002…`** conta, livro, transação e tarifa. Estão em
+  `src/errors/account_errors.py` e `src/errors/custom_errors.py`, e o
+  catálogo completo, com o que cada um significa, está na
+  `docs/rfc/02-conta.md`.
+- **`ONB…`** a onboarding-api tem a própria convenção, documentada na
+  `docs/rfc/05-onboarding-api.md`.
 
 Não repita um número. Se repetir, a API **não sobe** — tem uma checagem
 no start (`error_verification`, em `src/errors/base_error.py`) que
