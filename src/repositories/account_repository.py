@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from database import Context
-from models import Account, AccountStatus, AccountStatusEvent, LedgerEntry
+from models import (
+    Account,
+    AccountStatus,
+    AccountStatusEvent,
+    AccountStatusReason,
+    LedgerEntry,
+)
 
 
 class AccountRepository:
@@ -90,3 +96,50 @@ class AccountRepository:
 
         tem_proxima = len(linhas) > limit
         return linhas[:limit], tem_proxima
+
+    def get_by_key_for_update(self, account_key: str) -> Account:
+        """A conta travada, para decidir estado em cima do saldo de agora.
+
+        Sem a trava, encerrar e transferir ao mesmo tempo passariam as
+        duas: a conferencia de saldo zero leria um saldo que a
+        transferencia esta prestes a mudar. O populate_existing garante
+        que a leitura vem do banco, e nao do identity map.
+        """
+        return (
+            self.session.query(Account)
+            .filter(Account.account_key == account_key)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+
+    def get_reason(self, enumerator: str) -> AccountStatusReason:
+        return self.session.query(AccountStatusReason).filter(
+            AccountStatusReason.enumerator == enumerator
+        ).one()
+
+    def change_status(self, account: Account, status_enumerator: str, reason_enumerator: str):
+        """Muda o estado e grava o evento, na mesma transacao. Sem commit.
+
+        Encerrar preenche closed_at, que e a coluna que o indice
+        account_one_open_per_customer olha. Sem ela, o cliente que
+        encerrou nunca mais abriria conta.
+        """
+        novo = self.get_status(status_enumerator)
+        agora = datetime.now(timezone.utc)
+
+        account.status_id = novo.id
+        account.updated_at = agora
+        if status_enumerator == AccountStatus.CLOSED:
+            account.closed_at = agora
+
+        self.session.add(
+            AccountStatusEvent(
+                account_id=account.id,
+                status_id=novo.id,
+                reason_id=self.get_reason(reason_enumerator).id,
+                event_datetime=agora,
+            )
+        )
+        self.session.flush()
+        return account

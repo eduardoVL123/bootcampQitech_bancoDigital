@@ -257,3 +257,67 @@ A suíte inteira rodou três vezes em ordem aleatória, 247 verdes nas três. Im
 - **Ninguém emite credencial de `operator`.** A conta sabe conferir uma, e os testes assinam a sua. Quem emite, e com que validade, é decisão em aberto do time.
 - **O escopo do cliente se chama `onboarding`**, porque é o nome que a credencial da onboarding-api carrega. Para a conta, o nome certo seria `customer`. Trocar mexe no código do Carlos.
 - **A rota `POST /internal/posting` continua só com o `INTERNAL-TOKEN`**, e está certo: quem a chama é outra API, não um cliente. O risco de ela escapar pelo gateway continua valendo e tem teste próprio previsto na RFC 00, que não é desta fatia.
+
+## F8. Estado da conta: bloquear, desbloquear e encerrar
+
+Esta fatia fecha uma dívida da RFC e um furo nos testes.
+
+**A dívida:** a RFC 02 lista `PATCH /account/{key}` e os códigos `QIT002014` e `QIT002018` desde a primeira versão, e nada disso existia no código. RFC que promete rota é RFC que a banca confere.
+
+**O furo, que é pior:** o `QIT002011`, "conta bloqueada ou encerrada não movimenta", **está implementado no `posting_controller.py` e não tem um único teste**. O motivo é que não existe jeito de bloquear uma conta pela porta da frente, então nenhum teste consegue montar o cenário. A regra mais importante depois do saldo não negativo está lá sem prova nenhuma. Isso fere a regra 1 do time.
+
+O schema já tem tudo desde a modelagem: `account_status` com `ACTIVE`, `BLOCKED` e `CLOSED`, `account_status_reason` com `OPERATOR` e `SUSPICIOUS_ACTIVITY`, e `account_status_event` para o histórico.
+
+### As decisões desta fatia
+
+| Decisão | Por quê |
+|---|---|
+| Só **operador** muda estado, inclusive encerrar | Mudar estado é decisão de quem responde por ela, e o motivo fica gravado com ela. Encerrar é irreversível. O cliente encerrar a própria conta é rota futura, e não existe credencial de cliente que a justifique hoje |
+| `CLOSED` é terminal: sair dela é `422 QIT002018` | Conta encerrada que reabre apagaria a história. Para voltar a ter conta, o cliente abre uma nova, e o índice único parcial deixa, porque ele olha `closed_at` |
+| Encerrar exige saldo zero (`409 QIT002014`) | O dinheiro que sobrou é do cliente. Encerrar com saldo sumiria com ele, ou exigiria um caminho de devolução que não existe |
+| Pedir o estado que a conta já tem responde `200` e **não grava evento novo** | `PATCH` é idempotente por definição no HTTP. Repetir o pedido não pode inflar o histórico |
+| Encerrar grava `closed_at` | É a coluna que o índice `account_one_open_per_customer` olha. Sem ela, o cliente encerrado nunca mais abriria conta |
+| `reason` é obrigatório | Um bloqueio sem motivo registrado é um bloqueio que ninguém sabe explicar depois |
+
+### Casos de teste
+
+| # | Teste | Espera |
+|---|---|---|
+| F8-01 | `test_operador_bloqueia_a_conta` | `200`, `status` `BLOCKED`, histórico com o evento e o motivo `OPERATOR` |
+| F8-02 | `test_conta_bloqueada_nao_movimenta` | `409 QIT002011`, e o saldo intacto. **É o teste que o `QIT002011` nunca teve** |
+| F8-03 | `test_operador_desbloqueia_e_a_conta_volta_a_movimentar` | `200` `ACTIVE`, e a transferência seguinte passa |
+| F8-04 | `test_bloqueio_por_suspeita_registra_o_motivo` | histórico com `SUSPICIOUS_ACTIVITY`, e não `OPERATOR` |
+| F8-05 | `test_encerra_conta_com_saldo_zero` | `200` `CLOSED` |
+| F8-06 | `test_recusa_encerrar_conta_com_saldo` | `409 QIT002014`, conta continua `ACTIVE` |
+| F8-07 | `test_conta_encerrada_nao_movimenta` | `409 QIT002011` |
+| F8-08 | `test_conta_encerrada_nao_reabre` | `422 QIT002018` |
+| F8-09 | `test_depois_de_encerrar_o_cliente_pode_abrir_conta_nova` | `201` com `account_key` diferente. Prova que o índice único parcial olha `closed_at` |
+| F8-10 | `test_pedir_o_mesmo_estado_duas_vezes_e_idempotente` | `200` nas duas, e **um** evento de `BLOCKED` no histórico |
+| F8-11 | `test_credencial_de_cliente_nao_muda_estado` | `403 QIT000006`, conta continua `ACTIVE` |
+| F8-12 | `test_recusa_estado_que_nao_existe` | `400 QIT000001` para `FROZEN`, para `reason` desconhecido e para campo a mais |
+| F8-13 | `test_conta_que_nao_existe_responde_404` | `404 QIT002010` |
+
+### Resultado da F8
+
+Os 13 casos foram escritos antes do código e os 13 falharam com **`405 Method Not Allowed`**: a rota não existia. Depois do código, 13 de 13. Mais dois de concorrência, que vieram de uma mutação que sobreviveu (abaixo): **15 no total**.
+
+### Mutações da F8
+
+| Mutação | O que aconteceu |
+|---|---|
+| tirei o `caller.require_operator()` | o F8-11 falhou: credencial de cliente passou a bloquear conta |
+| `CLOSED` deixou de ser terminal | o F8-08 falhou: conta encerrada voltou a `ACTIVE` |
+| tirei a conferência de saldo no encerramento | **duas** falharam, o F8-06 e o F8-09: encerrou com saldo, e a conta nova deixou de nascer |
+| o mesmo estado passou a gravar evento de novo | o F8-10 falhou: o histórico inflou com dois `BLOCKED` iguais |
+| encerrar deixou de preencher `closed_at` | o F8-09 falhou: o cliente encerrado não conseguiu abrir conta nova, porque o índice único parcial continuou vendo a antiga como aberta |
+| **tirei a trava (`with_for_update`) do PATCH** | **nada falhou.** Ver abaixo |
+
+### A mutação que sobreviveu, e o teste que nasceu dela
+
+Tirar a trava do `PATCH` não derrubava nenhum teste, nem o F8-14, que já era um teste de corrida. O motivo é instrutivo: **o F8-14 disputa com uma transferência, e transferência só diminui o saldo.** As duas saídas possíveis respeitam a regra: encerrar lê 1000 e recusa, ou lê 0 e encerra uma conta vazia. Não há como a regra quebrar, então a trava não era necessária naquele cenário.
+
+Com **depósito** a disputa muda de sentido, porque ele **aumenta** o saldo. Sem a trava, o encerramento lê saldo 0, decide que pode encerrar, e o depósito entra em seguida: sobra uma conta `CLOSED` com dinheiro preso dentro, que não movimenta mais. É o F8-15.
+
+Com o F8-15 escrito, o mutante **cai**. Mas cai em cerca de **uma de cada três rodadas**, porque depende de as duas requisições se cruzarem na janela certa. Com o código correto ele é estável: seis rodadas seguidas, doze verdes, nenhum falso alarme. Vale registrar as duas coisas, porque um teste de corrida que acusa às vezes continua valendo mais que nenhum, e saber a taxa evita confiar nele como se fosse determinístico.
+
+A lição que fica é sobre o teste, não sobre o código: **num teste de concorrência, a operação que disputa precisa empurrar a regra para o lado errado.** Disputar com quem empurra para o lado certo passa sem provar nada.

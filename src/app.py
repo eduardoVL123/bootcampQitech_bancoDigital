@@ -166,6 +166,11 @@ def create_app() -> FastAPI:
         methods=["GET"],
     )
     application.add_api_route(
+        "/account/{account_key}",
+        account_resource.on_patch_status,
+        methods=["PATCH"],
+    )
+    application.add_api_route(
         "/account/{account_key}/statement",
         account_resource.on_get_statement,
         methods=["GET"],
@@ -201,7 +206,6 @@ def create_app() -> FastAPI:
         sample_entity_resource.on_get_list,
         methods=["GET"],
     )
-
 
     register_error_handlers(application)
 

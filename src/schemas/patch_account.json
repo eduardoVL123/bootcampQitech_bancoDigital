@@ -1,0 +1,16 @@
+{
+  "title": "PatchAccount",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ACTIVE", "BLOCKED", "CLOSED"]
+    },
+    "reason": {
+      "type": "string",
+      "enum": ["OPERATOR", "SUSPICIOUS_ACTIVITY"]
+    }
+  },
+  "required": ["status", "reason"],
+  "additionalProperties": false
+}

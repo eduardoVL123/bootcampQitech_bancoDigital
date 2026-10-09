@@ -138,3 +138,39 @@ class InvalidStatementCursor(QIException):
         description = "The cursor was not issued by this server, or belongs to another account."
         translation = "O cursor do extrato é inválido."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class AccountHasBalance(QIException):
+    """409: encerrar conta com saldo sumiria com dinheiro do cliente.
+
+    O estado atual e que nao deixa, e o pedido em si e possivel: por
+    isso 409, e nao 422. Transferir o que sobrou e depois encerrar
+    funciona.
+    """
+
+    code = "QIT002014"
+
+    def __init__(self, account_key: str, balance: int) -> None:
+        title = "Account has balance"
+        http_status = 409
+        description = f"Account {account_key} still holds {balance} cents and cannot be closed."
+        translation = "A conta ainda tem saldo e não pode ser encerrada."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidStateTransition(QIException):
+    """422: o pedido e impossivel em si, nao e o estado de agora que atrapalha.
+
+    Sair de CLOSED nao e uma questao de esperar ou de arrumar o saldo:
+    conta encerrada nao volta, nunca. Para ter conta de novo, o cliente
+    abre uma nova.
+    """
+
+    code = "QIT002018"
+
+    def __init__(self, de: str, para: str) -> None:
+        title = "Invalid state transition"
+        http_status = 422
+        description = f"An account cannot go from {de} to {para}."
+        translation = f"A conta não pode ir de {de} para {para}."
+        super().__init__(title, self.code, http_status, description, translation)

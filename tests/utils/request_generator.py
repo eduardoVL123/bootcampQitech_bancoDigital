@@ -126,6 +126,17 @@ class RequestGenerator:
         return response.response_status, response.response_json
 
     @staticmethod
+    def PATCH_account(account_key: str, payload: dict, credential: str = None) -> BaseConnectorResponse:
+        """Mudar estado e operacao de operador: e essa a credencial padrao."""
+        response = ClientRequisition.send(
+            "PATCH",
+            f"/account/{account_key}",
+            payload=payload,
+            headers=_headers_com_credencial(credential or token_de_operador()),
+        )
+        return response.response_status, response.response_json
+
+    @staticmethod
     def POST_account_sem_token(payload: dict) -> BaseConnectorResponse:
         """Sem o INTERNAL-TOKEN de proposito: e o teste F1-11."""
         response = ClientRequisition.send("POST", "/internal/account", payload=payload)
