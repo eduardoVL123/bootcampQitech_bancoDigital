@@ -132,7 +132,11 @@ services:
       SIMULATED_CLOCK_ENABLED: ${SIMULATED_CLOCK_ENABLED:-false}
     volumes:
       - ./onboarding-api/src:/app
-    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload
+    # --no-access-log: o access log do uvicorn grava a URL inteira, com a
+    # query string, e um dado pessoal mandado ali iria junto (RFC 05, Log sem
+    # dado pessoal). O log da propria API ja registra a entrada e a saida de
+    # cada pedido, com o status e o tempo.
+    command: uvicorn app:app --host 0.0.0.0 --port 3005 --no-server-header --reload --no-access-log
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3005/health_check\")'"]
       interval: 3s
@@ -164,8 +168,10 @@ services:
       <<: *onboarding-environment
       SERVICE_NAME: onboarding-worker
       WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}
-      # A account-api. No compose, e o Mockserver, como os biros.
+      # A account-api e a webhook-api. No compose, as duas sao o Mockserver,
+      # como os biros.
       ACCOUNT_API_URL: http://mockserver:1080
+      WEBHOOK_API_URL: http://mockserver:1080
       # A senha com que o worker se apresenta a account-api (RFC 02). Os
       # testes leem a mesma variavel para conferir que ela chegou.
       SERVICE_TOKEN: ${SERVICE_TOKEN:-service_token_de_estudo}
@@ -183,7 +189,7 @@ services:
         condition: service_started
 
   # Faz o papel de quem esta fora do banco: a Receita, as listas de
-  # sancoes e de PEP, e a account-api (RFC 05). O teste programa a
+  # sancoes e de PEP, a account-api e a webhook-api (RFC 05). O teste programa a
   # resposta de cada um pela porta 1080, preso ao documento dele. A imagem
   # nao tem shell nem curl, entao nao ha checagem de saude: os testes
   # esperam o Mockserver responder antes de programar.
@@ -192,12 +198,13 @@ services:
     ports:
       - "${MOCKSERVER_PORT:-1080}:1080"
     volumes:
-      - ./mockserver/saude-dos-biros.json:/config/saude-dos-biros.json
+      - ./mockserver/respostas-padrao.json:/config/respostas-padrao.json
     environment:
-      # A chamada de teste dos tres biros (GET .../health) responde 200
-      # desde que o Mockserver sobe. E a unica resposta que vale para todos:
-      # o resto, cada teste programa para o proprio documento.
-      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/saude-dos-biros.json
+      # As respostas que valem para todos, desde que o Mockserver sobe: a
+      # chamada de teste dos tres biros (GET .../health) responde 200, e a
+      # webhook-api recebe todo evento com 202. O resto, cada teste programa
+      # para o proprio documento ou a propria abertura.
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/respostas-padrao.json
       # Os testes conferem os pedidos que chegaram, e cada um programa as
       # proprias respostas. Os limites padrao do Mockserver dependem da
       # memoria e, quando estouram, ele descarta os mais antigos sem avisar.
