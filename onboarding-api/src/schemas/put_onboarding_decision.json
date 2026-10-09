@@ -1,0 +1,17 @@
+{
+  "title": "PutOnboardingDecision",
+  "description": "RFC 05, PUT /onboarding/{onboarding_key}/decision: compliance aprova ou recusa, sempre com justificativa de 10 a 500 caracteres.",
+  "type": "object",
+  "properties": {
+    "decision": {
+      "enum": ["APPROVE", "REJECT"]
+    },
+    "justification": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500
+    }
+  },
+  "required": ["decision", "justification"],
+  "additionalProperties": false
+}

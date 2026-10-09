@@ -452,6 +452,10 @@ CREATE TABLE onboarding(
     onboarding_key          CHAR(36) NOT NULL,
     -- Nulo depois de vencer: o cadastro e apagado.
     customer_id             BIGINT REFERENCES customer(id),
+    -- A chave do cliente, que fica depois de vencer: e por ela que a API
+    -- reconhece o dono da abertura, porque a credencial traz a customer_key.
+    -- E um UUID, e nao dado pessoal (decisao D24).
+    customer_key            CHAR(36) NOT NULL,
     -- Repassada pelo gateway. O UNIQUE e a garantia final de que repetir
     -- o pedido nao cria outra abertura, mesmo se o Redis perder a chave.
     idempotency_key         VARCHAR(64) NOT NULL,
@@ -516,12 +520,35 @@ CREATE TABLE onboarding_status_event(
     reason_code         VARCHAR(40),
     actor               VARCHAR(20) NOT NULL,
     justification       VARCHAR(500),
+    -- Quem de compliance mudou a etapa (o sub da credencial), na decisao
+    -- ou na retentativa em lote. Nulo quando foi a api ou o worker.
+    decided_by          VARCHAR(100),
     event_datetime      TIMESTAMPTZ NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-    CHECK (actor IN ('api', 'worker', 'compliance'))
+    CHECK (actor IN ('api', 'worker', 'compliance')),
+    CONSTRAINT onboarding_status_event_decided_by_check CHECK (decided_by IS NULL OR actor = 'compliance')
 );
 
 CREATE INDEX onboarding_status_event_onboarding ON onboarding_status_event (onboarding_id);
+
+
+-- O resultado de cada verificacao da analise do KYC: Receita, sancoes,
+-- PEP e PLD. Sem os dados consultados: so o resultado, o motivo e o
+-- protocolo do biro, que nao identifica ninguem.
+CREATE TABLE onboarding_check(
+    id                  BIGSERIAL PRIMARY KEY,
+    onboarding_id       BIGINT NOT NULL REFERENCES onboarding(id),
+    check_type          VARCHAR(10) NOT NULL,
+    result              VARCHAR(12) NOT NULL,
+    reason_code         VARCHAR(40),
+    provider_reference  VARCHAR(64),
+    consulted_at        TIMESTAMPTZ NOT NULL,
+    -- Uma linha por verificacao em cada abertura.
+    UNIQUE(onboarding_id, check_type),
+    CHECK (check_type IN ('RECEITA', 'SANCTIONS', 'PEP', 'PLD')),
+    CHECK (result IN ('PASS', 'FAIL', 'REVIEW'))
+);
+
 
 -- =====================================================================
 -- 8. WEBHOOKS OUTGOING (webhook-api, RFC 06)

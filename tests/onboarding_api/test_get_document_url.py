@@ -57,4 +57,4 @@ class TestGetDocumentUrl:
         resposta = get_url(abertura, "back", credencial_de_compliance())
         
         assert resposta.status_code == 404
-        assert resposta.json()["code"] == "ONB005016"
+        assert resposta.json()["code"] == "ONB005018"

@@ -9,7 +9,7 @@ from constants import MAX_DOCUMENT_BYTES
 from controllers.onboarding_controller import OnboardingController
 from utils.credential import read_credential
 from utils.idempotency_key import read_idempotency_key
-from utils.request_origin import read_fault_injection, read_origin_ip
+from utils.request_origin import read_fault_injection, read_origin_ip, read_request_time
 from utils.schema_handler import SchemaHandler
 
 
@@ -36,7 +36,7 @@ class OnboardingResource:
         idempotency_key = read_idempotency_key(request)
 
         controller = OnboardingController(read_fault_injection(request))
-        onboarding, created = controller.start(payload, idempotency_key, read_origin_ip(request))
+        onboarding, created = controller.start(payload, idempotency_key, read_origin_ip(request), read_request_time(request))
 
         # 201 para a abertura nova; 200 quando a chave já tinha sido usada.
         if created:
@@ -64,7 +64,7 @@ class OnboardingResource:
         files = read_document_files({"front": front, "back": back, "both": both})
 
         controller = OnboardingController(read_fault_injection(request))
-        onboarding, complete = controller.send_document(onboarding_key, credential, files)
+        onboarding, complete = controller.send_document(onboarding_key, credential, files, read_request_time(request))
 
         # 202 quando o RG ficou completo e a abertura entrou na fila da análise;
         # 200 quando ainda falta um lado.

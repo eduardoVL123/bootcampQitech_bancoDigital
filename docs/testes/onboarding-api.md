@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Base** | RFC 05 v0.7 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
+| **Base** | RFC 05 v0.11 (onboarding-api), com as regras gerais da RFC 00 e o contrato de `POST /internal/account` da RFC 02 |
 | **Data** | 07/10/2026 |
-| **Versão** | 0.2 (F4 verde: três testes novos, F4-21 a F4-23, e as decisões D22 e D23) |
+| **Versão** | 0.6 (F8 verde, com F8-16 e F8-17; D30 a D32; quem decidiu no histórico). Na 0.5: F7 verde, com F7-13 a F7-16; D15 decidida, D27 a D29; F3-16 nasce com a primeira rota de compliance). Na 0.4: F6 verde e a decisão D26; D1, D2, D13 e D14 decididas. Na 0.3: F5 verde, F5-08, F5-09, D24 e D25. Na 0.2: F4 verde, F4-21 a F4-23, D22 e D23 |
 | **Onde ficam os testes** | `tests/onboarding_api/`, com as ferramentas em `tests/utils/onboarding_api.py` |
 
 Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da RFC** ele protege. Ele vem antes de qualquer teste escrito. Se um teste daqui mudar, a RFC muda junto, e o contrário também.
@@ -24,7 +24,7 @@ Este plano diz **o que** cada teste prova, **como** ele prova e **qual regra da 
 | Peça | Endereço nos testes | Papel |
 |---|---|---|
 | onboarding-api | `http://127.0.0.1:3005` | Quem está sendo testado |
-| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos |
+| onboarding-worker | sem porta | O mesmo código, em outro processo: KYC, prazo e eventos. Duas réplicas. A fila da análise é olhada a cada segundo (`WORKER_TICK_SECONDS`, F6); o vencimento, a cada minuto (`WORKER_INTERVAL_SECONDS`, F5) |
 | PostgreSQL | `bootcamp` | O banco único do grupo; as tabelas da onboarding estão na seção 7 do `database/database.sql` (o teste não lê) |
 | Redis | só dentro do compose | Limites por documento e por origem, circuit breaker |
 | LocalStack | só dentro do compose | Bucket privado `rg-documentos`, criado por `localstack/init-bucket.sh`. Imagem fixa na 4.14.0, a última que sobe sem conta no LocalStack |
@@ -214,9 +214,9 @@ Arquivos `test_get_onboarding.py`, `test_get_customer.py` e `test_credential.py`
 | F3-13 | `test_credencial_mal_formada_responde_401` | `Bearer abc` e `Basic abc` | `401 ONB000006` | OAuth |
 | F3-14 | `test_credencial_sem_assinatura_responde_401` | JWT com `alg: none` | `401 ONB000006` | OAuth |
 | F3-15 | `test_credencial_vencida_responde_401` | JWT com `exp` no passado | `401 ONB000007`, `error="invalid_token"`, `error_description="token expirado"` | OAuth |
-| F3-16 | `test_credencial_de_cliente_em_rota_de_compliance_responde_403` | Credencial `onboarding` nas três rotas de compliance | `403 ONB000008`, `error="insufficient_scope"`, `scope="compliance"` | Escopo |
+| F3-16 | `test_credencial_de_cliente_em_rota_de_compliance_responde_403` | Credencial `onboarding` nas rotas de compliance: desde a F7, `POST /admin/onboardings/retry`; a F8 acrescenta as outras duas | `403 ONB000008`, `error="insufficient_scope"`, `scope="compliance"` | Escopo |
 
-O F3-16 só pode ser escrito quando existir a primeira rota exclusiva de compliance, que nasce na F8 (`GET /onboardings`).
+O F3-16 só pode ser escrito quando existir a primeira rota exclusiva de compliance. Ela nasceu na F7 (`POST /admin/onboardings/retry`); a F8 acrescenta as outras duas.
 
 ### F4. Envio do RG, frente e verso
 
@@ -243,30 +243,36 @@ Arquivo `test_put_document.py`. Imagens geradas no próprio teste (bytes mínimo
 | F4-17 | `test_bucket_fora_responde_503_e_nao_grava_nada` | `X-Fault-Injection: bucket_unavailable`; depois repete sem a falha | `503 ONB005015` e `DRAFT` sem documentos; a repetição dá `202` | Bucket fora (`fault_injection`) |
 | F4-18 | `test_envios_simultaneos_do_mesmo_lado_gravam_um_so` | 5 envios de `front` juntos | Um `200`, quatro `409 ONB005009`, nenhum `500` | `UNIQUE(onboarding_id, side)` (`concurrency`) |
 | F4-19 | `test_envio_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
-| F4-20 | `test_rg_completo_entra_no_historico` | RG completo | `status_events`: `DRAFT`, `PENDING_KYC` | Histórico |
+| F4-20 | `test_rg_completo_entra_no_historico` | RG completo | `status_events` começa com `DRAFT`, `PENDING_KYC`, este gravado pela API; depois, o worker já pode ter seguido (F6) | Histórico |
 | F4-21 | `test_so_o_verso_mantem_draft_e_pede_a_frente` | Só `back` | `200`, `DRAFT`, `next_step` `SEND_FRONT` | Decisão D23 |
-| F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; cada abertura em `PENDING_KYC`, com um evento só | Trava da abertura (`concurrency`) |
+| F4-22 | `test_frente_e_verso_em_envios_simultaneos_completam_o_rg` | `front` e `back` em pedidos separados, juntos, em cinco aberturas | Cinco `200` e cinco `202`; o histórico de cada abertura começa com `DRAFT`, `PENDING_KYC`, com um `PENDING_KYC` só | Trava da abertura (`concurrency`) |
 | F4-23 | `test_frente_e_imagem_com_os_dois_lados_juntas_gravam_uma_so` | `front` e `both` em pedidos separados, juntos, em cinco aberturas | Em cada abertura, um passa e o outro dá `409`; um documento só | Conferência depois da trava (`concurrency`) |
 
 **Mutação da F4 (07/10).** Cada regra foi quebrada de propósito no código, uma por vez, para ver se algum teste fica vermelho. Das 24 mutações, 21 morreram: limite de 5 MB e a borda dele, tipo pelos bytes, PNG, envio sem arquivo, lado repetido, `both` com os dois lados, o mesmo lado duas vezes no formulário, etapa `DRAFT`, só o dono (e não compliance) manda o RG, bucket fora sem gravar nada, chave idempotente, ida para `PENDING_KYC`, `SEND_FRONT`, `documents` sem o caminho no bucket, a trava da abertura e a conferência de lados depois dela. Sobreviveram três, e nenhuma é falta de teste de regra: a segunda conferência de etapa depois da trava (hoje a de lados já recusa, porque com o RG completo toda imagem repete um lado; ela passa a valer na F5, quando o vencimento apaga as imagens), o tratamento do `UNIQUE` sem a trava e o `rollback` antes do bucket (os dois na seção 5).
 
 ### F5. Prazo de 20 minutos
 
-Arquivo `test_expiration.py`, marcador `simulated_clock`.
+Arquivo `test_expiration.py`, marcador `simulated_clock`; os que esperam o worker também têm `slow`. **Verde em 07/10** (branch `feat/onboarding-prazo`). Cada teste prepara a própria abertura: o F5-05 não depende do F5-04.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
 | F5-01 | `test_envio_depois_do_prazo_responde_410` | `POST` com `X-Simulated-Now` de 21 min atrás; envio do RG agora | `410 ONB005010` | Prazo |
-| F5-02 | `test_consulta_depois_do_prazo_responde_410` | Mesma preparação; `GET /onboarding` | `410 ONB005010` | Prazo |
+| F5-02 | `test_consulta_depois_do_prazo_responde_410` | Mesma preparação; `GET /onboarding`, parametrizado: dono e compliance | `410 ONB005010` | Prazo |
 | F5-03 | `test_envio_pouco_antes_do_prazo_e_aceito` | `POST` de 19 min atrás; envio do RG agora | `202` | Borda do prazo |
-| F5-04 | `test_worker_apaga_os_dados_da_abertura_vencida` | `POST` de 21 min atrás, `front` enviado "antes" do prazo; espera o worker (até 70 s) | `GET /customer` com compliance: `404 ONB005007`; `GET /onboarding`: `410` | LGPD, prazo (`slow`) |
-| F5-05 | `test_documento_fica_livre_depois_do_vencimento` | Depois do F5-04, o mesmo CPF | `201` | Prazo |
-| F5-06 | `test_prazo_para_de_contar_depois_do_rg_completo` | `POST` de 25 min atrás; RG completo "há 10 min" (antes de vencer); `GET` agora | Não é `410`: a abertura segue para a análise | Prazo só vale em `DRAFT` |
-| F5-07 | `test_repetir_o_cadastro_de_abertura_vencida_responde_410` | Repete o `POST` da abertura vencida, com a mesma chave | `410 ONB005010` | Decisão D9 |
+| F5-04 | `test_worker_apaga_os_dados_da_abertura_vencida` | `POST` de 21 min atrás, `front` enviado "antes" do prazo; espera o worker (até 90 s) | `GET /customer` com compliance: `404 ONB005007`; `GET /onboarding` e envio do RG com a credencial do dono: `410` | LGPD, prazo, decisão D24 (`slow`) |
+| F5-05 | `test_documento_fica_livre_depois_do_vencimento` | Abertura vencida; espera o worker; o mesmo CPF com outra chave | `201` | Prazo (`slow`) |
+| F5-06 | `test_prazo_para_de_contar_depois_do_rg_completo` | `POST` de 25 min atrás; RG completo "há 10 min" (antes de vencer); `GET` agora | `200`, e a etapa não é `EXPIRED` | Prazo só vale em `DRAFT` |
+| F5-07 | `test_repetir_o_cadastro_de_abertura_vencida_responde_410` | Repete o `POST` da abertura vencida, com a mesma chave | `410 ONB005010`, sem credencial nova | Decisão D9 |
+| F5-08 | `test_abertura_vencida_de_outra_pessoa_continua_404` | Abertura vencida da Ana; `GET` e envio do RG com a credencial do Bruno | `404 ONB005006` nos dois | R8: o dono é conferido antes do prazo |
+| F5-09 | `test_worker_nao_vence_abertura_com_rg_completo` | RG completo antes de vencer; depois uma sentinela que vence 10 s depois da preparação; espera o worker apagar a sentinela, o que prova uma passada inteira depois da preparação | A completa continua fora de `EXPIRED`, e o cadastro dela continua lá | Prazo só vale em `DRAFT`, no worker (`slow`) |
+
+**Mutação da F5 (07/10).** Das 19 mutações, 16 morreram: prazo em `DRAFT`, prazo em qualquer etapa, prazo de 22 e de 18 minutos (as duas bordas), consulta sem prazo, prazo conferido antes do dono na consulta e no envio, envio com a hora real em vez da do pedido, repetição do cadastro vencido, `X-Simulated-Now` ignorado, `EXPIRED` sem `410`, dono pelo cadastro em vez da `customer_key`, worker que não marca, não busca ou não apaga o cadastro, e worker que busca e marca qualquer etapa. Sobreviveram três, todas explicadas: a conferência do prazo antes do bucket (a de depois da trava ainda responde `410`; sem a primeira, só a foto de uma abertura vencida chega a subir antes da recusa) e as duas proteções do worker contra vencer quem completou o RG (a busca só pega `DRAFT`, e a marcação confere de novo): cada uma cobre a falta da outra, e o F5-09 pega quando faltam as duas.
+
+A mutação também achou um defeito, já corrigido: a passada do worker parava quando um lote inteiro já tinha sido tentado, e as vencidas depois dele ficavam esperando. Agora cada lote começa depois do último (cursor por `expires_at` e `id`).
 
 ### F6. Worker: KYC, PLD e abertura da conta
 
-Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP para o documento dele, manda o RG completo e espera a etapa com `wait_for_status`.
+Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP para o documento dele, e a account-api para a `customer_key` dele, manda o RG completo e espera a etapa com `espera_etapa` (o `wait_for_status`, até 20 s; `ESPERA_PELA_ANALISE_SEGUNDOS` muda o limite). As ferramentas do Mockserver ficam em `tests/utils/mockserver.py`. **Verde em 07/10** (branch `feat/onboarding-kyc`).
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
@@ -274,14 +280,14 @@ Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP p
 | F6-02 | `test_biros_sao_consultados_em_ordem` | Tudo regular | No Mockserver: Receita, depois sanções, depois PEP, uma vez cada | Ordem |
 | F6-03 | `test_conta_e_pedida_com_a_chave_da_abertura` | Tudo regular | Uma chamada a `POST /internal/account` com `customer_key` e `type`, `SERVICE-TOKEN` e `X-Idempotency-Key` igual à `onboarding_key` | Contrato RFC 02 |
 | F6-04 | `test_empresa_regular_e_aprovada` | PJ `ATIVA` | `ACTIVE` | PJ |
-| F6-05 | `test_cpf_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO` | `REJECTED`, `RECEITA_<situação>` | Receita |
+| F6-05 | `test_cpf_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `CANCELADA`, `TITULAR_FALECIDO`, `NULA`, `PENDENTE_REGULARIZACAO` | `REJECTED`, `RECEITA_<situação>`, `next_step` `NONE` | Receita, decisão D26 |
 | F6-06 | `test_cnpj_irregular_e_recusado` | Parametrizado: `SUSPENSA`, `INAPTA`, `BAIXADA`, `NULA` | `REJECTED`, `RECEITA_CNPJ_<situação>` | Receita |
-| F6-07 | `test_documento_desconhecido_e_recusado` | `NAO_ENCONTRADO` | `REJECTED`, `RECEITA_NAO_ENCONTRADO` | Receita |
-| F6-08 | `test_recusa_da_receita_para_antes_das_listas` | Qualquer recusa da Receita | Sanções, PEP e account-api: nenhuma chamada | Ordem |
+| F6-07 | `test_documento_desconhecido_e_recusado` | `NAO_ENCONTRADO`, parametrizado: CPF e CNPJ | `REJECTED`, `RECEITA_NAO_ENCONTRADO` nos dois | Receita |
+| F6-08 | `test_recusa_da_receita_para_antes_das_listas` | Parametrizado: `CANCELADA` e `NAO_ENCONTRADO`, com as listas programadas para responder | Sanções, PEP e account-api: nenhuma chamada | Ordem |
 | F6-09 | `test_dados_divergentes_vao_para_revisao` | Receita devolve outro nome; em outro caso, outra data | `MANUAL_REVIEW`, `RECEITA_DADOS_DIVERGENTES` | Receita |
 | F6-10 | `test_comparacao_do_nome_ignora_maiuscula_e_acento` | `JOSÉ DA SILVA` na Receita, `Jose da Silva` no cadastro | `ACTIVE` | Decisão D13 |
 | F6-11 | `test_pessoa_sancionada_e_recusada` | Sanções com `match` | `REJECTED`, `SANCTIONS_MATCH`; account-api nunca chamada | Sanções |
-| F6-12 | `test_pep_na_lista_vai_para_revisao` | PEP com `pep` | `MANUAL_REVIEW`, `PEP_MATCH`, `HIGH` | PEP |
+| F6-12 | `test_pep_na_lista_vai_para_revisao` | PEP com `pep` | `MANUAL_REVIEW`, `PEP_MATCH`, `HIGH`, `next_step` `WAIT` | PEP, decisão D26 |
 | F6-13 | `test_pep_declarado_vai_para_revisao` | `pep_self_declared` verdadeiro | `MANUAL_REVIEW`, `PEP_SELF_DECLARED`, `HIGH` | PEP |
 | F6-14 | `test_pf_jovem_com_renda_alta_vai_para_revisao` | 20 anos, renda 3.000.001 centavos | `MANUAL_REVIEW`, `INCOME_PROFILE`, `MEDIUM` | PLD |
 | F6-15 | `test_pf_jovem_no_limite_da_renda_e_aprovada` | 20 anos, renda 3.000.000 | `ACTIVE` | Borda da renda |
@@ -291,50 +297,74 @@ Arquivo `test_kyc_worker.py`. O teste programa a Receita, as sanções e o PEP p
 | F6-19 | `test_duas_regras_dao_risco_alto` | 20 anos, renda 50.000.001 (as duas regras de renda) | `MANUAL_REVIEW`, `HIGH` | Nível de risco |
 | F6-20 | `test_pep_e_renda_listam_os_dois_motivos` | PEP declarado e renda alta | `reason_codes` com os dois motivos, `HIGH` | Motivos |
 | F6-21 | `test_verificacoes_nunca_mostram_os_dados_consultados` | Qualquer análise | Cada `check` tem só `check_type`, `result` e `reason_code` | LGPD |
-| F6-22 | `test_account_api_fora_mantem_aprovada_e_tenta_de_novo` | account-api com `503` na primeira chamada e `201` depois | `APPROVED` enquanto falha; depois `ACTIVE`; duas chamadas com a mesma `X-Idempotency-Key` | Retentativa (`slow`) |
+| F6-22 | `test_account_api_fora_mantem_aprovada_e_tenta_de_novo` | account-api com `503` na primeira chamada e `201` depois | `APPROVED` e `WAIT` enquanto falha, e 3 s depois ainda uma chamada só; depois `ACTIVE`; duas chamadas com a mesma `X-Idempotency-Key` | Retentativa em 1 minuto (`slow`) |
 | F6-23 | `test_conta_que_ja_existe_e_reaproveitada` | account-api responde `200` com uma conta já existente | `ACTIVE` com essa `account_key` | Uma conta por cliente |
-| F6-24 | `test_cada_abertura_e_analisada_uma_vez` | 10 aberturas completas juntas | Cada documento consultado uma vez na Receita; uma conta pedida por abertura | `SKIP LOCKED` (`concurrency`) |
+| F6-24 | `test_cada_abertura_e_analisada_uma_vez` | 10 aberturas completas juntas, com duas réplicas do worker | Cada documento consultado uma vez na Receita; uma conta pedida por abertura | `SKIP LOCKED` (`concurrency`) |
+
+**Mutação da F6 (07/10).** Das 30 mutações, 29 morreram: recusa da Receita que não para a análise, CNPJ sem o prefixo próprio, "não encontrado" tratado como situação comum (só morre pelo caso de CNPJ do F6-07), nome ou data fora da comparação, nome sem tirar maiúscula, acento ou espaço, sanção que não recusa ou não para antes do PEP, PEP da lista ou declarado ignorado, as cinco bordas do PLD (21 anos, R$ 30.000, R$ 500.000, 180 dias e R$ 300.000), risco alto e médio, a chave idempotente, o tipo e o `SERVICE-TOKEN` da conta, conta que já existia recusada, nova tentativa na hora (só morre pela checagem de 3 s do F6-22) ou nunca, fila sem trava, protocolo do birô na resposta e o `next_step` de `ACTIVE` e `REJECTED`. Sobreviveu uma: a conferência de que a resposta do birô traz o campo do contrato (`situacao`, `match` ou `pep`). Nenhum teste manda resposta malformada; sem a conferência, a análise quebraria com um erro e a abertura ficaria em `ANALYSIS` do mesmo jeito. Fica para a F7, junto com os testes de birô fora.
 
 ### F7. Birô fora do ar
 
-Arquivo `test_bureau_down.py`.
+Arquivo `test_bureau_down.py`. **Verde em 07/10** (branch `feat/onboarding-biro-fora`). O birô fora é uma expectativa do Mockserver presa ao documento do teste (`503`, atraso de 3 s ou conexão derrubada), com prioridade maior e só pelas chamadas que o teste precisa. Por baixo dela fica a resposta regular: quando as falhas acabam, o birô "volta", e a abertura que sobra do teste termina sozinha, sem deixar falha para os próximos.
+
+O circuito é de todos os testes ao mesmo tempo, como seria de todos os clientes. Duas proteções evitam que um teste atrapalhe outro: os que provocam falha começam com a fixture `circuito_da_receita_fechado` (uma análise regular passa antes, e a contagem das 5 falhas seguidas recomeça do zero; se o circuito estiver aberto, ela espera ele fechar), e os que abrem o circuito ou mexem na chamada de teste dos birôs são `global_state` e rodam no fim da fila. As 24 horas usam o relógio simulado no envio do RG (`simulated_clock`); o `POST /onboarding` acontece agora, para a credencial do dono continuar valendo.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F7-01 | `test_biro_fora_mantem_em_analise` | Receita com `503` para o CPF | Três chamadas (uma mais 2 retentativas); `ANALYSIS`; account-api nunca chamada | Na dúvida, não aprova |
-| F7-02 | `test_timeout_do_biro_conta_como_falha` | Receita com atraso de 3 s | `ANALYSIS` | Timeout de 2 s |
-| F7-03 | `test_conexao_derrubada_conta_como_falha` | Conexão derrubada | `ANALYSIS` | Falha |
-| F7-04 | `test_biro_de_volta_retoma_a_analise` | Receita com `503` três vezes e depois regular | `ACTIVE` em até 75 s | Nova tentativa em 1 min (`slow`) |
-| F7-05 | `test_biro_fora_por_24h_vai_para_revisao` | RG completo "há 25 h"; Receita com `503` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE` | 24 h (`simulated_clock`) |
-| F7-06 | `test_biro_fora_por_23h_continua_em_analise` | RG completo "há 23 h"; Receita com `503` | `ANALYSIS` | Borda das 24 h (`simulated_clock`) |
-| F7-07 | `test_circuito_abre_depois_de_cinco_falhas` | Falhas seguidas até abrir; depois uma abertura nova com a Receita regular | Durante 30 s, nenhuma chamada nova à Receita, e a abertura fica em `ANALYSIS`; depois, uma chamada de teste e o circuito fecha | Circuit breaker (`global_state`, `slow`) |
-| F7-08 | `test_retentativa_em_lote_devolve_para_a_fila` | Abertura em `BUREAU_UNAVAILABLE`; Receita volta; `POST /admin/onboardings/retry` com a chave | `202`, `requeued_count` 1; depois `ACTIVE`; histórico `MANUAL_REVIEW`, `PENDING_KYC` | Retentativa em lote |
-| F7-09 | `test_retentativa_em_lote_mantem_os_outros_motivos` | Abertura em `MANUAL_REVIEW` por PEP, com a chave na lista | `requeued_count` 0; continua `MANUAL_REVIEW` | Só `BUREAU_UNAVAILABLE` |
-| F7-10 | `test_retentativa_sem_chaves_pega_todas_com_biro_fora` | Sem `onboarding_keys` | A abertura do teste volta para a fila; `requeued_count` pelo menos 1 | Retentativa em lote |
-| F7-11 | `test_retentativa_com_biro_ainda_fora_nao_muda_nada` | Saúde da Receita com `503` | `503 ONB005016`; a abertura continua `MANUAL_REVIEW` | `global_state` |
-| F7-12 | `test_retentativa_em_lote_confere_o_corpo` | `onboarding_keys` que não é lista, ou com item que não é UUID | `400 ONB000001` | Schema |
+| F7-01 | `test_biro_fora_mantem_em_analise` | Receita com `503` nas três chamadas da tentativa | Três chamadas (uma mais 2 retentativas) e, 3 s depois, ainda três; só a Receita chamada; `ANALYSIS`, `WAIT`, sem `checks` nem `reason_codes`; account-api nunca chamada | Na dúvida, não aprova |
+| F7-02 | `test_timeout_do_biro_conta_como_falha` | Receita responde regular, mas com atraso de 3 s, nas três chamadas | Três chamadas, só a Receita; `ANALYSIS`; account-api nunca chamada | Timeout de 2 s |
+| F7-03 | `test_conexao_derrubada_conta_como_falha` | Conexão derrubada nas três chamadas | Três chamadas; `ANALYSIS` | Falha |
+| F7-04 | `test_biro_de_volta_retoma_a_analise` | Receita com `503` nas três chamadas e depois regular | `ACTIVE` em até 90 s, e não antes de 50 s depois da falha; quatro chamadas; histórico sem etapa repetida; quatro `checks` | Nova tentativa em 1 min (`slow`) |
+| F7-05 | `test_biro_fora_por_24h_vai_para_revisao` | RG completo "há 24 h e 1 min"; Receita com `503` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE`, `WAIT`, sem `checks` nem `risk_level`; account-api nunca chamada | 24 h (`simulated_clock`) |
+| F7-06 | `test_biro_fora_por_menos_de_24h_continua_em_analise` | RG completo "há 23 h e 59 min"; Receita com `503` | `ANALYSIS`, sem `reason_codes` | Borda das 24 h (`simulated_clock`) |
+| F7-07 | `test_circuito_abre_depois_de_cinco_falhas` | Cinco aberturas seguidas com a Receita sem resposta; depois, duas com a Receita regular: uma logo, outra 20 s depois | As cinco tiveram as três chamadas; as duas ficam em `ANALYSIS` sem nenhuma chamada à Receita; passados os 30 s, uma consulta de teste fecha o circuito, e as duas chegam a `ACTIVE` com uma chamada cada | Circuit breaker (`global_state`, `slow`) |
+| F7-08 | `test_retentativa_em_lote_devolve_para_a_fila` | Abertura em `BUREAU_UNAVAILABLE`; Receita volta; `POST /admin/onboardings/retry` com a chave | `202`, `requeued_count` 1; depois `ACTIVE`; histórico `DRAFT`, `PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW`, `PENDING_KYC` (com `actor` `compliance`), `ANALYSIS`, `APPROVED`, `ACTIVE`; quatro `checks` aprovados | Retentativa em lote (`simulated_clock`) |
+| F7-09 | `test_retentativa_em_lote_mantem_os_outros_motivos` | Parametrizado: abertura em `MANUAL_REVIEW` por PEP declarado; por renda fora do padrão; com a chave na lista | `202`, `requeued_count` 0; continua `MANUAL_REVIEW`, com o mesmo histórico | Só `BUREAU_UNAVAILABLE` |
+| F7-10 | `test_retentativa_sem_chaves_pega_todas_com_biro_fora` | Parametrizado: corpo `{}` e pedido sem corpo | `requeued_count` pelo menos 1; a abertura do teste volta para a fila e chega a `ACTIVE` | Retentativa em lote (`simulated_clock`) |
+| F7-11 | `test_retentativa_com_biro_ainda_fora_nao_muda_nada` | Parametrizado: a chamada de teste da Receita, das sanções ou do PEP com `503` | `503 ONB005016`; a abertura continua `MANUAL_REVIEW`, com o mesmo histórico | Chamada de teste (`global_state`, `simulated_clock`) |
+| F7-12 | `test_retentativa_em_lote_confere_o_corpo` | Parametrizado: `onboarding_keys` que não é lista; item que não é UUID; lista vazia; campo a mais | `400 ONB000001`, com o campo e a regra (`type`, `format`, `minimum`, `format`) | Schema, decisão D29 |
+| F7-13 | `test_resposta_fora_do_contrato_conta_como_biro_sem_resposta` | RG completo "há 24 h e 1 min"; parametrizado: Receita `200` sem `situacao`; Receita `404` com o corpo de regular; sanções sem `match`; PEP sem `pep` | `MANUAL_REVIEW`, `BUREAU_UNAVAILABLE`, sem `checks`; o birô que respondeu fora do contrato chamado uma vez só; account-api nunca chamada | Contrato dos birôs, decisão D15 (`simulated_clock`) |
+| F7-14 | `test_retentativa_recomeca_a_contagem_das_24h` | Abertura em `BUREAU_UNAVAILABLE`; a Receita falha de novo depois da retentativa | Seis chamadas; `ANALYSIS`, e não `MANUAL_REVIEW` de novo; a tentativa seguinte vem em 1 minuto (as tentativas também recomeçam), e a abertura chega a `ACTIVE` | Decisão D28 (`simulated_clock`, `slow`) |
+| F7-15 | `test_retentativa_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
+| F7-16 | `test_resposta_fora_do_contrato_nao_abre_o_circuito` | Cinco aberturas seguidas com a Receita respondendo `404`; depois, uma com a Receita regular | A última chega a `ACTIVE` na hora, com uma chamada à Receita | Decisão D15 (`global_state`) |
+
+A matriz de credencial da F3 ganha a rota `POST /admin/onboardings/retry` (F3-11 a F3-15), e o F3-16 nasce com ela: é a primeira rota só de compliance.
+
+O F7-16 já passava antes do código: sem circuito, nada abre. Ele protege a regra contra um circuito que conte a coisa errada, e quem prova que ele vale é a mutação abaixo.
+
+**Mutação da F7 (07/10).** Das 32 mutações, 31 morreram: 2 retentativas trocadas por 1 e por 3, timeout de 4 s, `5xx` que não é falha, chamada sem resposta que não é repetida, nova tentativa na hora, em 30 s e em 5 minutos, espera de 25 h e de 23 h, 24 h contadas do primeiro RG, abertura esperando que nunca volta para a fila, sem conferir o campo do contrato, sem conferir o status `200`, `4xx` repetido na hora e contado como falha, resposta fora do contrato que abre o circuito, circuito que sempre deixa passar, que abre com 4 e com 6 falhas, aberto por 10 s e por 90 s, resposta do contrato que não fecha o circuito, circuito só na memória de cada processo (as duas réplicas dividem a contagem), retentativa que devolve qualquer motivo, que ignora a lista de chaves ou que não zera as tentativas, sem a chamada de teste das sanções ou de nenhum birô, cliente na rota de compliance, sem conferir a chave idempotente e lista vazia aceita. Sobreviveu uma, explicada na seção 5: o meio aberto que deixa todas as consultas passarem, e não só a de teste.
+
+A mutação que sobrou da F6 (a conferência do campo do contrato na resposta do birô) agora morre pelo F7-13.
+
+Cuidado ao repetir a mutação "retentativa devolve qualquer motivo": ela devolve à fila uma abertura de PEP que já tem as verificações gravadas, e o worker passa a tentar analisá-la a cada minuto, esbarrando no `UNIQUE(onboarding_id, check_type)`. No código de verdade isso não acontece, porque só volta à fila quem parou por birô fora, sem nada gravado. Em 07/10, a abertura de teste que sobrou foi estacionada com a posse (`lease_until`) no futuro, sem apagar nada.
 
 ### F8. Compliance: fila e decisão
 
-Arquivo `test_compliance.py`.
+Arquivo `test_compliance.py`. **Verde em 07/10** (branch `feat/onboarding-compliance`). A abertura em revisão vem do próprio worker: PEP declarado ou renda fora do padrão, com os birôs regulares no Mockserver. A fila é do banco inteiro, e não só do teste: por isso os testes da fila procuram as aberturas deles percorrendo as páginas, e nunca contam o total.
 
 | ID | Teste | Prepara e age | Espera | Regra |
 |---|---|---|---|---|
-| F8-01 | `test_fila_lista_da_mais_antiga_para_a_mais_nova` | Duas aberturas por PEP, A antes de B; percorre as páginas de `GET /onboardings?reason_code=PEP_SELF_DECLARED` | A aparece antes de B | Fila |
-| F8-02 | `test_fila_usa_os_valores_padrao` | Sem parâmetros | `limit` 10, `page` 0, só `MANUAL_REVIEW` | Padrões |
-| F8-03 | `test_fila_filtra_pela_etapa` | `status=REJECTED` | Traz a recusada do teste, não a que está em revisão | Filtro |
-| F8-04 | `test_fila_marca_a_ultima_pagina` | Filtro sem nenhum resultado; percorrer até o fim | `data` vazio e `is_last_page` verdadeiro; última página com até `limit` itens | Paginação |
-| F8-05 | `test_fila_recusa_parametro_errado` | Parametrizado: `limit` 0, 101 e `abc`; `page` -1; `status` e `reason_code` desconhecidos; parâmetro a mais (`document_number`) | `400 ONB000001` | Schema, LGPD |
-| F8-06 | `test_itens_da_fila_nao_mostram_dado_pessoal` | Qualquer item | Sem CPF, nome ou renda | LGPD |
-| F8-07 | `test_aprovacao_de_compliance_abre_a_conta` | `APPROVE` com justificativa | `202` `APPROVED`; depois `ACTIVE`; o evento traz `actor` `compliance`, a justificativa e quem decidiu | Decisão |
-| F8-08 | `test_recusa_de_compliance_e_definitiva` | `REJECT` com justificativa | `200` `REJECTED`, `COMPLIANCE_REJECTED`; account-api nunca chamada | Decisão |
-| F8-09 | `test_decisao_fora_de_revisao_e_recusada` | Abertura em `DRAFT`; abertura `ACTIVE`; abertura recusada por sanção | `409 ONB005014` | Etapa |
-| F8-10 | `test_decisao_exige_decisao_e_justificativa` | Sem `decision`; sem `justification` | `400 ONB005001`, com o campo | Obrigatório |
-| F8-11 | `test_limites_do_tamanho_da_justificativa` | 9 e 501 caracteres; 10 e 500 caracteres | `400 ONB000001` (`minimum`, `maximum`); os outros aceitos | Bordas |
+| F8-01 | `test_fila_lista_da_mais_antiga_para_a_mais_nova` | Duas aberturas por PEP, A antes de B; percorre as páginas de `GET /onboardings?reason_code=PEP_SELF_DECLARED` | A aparece antes de B; todo item tem `PEP_SELF_DECLARED` entre os motivos | Fila, decisão D30 |
+| F8-02 | `test_fila_usa_os_valores_padrao` | Uma abertura em revisão; `GET /onboardings` sem parâmetros | `limit` 10, `page` 0, até 10 itens, todos em `MANUAL_REVIEW` | Padrões |
+| F8-03 | `test_fila_filtra_pela_etapa` | Uma recusada por sanção e uma em revisão; `status=REJECTED` | A recusada aparece, a em revisão não, e todo item está em `REJECTED` | Filtro |
+| F8-04 | `test_fila_marca_a_ultima_pagina` | Duas aberturas em revisão; filtro sem nenhum resultado (`status=DRAFT&reason_code=SANCTIONS_MATCH`); `limit=1`; depois, `limit=100` percorrendo `MANUAL_REVIEW` até o fim | O filtro vazio dá `data` vazio e `is_last_page` verdadeiro; a página de um item não é a última; as páginas antes da última têm `limit` itens, e a última, de 1 a `limit`; nenhuma página vazia diz que não é a última | Paginação |
+| F8-05 | `test_fila_recusa_parametro_errado` | Parametrizado: `limit` 0, 101 e `abc`; `page` -1; `status` e `reason_code` desconhecidos; parâmetro a mais (`document_number`) | `400 ONB000001`, com o parâmetro em `errors` | Schema, LGPD |
+| F8-06 | `test_itens_da_fila_nao_mostram_dado_pessoal` | Uma abertura com nome e renda fáceis de reconhecer, em revisão; acha o item dela | O item tem exatamente `onboarding_key`, `customer_key`, `status`, `reason_codes`, `risk_level` e `created_at`; a página não traz CPF, nome nem renda | LGPD, decisão D30 |
+| F8-07 | `test_aprovacao_de_compliance_abre_a_conta` | `APPROVE` com justificativa | `202`, `APPROVED`, `WAIT`; depois `ACTIVE` com a conta; para compliance, o evento `APPROVED` traz `actor` `compliance`, a justificativa e `decided_by` igual ao `sub` da credencial; os motivos da revisão continuam | Decisão, decisão D31 |
+| F8-08 | `test_recusa_de_compliance_e_definitiva` | `REJECT` com justificativa | `200`, `REJECTED`, `NONE`, `reason_codes` igual a `COMPLIANCE_REJECTED`; account-api nunca chamada | Decisão, decisão D31 |
+| F8-09 | `test_decisao_fora_de_revisao_e_recusada` | Parametrizado: abertura em `DRAFT`; `ACTIVE`; recusada por sanção | `409 ONB005014`, e a etapa não muda | Etapa |
+| F8-10 | `test_decisao_exige_decisao_e_justificativa` | Parametrizado: sem `decision`; sem `justification` | `400 ONB005001`, com o campo | Obrigatório |
+| F8-11 | `test_limites_do_tamanho_da_justificativa` | Parametrizado: 9 e 501 caracteres; 10 e 500 caracteres | Os dois primeiros `400 ONB000001` (`minimum`, `maximum`); os outros aceitos | Bordas |
 | F8-12 | `test_decisao_so_aceita_approve_ou_reject` | `MAYBE` | `400 ONB000001` | Schema |
 | F8-13 | `test_decisao_em_abertura_que_nao_existe_responde_404` | UUID que ninguém criou | `404 ONB005006` | R8 |
-| F8-14 | `test_decisoes_simultaneas_valem_uma_vez` | `APPROVE` e `REJECT` juntos | Um aceito, o outro `409 ONB005014`; um só evento de decisão | `concurrency` |
+| F8-14 | `test_decisoes_simultaneas_valem_uma_vez` | `APPROVE` e `REJECT` juntos, em cinco aberturas | Em cada uma, uma decisão aceita e a outra `409 ONB005014`; um evento de decisão só | `concurrency` |
 | F8-15 | `test_decisao_exige_a_chave_idempotente` | Sem o cabeçalho | `400 ONB000011` | Decisão D7 |
+| F8-16 | `test_dono_nao_ve_a_justificativa_nem_quem_decidiu` | Compliance recusa com uma justificativa fácil de reconhecer; o dono lê a abertura | Os eventos do dono não têm `justification` nem `decided_by`, e o texto da justificativa não aparece | PLD (sem aviso ao suspeito), decisão D31 |
+| F8-17 | `test_aprovacao_de_abertura_parada_por_biro_fora_e_recusada` | Abertura em `BUREAU_UNAVAILABLE` (RG "há 24 h e 1 min", Receita com `503`); `APPROVE` | `409 ONB005017`; continua `MANUAL_REVIEW`; um `REJECT` depois é aceito | Sem KYC aprovado, sem conta; decisão D32 (`simulated_clock`) |
+
+A matriz de credencial da F3 ganha `GET /onboardings` e `PUT /onboarding/{key}/decision`, nas duas listas: com credencial (F3-11 a F3-15) e só de compliance (F3-16). O F7-08 passa a conferir também que a retentativa em lote grava quem pediu (`decided_by`).
+
+**Mutação da F8 (07/10).** As 24 mutações morreram: fila sem filtro de etapa ou de motivo, fila da mais nova para a mais antiga, última página sempre e nunca, `limit` padrão 20, item da fila com a renda, parâmetro desconhecido aceito, `limit` 0 aceito, decisão sem trava, decisão fora de `MANUAL_REVIEW`, aprovação de abertura parada por birô fora, recusa que mantém os motivos, aprovação que vira recusa, histórico sem justificativa ou sem quem decidiu, dono que vê a justificativa, compliance que não vê, aprovação com `200`, justificativa sem mínimo e sem máximo, decisão sem chave idempotente, fila sem credencial e decisão que aceita a credencial do cliente. Duas foram conferidas pelo motivo da falha, e não só pelo vermelho: `limit` padrão 20 (`assert 20 == 10`) e recusa que mantém os motivos (`PEP_SELF_DECLARED` no lugar de `COMPLIANCE_REJECTED`).
 
 ### F9. Outbox e eventos para a webhook-api
 
@@ -374,7 +404,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB000006` | 401 | F3-12, F3-13, F3-14 |
 | `ONB000007` | 401 | F3-15 |
 | `ONB000008` | 403 | F3-16 |
-| `ONB000011` | 400 | F1-30, F1-31, F4-19, F8-15 |
+| `ONB000011` | 400 | F1-30, F1-31, F4-19, F7-15, F8-15 |
 | `ONB000012` | 409 | F1-28 |
 | `ONB000404` | 404 | F0-04 |
 | `ONB005001` | 400 | F1-08, F1-09, F1-10, F4-11, F8-10 |
@@ -382,17 +412,18 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `ONB005003` | 409 | F1-22, F1-23, F1-24 |
 | `ONB005004` | 422 | F1-15, F1-16, F1-17 |
 | `ONB005005` | 422 | F1-18, F1-19, F1-20 |
-| `ONB005006` | 404 | F3-03, F3-04, F4-16, F8-13 |
+| `ONB005006` | 404 | F3-03, F3-04, F4-16, F5-08, F8-13 |
 | `ONB005007` | 404 | F3-08, F3-09, F5-04 |
 | `ONB005008` | 409 | F4-15 |
 | `ONB005009` | 409 | F4-12, F4-13, F4-18, F4-23 |
-| `ONB005010` | 410 | F5-01, F5-02, F5-07 |
+| `ONB005010` | 410 | F5-01, F5-02, F5-04, F5-07 |
 | `ONB005011` | 413 | F4-08 |
 | `ONB005012` | 422 | F4-09, F4-10 |
 | `ONB005013` | 429 | F2-01, F2-03, F2-07 |
 | `ONB005014` | 409 | F8-09, F8-14 |
 | `ONB005015` | 503 | F4-17 |
 | `ONB005016` | 503 | F7-11 |
+| `ONB005017` | 409 | F8-17 |
 
 **Motivos (`reason_codes`)**
 
@@ -406,7 +437,7 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | `PEP_MATCH` | F6-12 |
 | `PEP_SELF_DECLARED` | F6-13, F6-20 |
 | `INCOME_PROFILE` | F6-14, F6-17, F6-18, F6-19, F6-20 |
-| `BUREAU_UNAVAILABLE` | F7-05, F7-08 |
+| `BUREAU_UNAVAILABLE` | F7-05, F7-08, F7-10, F7-11, F7-13, F7-14 |
 | `COMPLIANCE_REJECTED` | F8-08 |
 
 **Transições do ciclo de vida**
@@ -416,17 +447,17 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 | início para `DRAFT` | F1-01 |
 | `DRAFT` para `DRAFT` (falta um lado) | F4-03, F4-21 |
 | `DRAFT` para `PENDING_KYC` | F4-01, F4-02, F4-04, F4-22 |
-| `DRAFT` para `EXPIRED` | F5-01, F5-04 |
+| `DRAFT` para `EXPIRED` (pelo worker) | F5-04, F5-05 |
 | `PENDING_KYC` para `ANALYSIS` | F6-01 (histórico) |
-| `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03 |
+| `ANALYSIS` para `ANALYSIS` (birô fora) | F7-01, F7-02, F7-03, F7-06, F7-14 |
 | `ANALYSIS` para `APPROVED` | F6-01 |
-| `ANALYSIS` para `MANUAL_REVIEW` | F6-09, F6-12, F6-14, F7-05 |
+| `ANALYSIS` para `MANUAL_REVIEW` | F6-09, F6-12, F6-14, F7-05, F7-13 |
 | `ANALYSIS` para `REJECTED` | F6-05, F6-11 |
 | `APPROVED` para `APPROVED` (account-api fora) | F6-22 |
 | `APPROVED` para `ACTIVE` | F6-01, F6-23 |
 | `MANUAL_REVIEW` para `APPROVED` | F8-07 |
 | `MANUAL_REVIEW` para `REJECTED` | F8-08 |
-| `MANUAL_REVIEW` para `PENDING_KYC` | F7-08 |
+| `MANUAL_REVIEW` para `PENDING_KYC` | F7-08, F7-10, F7-14 |
 
 **Eventos**
 
@@ -441,14 +472,14 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 
 | Garantia | Testes |
 |---|---|
-| Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08 |
-| Na dúvida, não aprova | F7-01 a F7-07 |
+| Sem KYC aprovado, sem conta | F6-02, F6-08, F6-11, F7-01, F8-08, F8-17 |
+| Na dúvida, não aprova | F7-01 a F7-07, F7-13, F7-16 |
 | Nada em dobro | F1-24, F1-27, F1-32, F4-18, F4-22, F4-23, F6-03, F6-22, F6-24, F8-14, F9-06 |
-| Prazo de 20 minutos | F5-01 a F5-07 |
-| Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F6-21, F8-06, F9-05, F10-01, F10-02 |
+| Prazo de 20 minutos | F5-01 a F5-09 |
+| Dado pessoal protegido | F1-03, F1-13, F1-34, F3-02, F5-04, F6-21, F8-06, F9-05, F10-01, F10-02 |
 | Abuso contido | F2-01 a F2-07 |
 | Credencial válida e no prazo | F1-04, F3-11 a F3-16 |
-| Cada um vê só o que é seu | F3-03, F3-04, F3-08, F3-09, F4-16 |
+| Cada um vê só o que é seu | F3-03, F3-04, F3-08, F3-09, F4-16, F5-08 |
 | Motivo e próximo passo sempre claros | F1-08, F1-11, F1-33, F3-01, F4-03, F4-21 |
 
 ## 5. O que o black box não alcança
@@ -456,13 +487,21 @@ Os outros pontos da LGPD já têm teste: respostas (F1-03, F3-02, F3-06), erros 
 Ficam fora deste plano, com o motivo. Se o time quiser, cada um vira um roteiro manual ou um teste de outra suíte.
 
 - **Posse do worker depois de uma queda** (`lease_until`): precisa derrubar o worker no meio da análise. Roteiro manual com `docker compose kill onboarding-worker`.
-- **Circuit breaker compartilhado entre réplicas** pelo Redis: precisa de duas réplicas do worker.
+- **Circuit breaker sem Redis:** cada processo guarda o próprio circuito. O worker não lê o `X-Fault-Injection`, que é cabeçalho de pedido; é preciso parar o Redis (`docker compose stop redis`) num roteiro manual. Feito em 07/10: com o Redis parado, o F7-01 e o F6-01 passaram, e as duas réplicas escreveram no log que o circuito foi para a memória do processo. O circuito dividido entre as duas réplicas aparece em parte no F7-07: as cinco falhas caem em qualquer das duas, e o circuito só abre na quinta se a contagem for uma só.
+- **As esperas de 200 ms e 400 ms entre as retentativas, e a variação aleatória:** o teste vê as três chamadas, mas não mede o intervalo entre elas com precisão.
+- **As novas tentativas de 5, 15 e 60 minutos, e depois de hora em hora:** o F7-04 prova só a primeira, de 1 minuto. As outras pediriam esperar horas, e o worker usa o relógio de verdade.
+- **Uma consulta de teste por vez no meio aberto:** com duas réplicas, a segunda consulta que chega no mesmo instante espera a próxima tentativa. A janela é pequena demais para um teste provocar.
 - **Comunicação ao Coaf registrada** no caso de sanção: nenhuma rota mostra esse registro.
 - **Chave do Redis com o SHA-256 do documento, e não o CPF puro:** é detalhe interno.
 - **Link assinado de 5 minutos do RG para compliance:** a RFC cita o link e o registro de cada acesso, mas a tabela de rotas não tem essa rota (pendência P1 abaixo).
 - **Foto sem linha no bucket:** quando o envio é recusado depois de a foto subir (outro envio da mesma abertura ganhou a trava), a foto fica no bucket sem linha no banco. A RFC aceita esse pior caso ("nunca uma linha sem foto"). O caminho começa com `rg/{onboarding_key}/`, e o vencimento da F5 pode apagar pelo prefixo. O teste não vê, porque nunca lê o bucket.
 - **`UNIQUE(onboarding_id, side)` como última garantia no envio do RG:** a conferência depois da trava já recusa o lado repetido, e a janela que sobra para o `UNIQUE` é pequena demais para um teste provocar. A mutação que tira a trava e o tratamento do `UNIQUE` juntos sobrevive por isso.
 - **A conexão devolvida antes de chamar o bucket:** o envio do RG encerra a leitura (`rollback`, sem nada gravado) antes do `PutObject`, para não segurar conexão nem trava durante até 10 s. Não aparece por HTTP.
+- **As fotos apagadas no vencimento:** o worker apaga tudo em `rg/{onboarding_key}/`, mas o teste nunca lê o bucket. O que ele vê é o cadastro sumir (F5-04) e o CPF ficar livre (F5-05).
+- **Bucket fora durante o vencimento:** a abertura fica `EXPIRED` com o cadastro, e a próxima passada tenta de novo. O worker não tem falha simulada; seria preciso derrubar o LocalStack (`docker compose stop localstack`) num roteiro manual.
+- **Foto que sobe no instante em que o worker vence a abertura:** se o envio do RG passa da conferência do prazo, e o worker marca `EXPIRED` e apaga o prefixo antes de a foto subir, ela fica no bucket sem linha. O envio recebe `410` depois da trava. É uma janela de milissegundos.
+- **Posse do worker vencida no meio da análise:** a abertura volta para a fila quando o `lease_until` passa. Provar isso pede derrubar o worker no meio da análise (`docker compose kill onboarding-worker`), num roteiro manual. Desde a F7, um birô sem resposta não depende mais da posse: a abertura fica em `ANALYSIS` sem posse, com a nova tentativa marcada em 1, 5, 15 ou 60 minutos.
+- **O que o Mockserver guarda:** os limites padrão de expectativas e de pedidos gravados dependem da memória, e, quando estouram, ele descarta os mais antigos sem avisar. O compose fixa os dois em 100.000 (`MOCKSERVER_MAX_EXPECTATIONS` e `MOCKSERVER_MAX_LOG_ENTRIES`).
 - **O que é do gateway:** `QIT000013` (chave em processamento), `QIT000014` (limite por origem e credencial), `QIT000015` (pedido longo demais) e o replay com `Idempotent-Replayed`. Vão para o plano da gateway-api.
 
 ## 6. Decisões a confirmar com o time
@@ -471,8 +510,8 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 
 | | Ponto em aberto | Proposta deste plano |
 |---|---|---|
-| D1 | A RFC não define o contrato dos birôs | O da seção 2.2; entra na RFC 05 |
-| D2 | A RFC 05 manda só `customer_key` para `POST /internal/account`; a RFC 02 pede também `type` | Mandar `customer_key` e `type`, com `SERVICE-TOKEN` e `X-Idempotency-Key` |
+| D1 | A RFC não define o contrato dos birôs | **Decidida em 07/10, na RFC 05 v0.9:** o da seção 2.2 |
+| D2 | A RFC 05 manda só `customer_key` para `POST /internal/account`; a RFC 02 pede também `type` | **Decidida em 07/10, na RFC 05 v0.9:** `customer_key` e `type`, com `SERVICE-TOKEN` e `X-Idempotency-Key` |
 | D3 | Quem emite a credencial de compliance | **Decidida em 06/10 (opção a), na RFC 05 v0.6:** um JWT com `scope` `compliance`, assinado com a mesma `AUTH_SECRET`, que vence em 1 hora; o `sub` identifica o analista e fica no histórico como quem decidiu. Nos testes, o próprio teste fabrica. A senha fixa, como o `OPERATOR_TOKEN`, foi descartada |
 | D4 | Como o gateway informa o IP de origem | `X-Forwarded-For` (o primeiro IP); sem ele, o IP da conexão. O `X-Test-Client-Ip` fica só no gateway |
 | D5 | O que conta como "recusa da origem" | Só o `409 ONB005003` (documento que já é cliente), como diz a tabela de cenários |
@@ -483,9 +522,9 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D10 | O gateway guarda a resposta do `POST` por 24 h, mas o token vale 1 h, e o replay devolveria um token vencido | **Decidida em 06/10 (opção a), nas RFCs 00 e 05 v0.6:** no `POST /onboarding` o gateway só reserva a chave enquanto o pedido roda (`409 QIT000013`) e não guarda a resposta. A repetição segue para a onboarding-api, que devolve a mesma abertura com credencial nova (F1-27) |
 | D11 | Regra da mensagem de formato | `rule` só com `required`, `format`, `type`, `minimum` e `maximum`; campo a mais e valor fora da lista viram `format` |
 | D12 | Obrigatório e formato errados no mesmo pedido | Vence o `400 ONB005001` |
-| D13 | Como comparar nome e data com a Receita | Nome sem acento, sem diferença de maiúscula e sem espaço sobrando; data igual |
-| D14 | PEP na PJ | Consulta pelo CNPJ, porque a RFC não guarda os dados do sócio |
-| D15 | O que é uma falha que abre o circuito | Cada chamada que deu timeout, conexão recusada ou `5xx`. Um `4xx` que não é resposta prevista (como o `404` vazio de um mock sem expectativa) não abre o circuito, mas também não aprova: a abertura fica em `ANALYSIS` |
+| D13 | Como comparar nome e data com a Receita | **Decidida em 07/10 (F6):** nome sem acento, sem diferença de maiúscula e sem espaço sobrando; data igual |
+| D14 | PEP na PJ | **Decidida em 07/10, na RFC 05 v0.9:** consulta pelo CNPJ, porque a RFC não guarda os dados do sócio |
+| D15 | O que é uma falha que abre o circuito | **Decidida em 07/10 (F7), na RFC 05 v0.10:** uma consulta que, depois das 2 retentativas, ainda deu timeout, conexão recusada ou `5xx`. Conta uma falha por consulta, e não por chamada. Um `4xx` ou uma resposta sem o campo do contrato (como o `404` vazio de um mock sem expectativa) não abre nem fecha o circuito e não é repetido na hora; para a abertura, é birô sem resposta: não aprova, fica em `ANALYSIS` e, passadas 24 horas, vai para `MANUAL_REVIEW` com `BUREAU_UNAVAILABLE` |
 | D16 | Relógio simulado | Cabeçalho `X-Simulated-Now` (data e hora ISO 8601), só com `SIMULATED_CLOCK_ENABLED=true`, aceito no `POST /onboarding` e no envio do RG |
 | D17 | Falhas simuladas | `X-Fault-Injection: bucket_unavailable` e `redis_unavailable`, só com `FAULT_INJECTION_ENABLED=true` |
 | D18 | "Hoje" para idade e datas | O dia em `America/Sao_Paulo`, na API e nos testes, para o teste da borda não falhar à noite |
@@ -494,6 +533,15 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | D21 | Onde ficam os documentos do RG | **Decidida em 06/10:** numa tabela da abertura, `onboarding_document`, ligada pelo `onboarding_id`, uma linha por imagem, com `UNIQUE(onboarding_id, side)`. A `customer_document` do grupo fica como está, e a onboarding não grava nela |
 | D22 | A RFC diz que o `GET` mostra os lados do RG recebidos, mas não diz o formato | **Decidida em 07/10, na RFC 05 v0.7:** `documents` é uma lista, na ordem de chegada, com `side`, `content_type` (o que os bytes dizem), `size_bytes` e `created_at` de cada imagem. Nunca o caminho no bucket. A resposta do `PUT` traz `onboarding_key`, `status` e `next_step` |
 | D23 | A RFC diz `SEND_BACK` quando falta um lado, mas a pessoa pode mandar o verso primeiro | **Decidida em 07/10, na RFC 05 v0.7:** só a frente, `SEND_BACK`; só o verso, `SEND_FRONT` |
+| D24 | Depois que o worker apaga o cadastro, nada liga a abertura à credencial do dono (o `sub` é a `customer_key`), e ele receberia `404` | **Decidida em 07/10, na RFC 05 v0.8:** a tabela `onboarding` ganha `customer_key CHAR(36) NOT NULL`, que fica depois de vencer. Não é dado pessoal. O dono sempre recebe `410`; os outros, `404` |
+| D25 | A RFC dizia que o pedido depois do prazo "já marca a abertura como `EXPIRED`", o que faria o `GET` gravar e disputar a abertura com o worker | **Decidida em 07/10, na RFC 05 v0.8:** a API responde `410` pelo relógio (`expires_at`), sem gravar nada. Quem marca `EXPIRED` e apaga é só o worker, em até 1 minuto |
+| D26 | A RFC não diz o `next_step` das etapas depois do RG | **Decidida em 07/10, na RFC 05 v0.9:** `WAIT` enquanto o banco trabalha (`PENDING_KYC`, `ANALYSIS`, `MANUAL_REVIEW`, `APPROVED`); `NONE` quando terminou (`ACTIVE`, `REJECTED`) |
+| D27 | A RFC abria o circuito por 5 falhas seguidas ou por 50% de falha em 10 chamadas em 60 s | **Decidida em 07/10, na RFC 05 v0.10:** só as 5 falhas seguidas. Com três birôs de baixo volume, elas já cobrem o birô que cai, e a regra por taxa não tem teste black box barato. Aberto por 30 s; depois, meio aberto: a próxima consulta passa como teste, e as outras esperam |
+| D28 | A RFC dizia "24 horas em `ANALYSIS`", mas não dizia de quando contam, nem o que fica gravado de uma análise interrompida | **Decidida em 07/10, na RFC 05 v0.10:** contam da entrada na fila (o RG completo, ou a retentativa em lote, que recomeça a contagem). A análise interrompida por um birô sem resposta não grava nada (nem `checks`, nem motivo, nem risco): a próxima tentativa refaz tudo, e o `UNIQUE(onboarding_id, check_type)` nunca vê uma verificação repetida |
+| D29 | A RFC não dizia como é a chamada de teste dos birôs nem o formato do corpo da retentativa em lote | **Decidida em 07/10, na RFC 05 v0.10:** `GET /receita/v1/health`, `GET /sancoes/v1/health` e `GET /pep/v1/health`, uma chamada cada, com 2 s de prazo, fora do circuito, esperando `200`. O corpo é opcional; `onboarding_keys` é uma lista com pelo menos um UUID (a lista vazia é recusada, para não ser confundida com "todas") |
+| D30 | A RFC não dizia o que cada item da fila mostra, como a fila se ordena nem como o filtro de motivo funciona | **Decidida em 07/10, na RFC 05 v0.11:** cada item tem `onboarding_key`, `customer_key`, `status`, `reason_codes`, `risk_level` e `created_at`, nunca dado pessoal; a ordem é a de criação da abertura, da mais antiga para a mais nova; `reason_code` acha a abertura que tem esse motivo entre os dela; `page` começa em 0 |
+| D31 | A RFC dizia que a decisão, a justificativa e quem decidiu ficam no histórico, mas a tabela de eventos não tinha onde guardar quem decidiu, e não dizia quem vê | **Decidida em 07/10, na RFC 05 v0.11:** coluna nova `decided_by` em `onboarding_status_event`, com o `sub` da credencial de compliance (também na retentativa em lote). Só compliance vê `justification` e `decided_by`; o cliente vê a etapa e o motivo, porque avisar o suspeito de uma suspeita de lavagem é proibido. Recusar troca os motivos por `COMPLIANCE_REJECTED`; aprovar mantém os motivos e o risco |
+| D32 | A RFC deixava compliance aprovar qualquer abertura em `MANUAL_REVIEW`, inclusive a parada por birô fora, que nunca terminou as consultas obrigatórias | **Decidida em 07/10, na RFC 05 v0.11:** aprovar uma abertura com `BUREAU_UNAVAILABLE` responde `409 ONB005017` e nada muda: o caminho é a retentativa em lote. Recusar continua valendo |
 
 **Pendências da RFC encontradas no caminho**
 
@@ -510,11 +558,11 @@ Cada uma muda um teste. Enquanto o time não confirmar, vale a proposta. As marc
 | F2 | 7 | F1 e Redis |
 | F3 | 16 | F1 |
 | F4 | 23 | F3 e LocalStack |
-| F5 | 7 | F4 e o worker (vencimento) |
+| F5 | 9 | F4 e o worker (vencimento) |
 | F6 | 24 | F4, worker e Mockserver |
-| F7 | 12 | F6 |
-| F8 | 15 | F6 |
+| F7 | 16 | F6 |
+| F8 | 17 | F6 e F7 (a credencial de compliance e a coluna de quem decidiu) |
 | F9 | 8 | F6 |
 | F10 | 2 | Todas |
 
-São 152 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.
+São 160 testes, sem contar os casos dos parametrizados. Cada fatia termina com um commit que diz quais IDs deste plano ficaram verdes.

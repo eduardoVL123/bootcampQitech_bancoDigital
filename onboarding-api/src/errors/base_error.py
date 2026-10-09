@@ -142,6 +142,21 @@ class ExpiredCredential(QIException):
         super().__init__(title, self.code, http_status, description, translation, headers=headers)
 
 
+class InsufficientScope(QIException):
+    """A credencial é válida, mas o escopo dela não dá acesso à rota: a do
+    cliente (onboarding) numa rota só de compliance."""
+
+    code = "ONB000008"
+
+    def __init__(self, scope) -> None:
+        title = "Insufficient scope"
+        http_status = 403
+        description = f"This route requires a credential with the {scope} scope."
+        translation = f"Esta rota exige uma credencial com o escopo {scope}."
+        headers = {"WWW-Authenticate": f'{BEARER_REALM}, error="insufficient_scope", scope="{scope}"'}
+        super().__init__(title, self.code, http_status, description, translation, headers=headers)
+
+
 class InvalidIdempotencyKey(QIException):
     """O gateway já confere a chave (RFC 00) e responde QIT000011. A
     onboarding-api confere de novo, com o código dela, para não gravar

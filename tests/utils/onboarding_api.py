@@ -10,13 +10,15 @@ O que tem aqui:
   - cabecalhos_do_gateway(): o que o gateway manda em todo pedido;
   - credenciais: a do cliente vem da API; as outras o teste fabrica;
   - imagens do RG: JPEG, PNG e PDF de qualquer tamanho, feitos na hora;
-  - datas: "hoje" e o dia de Sao Paulo, como na API.
+  - datas: "hoje" e o dia de Sao Paulo, como na API, e o relogio simulado;
+  - espera_ate e espera_etapa: esperam o efeito do worker, que nao tem rota;
 """
 import base64
 import json
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from os import environ
 from threading import Barrier
 from uuid import uuid4
@@ -40,6 +42,14 @@ FUSO_DO_BANCO = ZoneInfo("America/Sao_Paulo")
 
 # Os testes de falha simulada so rodam com a variavel ligada na API e no pytest.
 FALHA_SIMULADA_LIGADA = environ.get("FAULT_INJECTION_ENABLED") == "true"
+
+# O relogio simulado (decisao D16) tambem: com ele, o teste diz que o pedido
+# aconteceu no passado, pelo cabecalho X-Simulated-Now.
+RELOGIO_SIMULADO_LIGADO = environ.get("SIMULATED_CLOCK_ENABLED") == "true"
+
+# O worker vence as aberturas a cada minuto. O teste espera uma passada
+# inteira e mais um pouco.
+ESPERA_PELO_WORKER_SEGUNDOS = 90
 
 PRAZO_DA_ABERTURA_MINUTOS = 20
 VALIDADE_DA_CREDENCIAL_SEGUNDOS = 3600
@@ -116,13 +126,48 @@ class Onboarding:
         return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/document", cabecalhos, files=arquivos)
 
     @staticmethod
-    def comeca_abertura(dados: dict = None) -> dict:
+    def retenta_em_lote(corpo, credencial: str, cabecalhos: dict = None) -> requests.Response:
+        """POST /admin/onboardings/retry: devolve à fila as aberturas paradas por birô fora.
+
+        `corpo` None manda o pedido sem corpo nenhum. Sem `cabecalhos`, vai o
+        que o gateway mandaria."""
+        if cabecalhos is None:
+            cabecalhos = cabecalhos_do_gateway()
+
+        if credencial is not None:
+            cabecalhos["Authorization"] = f"Bearer {credencial}"
+
+        extras = {}
+        if corpo is not None:
+            extras["json"] = corpo
+
+        return Onboarding.envia("POST", "/admin/onboardings/retry", cabecalhos, **extras)
+
+    @staticmethod
+    def fila(credencial: str, parametros: dict = None) -> requests.Response:
+        """GET /onboardings: a fila de compliance, com os parâmetros da query string."""
+        return Onboarding.envia("GET", "/onboardings", cabecalhos_com_credencial(credencial), params=parametros)
+
+    @staticmethod
+    def decide(chave_da_abertura: str, credencial: str, corpo: dict, cabecalhos: dict = None) -> requests.Response:
+        """PUT /onboarding/{onboarding_key}/decision: compliance aprova ou recusa.
+        Sem `cabecalhos`, vai o que o gateway mandaria."""
+        if cabecalhos is None:
+            cabecalhos = cabecalhos_do_gateway()
+
+        if credencial is not None:
+            cabecalhos["Authorization"] = f"Bearer {credencial}"
+
+        return Onboarding.envia("PUT", f"/onboarding/{chave_da_abertura}/decision", cabecalhos, json=corpo)
+
+    @staticmethod
+    def comeca_abertura(dados: dict = None, cabecalhos: dict = None) -> dict:
         """Prepara o mundo do teste: uma abertura nova em DRAFT, criada pela
         propria API (nunca por INSERT no banco). Devolve o corpo do 201."""
         if dados is None:
             dados = pessoa_fisica()
 
-        resposta = Onboarding.cadastra(dados)
+        resposta = Onboarding.cadastra(dados, cabecalhos)
         assert resposta.status_code == 201, resposta.text
         return resposta.json()
 
@@ -303,6 +348,54 @@ def amanha() -> str:
     return (hoje() + timedelta(days=1)).isoformat()
 
 
+def aberta_ha_dias(dias: int) -> str:
+    """A data de abertura de uma empresa aberta há `dias` dias, no dia de São Paulo."""
+    return (hoje() - timedelta(days=dias)).isoformat()
+
+
+def no_passado(minutos: float) -> dict:
+    """O cabecalho que faz o pedido acontecer `minutos` atras (decisao D16).
+    So vale com SIMULATED_CLOCK_ENABLED=true na API."""
+    momento = datetime.now(timezone.utc) - timedelta(minutes=minutos)
+    return {"X-Simulated-Now": momento.isoformat()}
+
+
+# ----------------------------------------------------------------------
+# Esperar o worker
+# ----------------------------------------------------------------------
+
+def espera_ate(consulta, condicao, limite_segundos: float, intervalo_segundos: float = 0.5):
+    """Repete a consulta ate a condicao valer e devolve o ultimo resultado.
+
+    O worker roda em outro processo, sem rota para o teste chamar: o teste
+    so ve o efeito dele, consultando a API de novo ate o efeito aparecer.
+    Passou do limite, o teste falha mostrando o que viu por ultimo."""
+    fim = time.monotonic() + limite_segundos
+
+    while True:
+        resultado = consulta()
+        if condicao(resultado):
+            return resultado
+        if time.monotonic() > fim:
+            raise AssertionError(f"Passaram {limite_segundos} s e a condicao nao valeu. Ultimo resultado: {resultado}")
+        time.sleep(intervalo_segundos)
+
+
+# A análise do KYC acontece no worker. O teste repete o GET até a abertura
+# chegar a uma das etapas esperadas (o wait_for_status do plano).
+ESPERA_PELA_ANALISE_SEGUNDOS = float(environ.get("ESPERA_PELA_ANALISE_SEGUNDOS", "20"))
+
+
+def espera_etapa(abertura: dict, etapas: set, limite_segundos: float = ESPERA_PELA_ANALISE_SEGUNDOS) -> dict:
+    """Consulta a abertura até ela chegar a uma das `etapas` e devolve o corpo do GET."""
+    def consulta():
+        resposta = Onboarding.consulta_abertura(abertura["onboarding_key"], abertura["access_token"])
+        assert resposta.status_code == 200, resposta.text
+        return resposta.json()
+
+    return espera_ate(consulta, lambda corpo: corpo["status"] in etapas, limite_segundos)
+
+
 # ----------------------------------------------------------------------
 # Credenciais
 # ----------------------------------------------------------------------
@@ -332,8 +425,13 @@ def fabrica_credencial(
     return jwt.encode(campos, segredo, algorithm="HS256")
 
 
+# Quem é o analista da credencial de compliance (o sub). É o que fica no
+# histórico como quem decidiu (decisão D31).
+ANALISTA_DE_COMPLIANCE = "compliance:ana.oliveira"
+
+
 def credencial_de_compliance() -> str:
-    return fabrica_credencial("compliance:ana.oliveira", "compliance")
+    return fabrica_credencial(ANALISTA_DE_COMPLIANCE, "compliance")
 
 
 def credencial_vencida(chave_do_cliente: str) -> str:

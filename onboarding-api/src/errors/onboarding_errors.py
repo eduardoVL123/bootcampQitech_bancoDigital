@@ -71,7 +71,11 @@ class OnboardingNotFound(QIException):
 
 
 class DocumentNotFound(QIException):
-    code = "ONB005016"
+    """O link assinado do RG pedido por compliance, de um lado que a abertura
+    não tem. Era ONB005016 no main de 07/10, mas esse código já era o da
+    retentativa em lote com o birô fora (RFC 05 desde a v0.5)."""
+
+    code = "ONB005018"
 
     def __init__(self) -> None:
         title = "Document not found"
@@ -91,6 +95,20 @@ class CustomerNotFound(QIException):
         http_status = 404
         description = "The requested customer was not found."
         translation = "Cliente não encontrado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class OnboardingExpired(QIException):
+    """Passaram os 20 minutos em DRAFT. Vale antes e depois de o worker apagar
+    os dados: o dono é reconhecido pela customer_key da abertura (decisão D24)."""
+
+    code = "ONB005010"
+
+    def __init__(self) -> None:
+        title = "Onboarding expired"
+        http_status = 410
+        description = "The onboarding expired after 20 minutes without the document. Start a new one."
+        translation = "A abertura venceu: passaram 20 minutos sem o RG. Comece outra."
         super().__init__(title, self.code, http_status, description, translation)
 
 
@@ -156,6 +174,48 @@ class BucketUnavailable(QIException):
         http_status = 503
         description = "The document storage did not answer. Nothing was saved; repeat with the same key."
         translation = "O bucket não respondeu e nada foi gravado. Repita com a mesma chave."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class OnboardingNotInReview(QIException):
+    """Compliance só decide abertura em MANUAL_REVIEW. Também é a resposta de
+    quem perde quando duas decisões chegam juntas."""
+
+    code = "ONB005014"
+
+    def __init__(self) -> None:
+        title = "Onboarding is not in manual review"
+        http_status = 409
+        description = "Only an onboarding in MANUAL_REVIEW can be decided."
+        translation = "A abertura não está em MANUAL_REVIEW e não pode ser decidida."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class ApprovalWithoutBureauChecks(QIException):
+    """A abertura parou por birô fora e nunca terminou as consultas
+    obrigatórias: sem KYC aprovado, sem conta (decisão D32)."""
+
+    code = "ONB005017"
+
+    def __init__(self) -> None:
+        title = "Approval without the mandatory checks"
+        http_status = 409
+        description = "The onboarding stopped because a bureau was unavailable. Use the batch retry when it is back, or reject."
+        translation = "A abertura parou por birô fora, sem as consultas obrigatórias. Use a retentativa em lote quando o birô voltar, ou recuse."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class BureauStillUnavailable(QIException):
+    """Na retentativa em lote, a chamada de teste de algum birô obrigatório
+    não respondeu. Nenhuma abertura volta para a fila."""
+
+    code = "ONB005016"
+
+    def __init__(self) -> None:
+        title = "Bureau still unavailable"
+        http_status = 503
+        description = "At least one mandatory bureau did not answer the test call. Nothing changed; try again later."
+        translation = "Algum birô obrigatório ainda não responde. Nada mudou; tente mais tarde."
         super().__init__(title, self.code, http_status, description, translation)
 
 

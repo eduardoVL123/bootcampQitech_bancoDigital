@@ -18,6 +18,8 @@ class OnboardingStatusEvent(Base):
     reason_code = Column(String(40))
     actor = Column(String(20), nullable=False)
     justification = Column(String(500))
+    # Quem de compliance mudou a etapa: o sub da credencial (decisão D31).
+    decided_by = Column(String(100))
     event_datetime = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

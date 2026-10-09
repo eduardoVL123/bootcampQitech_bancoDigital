@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, NamedTuple, Optional, Tuple
 from uuid import uuid4
 
@@ -26,6 +26,7 @@ from errors import (
     InvalidDate,
     InvalidDocumentNumber,
     MissingRequiredFields,
+    OnboardingExpired,
     OnboardingNotDraft,
     OnboardingNotFound,
     RepeatedDocumentSide,
@@ -36,7 +37,7 @@ from errors import (
 from models import CustomerType, Onboarding, OnboardingDocument, OnboardingStatus, OnboardingStatusEvent
 from repositories import CustomerRepository, OnboardingRepository, RateLimitRepository
 from utils.access_token import issue_access_token
-from utils.clock import bank_today, now_utc
+from utils.clock import age_in_years, bank_today, now_utc
 from utils.credential import Credential
 from utils.document_number import is_valid_cnpj, is_valid_cpf
 from utils.image_type import detect_image_type
@@ -76,7 +77,7 @@ class OnboardingController(BaseController):
         self.rate_limit_repository = RateLimitRepository(available="redis_unavailable" not in fault_injection)
         self.bucket_connector = BucketConnector(available="bucket_unavailable" not in fault_injection)
 
-    def start(self, onboarding_data: dict, idempotency_key: str, origin: str) -> Tuple[dict, bool]:
+    def start(self, onboarding_data: dict, idempotency_key: str, origin: str, now: datetime) -> Tuple[dict, bool]:
         """Cadastra o cliente e começa a abertura em DRAFT, num COMMIT só.
 
         Devolve a resposta e se a abertura é nova (201) ou repetida (200).
@@ -93,14 +94,14 @@ class OnboardingController(BaseController):
         birth_date = self._parse_past_date(onboarding_data, "birth_date")
         opening_date = self._parse_past_date(onboarding_data, "opening_date")
 
-        if birth_date is not None and self._age_in_years(birth_date) < MINIMUM_AGE:
+        if birth_date is not None and age_in_years(birth_date) < MINIMUM_AGE:
             raise UnderageCustomer(MINIMUM_AGE)
 
         request_hash = self._request_hash(onboarding_data)
 
         existing = self.onboarding_repository.get_by_idempotency_key(idempotency_key)
         if existing is not None:
-            return self._repeat(existing, request_hash), False
+            return self._repeat(existing, request_hash, now), False
 
         seconds_to_wait = self.rate_limit_repository.register_document_attempt(
             onboarding_data["document_number"],
@@ -111,7 +112,6 @@ class OnboardingController(BaseController):
         if seconds_to_wait > 0:
             raise TooManyAttempts(seconds_to_wait)
 
-        now = now_utc()
         expires_at = now + timedelta(minutes=ONBOARDING_TIMEOUT_MINUTES)
 
         onboarding_key = OnboardingRepository.new_key()
@@ -127,7 +127,7 @@ class OnboardingController(BaseController):
             # Outro pedido gravou primeiro. Quem decide o que responder é o
             # UNIQUE que barrou, e nunca uma consulta feita antes de gravar.
             self.session.rollback()
-            return self._resolve_conflict(error, idempotency_key, request_hash, origin), False
+            return self._resolve_conflict(error, idempotency_key, request_hash, origin, now), False
 
         onboarding_dto = OnboardingDTO.started(onboarding, issue_access_token(customer.customer_key, now))
 
@@ -142,9 +142,14 @@ class OnboardingController(BaseController):
         if onboarding is None or not self._can_read(onboarding, credential):
             raise OnboardingNotFound()
 
-        return OnboardingDTO.detail(onboarding)
+        self._check_not_expired(onboarding, now_utc())
 
-    def send_document(self, onboarding_key: str, credential: Credential, files: List[Tuple[str, bytes]]) -> Tuple[dict, bool]:
+        # Só compliance vê a justificativa e quem decidiu (decisão D31).
+        return OnboardingDTO.detail(onboarding, credential.is_compliance)
+
+    def send_document(
+        self, onboarding_key: str, credential: Credential, files: List[Tuple[str, bytes]], now: datetime
+    ) -> Tuple[dict, bool]:
         """Guarda as imagens do RG (RFC 05, Mandar o RG).
 
         Devolve a resposta e se o RG ficou completo (202) ou se ainda falta
@@ -159,6 +164,7 @@ class OnboardingController(BaseController):
         if onboarding is None or not self._is_owner(onboarding, credential):
             raise OnboardingNotFound()
 
+        self._check_not_expired(onboarding, now)
         self._check_waiting_for_document(onboarding)
         images = self._check_images(files)
         self._check_sides(onboarding, images)
@@ -174,10 +180,10 @@ class OnboardingController(BaseController):
         # Sem ela, a frente e o verso chegando juntos veriam só o próprio lado,
         # e a abertura ficaria presa em DRAFT com o RG completo.
         onboarding = self.onboarding_repository.get_by_key_for_update(onboarding_key)
+        self._check_not_expired(onboarding, now)
         self._check_waiting_for_document(onboarding)
         self._check_sides(onboarding, images)
 
-        now = now_utc()
         for image, object_key in zip(images, object_keys):
             self.onboarding_repository.add_document(
                 onboarding, image.side, object_key, image.content_type, len(image.content), now
@@ -207,21 +213,33 @@ class OnboardingController(BaseController):
         self.session.commit()
         return onboarding_dto, complete
 
+    def _check_not_expired(self, onboarding: Onboarding, now: datetime) -> None:
+        """Passados 20 minutos em DRAFT, a abertura venceu, mesmo antes de o
+        worker passar para marcar e apagar (decisão D25). Com o RG completo, o
+        prazo deixa de contar: a análise é tempo do banco, e não da pessoa."""
+        status = onboarding.status.enumerator
+
+        if status == OnboardingStatus.EXPIRED:
+            raise OnboardingExpired()
+
+        if status == OnboardingStatus.DRAFT and now >= onboarding.expires_at:
+            raise OnboardingExpired()
+
     def get_document_url(self, onboarding_key: str, side: str, credential: Credential) -> str:
         """Devolve o link assinado (presigned URL) de 5 minutos do S3 para a imagem,
         apenas para o time de compliance."""
         if not credential.is_compliance:
             raise OnboardingNotFound()
-            
+
         onboarding = self.onboarding_repository.get_by_key(onboarding_key)
         if onboarding is None:
             raise OnboardingNotFound()
-            
+
         document = next((doc for doc in onboarding.documents if doc.side == side.upper()), None)
         if not document:
             from errors import DocumentNotFound
             raise DocumentNotFound()
-            
+
         return self.bucket_connector.get_presigned_url(document.object_key, 300)
 
     def _check_waiting_for_document(self, onboarding: Onboarding) -> None:
@@ -282,19 +300,23 @@ class OnboardingController(BaseController):
         return self._is_owner(onboarding, credential)
 
     def _is_owner(self, onboarding: Onboarding, credential: Credential) -> bool:
-        return onboarding.customer is not None and credential.is_customer(onboarding.customer.customer_key)
+        # A customer_key da abertura, e não a do cadastro: ela fica depois que
+        # o worker apaga o cadastro, e o dono continua recebendo 410 (D24).
+        return credential.is_customer(onboarding.customer_key)
 
     def _constraint_name(self, error: IntegrityError) -> Optional[str]:
         return getattr(getattr(error.orig, "diag", None), "constraint_name", None)
 
-    def _resolve_conflict(self, error: IntegrityError, idempotency_key: str, request_hash: str, origin: str) -> dict:
+    def _resolve_conflict(
+        self, error: IntegrityError, idempotency_key: str, request_hash: str, origin: str, now: datetime
+    ) -> dict:
         constraint = self._constraint_name(error)
 
         # Um pedido com a mesma chave chegou junto e gravou primeiro: é a
         # mesma abertura, e quem perdeu recebe a do vencedor.
         existing = self.onboarding_repository.get_by_idempotency_key(idempotency_key)
         if existing is not None:
-            return self._repeat(existing, request_hash)
+            return self._repeat(existing, request_hash, now)
 
         if constraint == DOCUMENT_NUMBER_CONSTRAINT:
             self._count_refusal(origin)
@@ -311,13 +333,16 @@ class OnboardingController(BaseController):
             self.rate_limit_repository.block_origin(origin, ORIGIN_BLOCK_SECONDS)
             self.logger.warning("Origem bloqueada por excesso de recusas de documento ja cadastrado")
 
-    def _repeat(self, onboarding: Onboarding, request_hash: str) -> dict:
+    def _repeat(self, onboarding: Onboarding, request_hash: str, now: datetime) -> dict:
         """A mesma chave de novo. Mesmo pedido: a mesma abertura, com uma
-        credencial nova. Outro pedido: recusa, sem tocar em nada."""
+        credencial nova. Outro pedido: recusa, sem tocar em nada. Abertura
+        vencida: 410, e nenhuma credencial nova (decisão D9)."""
+        self._check_not_expired(onboarding, now)
+
         if onboarding.request_hash != request_hash:
             raise IdempotencyKeyReused()
 
-        access_token = issue_access_token(onboarding.customer.customer_key, now_utc())
+        access_token = issue_access_token(onboarding.customer_key, now)
         return OnboardingDTO.started(onboarding, access_token)
 
     def _check_document_number(self, onboarding_data: dict) -> None:
@@ -344,13 +369,6 @@ class OnboardingController(BaseController):
             raise InvalidDate(field)
 
         return parsed
-
-    def _age_in_years(self, birth_date: date) -> int:
-        today = bank_today()
-        age = today.year - birth_date.year
-        if (today.month, today.day) < (birth_date.month, birth_date.day):
-            age = age - 1
-        return age
 
     def _request_hash(self, onboarding_data: dict) -> str:
         """SHA-256 do pedido, com os campos em ordem fixa: o mesmo conteúdo

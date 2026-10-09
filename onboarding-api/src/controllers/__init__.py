@@ -1,3 +1,6 @@
 from controllers.base_controller import BaseController
 from controllers.customer_controller import CustomerController
 from controllers.onboarding_controller import OnboardingController
+from controllers.expiration_controller import ExpirationController
+from controllers.kyc_controller import KycController
+from controllers.compliance_controller import ComplianceController

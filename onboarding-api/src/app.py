@@ -9,7 +9,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import CustomerResource, HealthCheckResource, OnboardingResource
+from resources import ComplianceResource, CustomerResource, HealthCheckResource, OnboardingResource
 from utils.logger import setup_logging
 
 
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     health_check_resource = HealthCheckResource()
     onboarding_resource = OnboardingResource()
     customer_resource = CustomerResource()
+    compliance_resource = ComplianceResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
@@ -50,6 +51,13 @@ def create_app() -> FastAPI:
     )
 
     application.add_api_route("/customer/{customer_key}", customer_resource.on_get_by_key, methods=["GET"])
+
+    # Só de compliance: a fila e a decisão (F8), e a retentativa em lote, quando o birô volta (F7).
+    application.add_api_route("/onboardings", compliance_resource.on_get_queue, methods=["GET"])
+    application.add_api_route(
+        "/onboarding/{onboarding_key}/decision", compliance_resource.on_put_decision, methods=["PUT"]
+    )
+    application.add_api_route("/admin/onboardings/retry", compliance_resource.on_post_retry, methods=["POST"])
 
     register_error_handlers(application)
 

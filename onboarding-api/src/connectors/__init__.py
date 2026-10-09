@@ -1,2 +1,4 @@
 from connectors.rest_connector import BaseConnectorResponse, RestConnector
 from connectors.bucket_connector import BucketConnector, BucketError
+from connectors.bureau_connector import BureauError, PepConnector, ReceitaConnector, SanctionsConnector
+from connectors.account_connector import AccountApiError, AccountConnector
