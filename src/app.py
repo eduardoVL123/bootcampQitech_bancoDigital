@@ -10,7 +10,7 @@ from middlewares import (
     register_session_manager_middleware,
 )
 
-from resources import HealthCheckResource, SampleEntityResource, AccountResource, PostingResource, TransactionResource
+from resources import HealthCheckResource, AccountResource, PostingResource, TransactionResource
 from utils.logger import setup_logging
 
 
@@ -127,7 +127,6 @@ def create_app() -> FastAPI:
     posting_resource = PostingResource()
     transaction_resource = TransactionResource()
     health_check_resource = HealthCheckResource()
-    sample_entity_resource = SampleEntityResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -179,32 +178,6 @@ def create_app() -> FastAPI:
         "/health_check",
         health_check_resource.on_get_health_check,
         methods=["GET"]
-    )
-
-    application.add_api_route(
-        "/sample_entity",
-        sample_entity_resource.on_post,
-        methods=["POST"],
-    )
-    application.add_api_route(
-        "/sample_entity/{sample_entity_key}",
-        sample_entity_resource.on_get_by_key,
-        methods=["GET"],
-    )
-    application.add_api_route(
-        "/sample_entity/{sample_entity_key}",
-        sample_entity_resource.on_put_by_key,
-        methods=["PUT"],
-    )
-    application.add_api_route(
-        "/webhook/sample_entity/{sample_entity_key}/increment_counter",
-        sample_entity_resource.on_put_increment_counter,
-        methods=["PUT"],
-    )
-    application.add_api_route(
-        "/sample_entities",
-        sample_entity_resource.on_get_list,
-        methods=["GET"],
     )
 
     register_error_handlers(application)

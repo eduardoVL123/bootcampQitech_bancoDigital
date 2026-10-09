@@ -387,44 +387,13 @@ CREATE CONSTRAINT TRIGGER ledger_entry_must_sum_zero
 
 
 -- =====================================================================
--- 6. SAI ANTES DA ENTREGA
--- A entidade de exemplo que veio no projeto base. Fica enquanto o
--- codigo dela existir em src/, e sai junto com ele.
+-- 6. (vazia)
+-- Aqui ficava a sample_entity, a entidade de exemplo que veio no
+-- projeto base. Ela saiu junto com o codigo dela em src/, antes da
+-- entrega. O numero 6 fica vazio de proposito: a RFC 05 e o plano de
+-- testes da onboarding citam "secao 7 do database.sql", e renumerar
+-- deixaria os dois documentos errados.
 -- =====================================================================
-
-CREATE TABLE sample_entity_status(
-    id		                        SERIAL PRIMARY KEY,
-    enumerator                      VARCHAR(50) NOT NULL,
-    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW()),
-    UNIQUE(enumerator)
-);
-
-INSERT INTO sample_entity_status (enumerator) VALUES
-('created'), ('pending'), ('success'), ('failed');
-
-CREATE TABLE sample_entity(
-    id                              SERIAL PRIMARY KEY,
-    sample_entity_key               CHAR(36) NOT NULL,
-    status_id                       INTEGER NOT NULL REFERENCES sample_entity_status(id),
-    sample_entity_data              JSONB NOT NULL,
-    name                            VARCHAR(255) NOT NULL,
-    email                           VARCHAR(255) NOT NULL,
-    document_number                 CHAR(14) NOT NULL,
-    birthdate                       DATE NOT NULL,
-    counter                         INTEGER NOT NULL,
-    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW()),
-    UNIQUE(sample_entity_key),
-    UNIQUE(document_number),
-    UNIQUE(email)
-);
-
-CREATE TABLE sample_entity_status_event(
-    id                              SERIAL PRIMARY KEY,
-    sample_entity_id                INTEGER NOT NULL REFERENCES sample_entity(id),
-    status_id                       INTEGER NOT NULL REFERENCES sample_entity_status(id),
-    event_datetime                  TIMESTAMP NOT NULL,
-    created_at                      TIMESTAMP NOT NULL DEFAULT(NOW())
-);
 
 
 -- =====================================================================
