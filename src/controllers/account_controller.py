@@ -2,7 +2,13 @@ from sqlalchemy.exc import IntegrityError
 
 from constants import STATEMENT_DEFAULT_LIMIT
 from controllers.base_controller import BaseController
-from errors import NotFoundAccount, NotFoundCustomer
+from errors import (
+    AccountHasBalance,
+    InvalidStateTransition,
+    NotFoundAccount,
+    NotFoundCustomer,
+)
+from models import AccountStatus
 from repositories import AccountRepository, CustomerRepository
 from utils import statement_cursor
 
@@ -80,6 +86,57 @@ class AccountController(BaseController):
         customer = self.customer_repo.get_by_key(caller.subject)
         if customer is None or account.customer_id != customer.id:
             raise NotFoundAccount(account_key)
+
+    def change_status(self, account_key: str, payload: dict, caller):
+        """Bloqueia, desbloqueia ou encerra. Só operador.
+
+        A ordem dos passos importa:
+
+        1. O escopo é conferido antes de tudo: é a recusa mais barata, e
+           não precisa nem saber se a conta existe.
+        2. A conta é lida JÁ TRAVADA. Encerrar decide em cima do saldo,
+           e sem a trava uma transferência simultânea mudaria o saldo
+           entre a conferência e a escrita.
+        3. Pedir o estado que a conta já tem sai aqui, com 200 e sem
+           gravar evento: PATCH é idempotente por definição no HTTP, e
+           repetir o pedido não pode inflar o histórico.
+        4. A transição é conferida depois da trava, com o estado de
+           agora.
+        5. O commit é a última linha, e é o que libera a trava.
+        """
+        caller.require_operator()
+
+        novo_status = payload["status"]
+
+        account = self.account_repo.get_by_key_for_update(account_key)
+        if not account:
+            raise NotFoundAccount(account_key)
+
+        atual = account.status.enumerator
+        if atual == novo_status:
+            return account
+
+        self._check_transition(account, atual, novo_status)
+
+        self.account_repo.change_status(account, novo_status, payload["reason"])
+        self.session.commit()
+        return account
+
+    def _check_transition(self, account, atual: str, novo: str) -> None:
+        """As duas únicas regras de transição que existem.
+
+        CLOSED é terminal: conta encerrada que reabre apagaria a
+        história. Para ter conta de novo, o cliente abre uma nova, e o
+        índice único parcial deixa porque ele olha o closed_at.
+
+        E encerrar exige saldo zero: o que sobrou é do cliente, e
+        encerrar com saldo sumiria com o dinheiro dele.
+        """
+        if atual == AccountStatus.CLOSED:
+            raise InvalidStateTransition(atual, novo)
+
+        if novo == AccountStatus.CLOSED and account.balance:
+            raise AccountHasBalance(account.account_key.strip(), account.balance)
 
     def statement(self, account_key: str, query_params: dict, caller) -> tuple:
         """Uma pagina do extrato, e o cursor da proxima.

@@ -1,4 +1,4 @@
-# RFC 02: a API de cliente e conta, onde o dinheiro mora
+# RFC 02: a API de conta e transação, onde o dinheiro mora
 
 | | |
 |---|---|
@@ -70,12 +70,13 @@ As contas técnicas do banco, que recebem a tarifa e fazem a contrapartida dos d
 |---|---|---|---|---|
 | `GET` | `/` | Diz qual serviço é este | Aberta | `200` |
 | `GET` | `/health_check` | Diz se o serviço está de pé. Não toca no banco, de propósito | Aberta | `204` |
-| `POST` | `/internal/customer` | Cadastra o cliente. **Idempotente pelo `request_key`**: o `UNIQUE` dessa coluna é o que impede dois clientes no replay | `request_key`, `type`, `name`, `document_number`, `birth_date` | `201` criado; `200` mesmo `request_key`, devolve o original; `400 QIT000001` fora do schema; `409 QIT002002` CPF já cadastrado; `422 QIT002005` CPF com dígito que não bate; `422 QIT002003` menor de 18 |
-| `GET` | `/customer/{customer_key}` | Dados cadastrais | Credencial do próprio cliente | `200`; `404 QIT002001` não existe ou não é seu |
 | `POST` | `/internal/account` | Abre a conta do cliente. **Idempotente pelo cliente**: o índice único parcial garante no máximo uma conta não encerrada por pessoa | `customer_key` | `201` conta nova; `200` conta que já existia, com a mesma `account_key`; `404 QIT002001` cliente não existe |
 | `GET` | `/account/{account_key}` | Saldo e estado atual | Credencial do titular | `200` com `account_key`, `balance`, `status`; `404 QIT002010` não existe ou não é sua |
 | `GET` | `/account/{account_key}/statement` | Extrato paginado. **Cursor opaco e assinado**, nunca offset | `limit` (1 a 100, padrão 20), `cursor`; credencial do titular | `200` com `data`, `next_cursor`, `is_last_page`; `400 QIT002015` cursor inválido ou adulterado; `404 QIT002010` |
-| `PATCH` | `/account/{account_key}` | Muda o estado: bloqueia, desbloqueia ou encerra. O motivo vai para o histórico | `status`, `reason`; credencial de operador | `200`; `404 QIT002010`; `409 QIT002014` encerrar conta com saldo; `422 QIT002018` transição que não existe |
+| `PATCH` | `/account/{account_key}` | Muda o estado: bloqueia, desbloqueia ou encerra. O motivo vai para o histórico, na mesma transação | `status` (`ACTIVE`, `BLOCKED`, `CLOSED`), `reason` (`OPERATOR`, `SUSPICIOUS_ACTIVITY`); credencial de **operador** | `200` com o estado novo e o histórico; `400 QIT000001` estado ou motivo que não existe; `403 QIT000006` credencial de cliente; `404 QIT002010` conta não existe; `409 QIT002014` encerrar conta com saldo diferente de zero; `422 QIT002018` transição que não existe (sair de `CLOSED`) |
+| `POST` | `/transaction` | Depósito (operador) e transferência com tarifa (titular da origem). **Idempotente pelo cabeçalho `Idempotency-Key`** | `type`, `amount` em centavos, `origin_account_key` e `destination_account_key` conforme o tipo | `201` criada; `200` mesma chave e mesmo pedido, devolve a original; `400 QIT002021` sem chave de idempotência; `403 QIT000006` depósito com credencial de cliente; `404 QIT002010` conta não existe ou a origem não é sua; `409 QIT002012` saldo não cobre valor mais tarifa; `409 QIT002020` mesma chave com outro pedido; `422 QIT002019` formato errado para o tipo |
+| `GET` | `/transaction/{transaction_key}` | O comprovante | Credencial de quem é titular de alguma das contas envolvidas | `200`; `404 QIT002010` não existe, ou não envolve conta sua |
+| `POST` | `/internal/fee_policy` | Fixa a tarifa vigente. Append-only: a política antiga nunca é editada | `transfer_fee_cents` | `201` com a `fee_policy_key` |
 | `POST` | `/internal/posting` | **A única rota que move dinheiro.** Aplica um conjunto de lançamentos que soma zero, numa transação só | `posting_key` (a `transaction_key` de quem pediu), `type`, lista de `{account_key, amount}` | `201` aplicado; `200` mesma `posting_key`, devolve o original sem reaplicar; `409 QIT002012` saldo insuficiente; `409 QIT002011` conta bloqueada ou encerrada; `409 QIT002016` mesma chave com outro conjunto; `422 QIT002017` não soma zero; `404 QIT002010` alguma conta não existe |
 | `GET` | `/internal/reconciliation` | Soma todos os lançamentos de todas as contas | Token de serviço | `200` com `total` e `entry_count`. **O `total` tem de ser zero** |
 
@@ -89,7 +90,7 @@ Todas as rotas, menos `/` e `/health_check`, exigem o `INTERNAL-TOKEN` (`403 QIT
 | identidade | `Authorization: Bearer <credencial>` | **quem** está chamando? |
 | serviço | só o `INTERNAL-TOKEN`, nas rotas `/internal/...` | quem chama é outra API, e não um cliente |
 
-A credencial é a mesma que a onboarding-api emite: JWT assinado em HS256 com a `AUTH_SECRET`, com `sub` igual à `customer_key`, mais `scope`, `iat`, `exp` e `jti`. **Esta API confere a credencial sozinha, sem chamar ninguém e sem ir ao banco:** a assinatura já prova que ela saiu de dentro do ecossistema. Dois escopos: `onboarding`, que é o cliente e vê só a própria conta, e `operator`, que lê qualquer conta e é o único que pode pedir um depósito.
+A credencial é a mesma que a onboarding-api emite: JWT assinado em HS256 com a `AUTH_SECRET`, com `sub` igual à `customer_key`, mais `scope`, `iat`, `exp` e `jti`. **Esta API confere a credencial sozinha, sem chamar ninguém e sem ir ao banco:** a assinatura já prova que ela saiu de dentro do ecossistema. Dois escopos: `onboarding`, que é o cliente e vê só a própria conta, e `operator`, que lê qualquer conta e é o único que pode pedir um depósito ou mudar o estado de uma conta.
 
 O algoritmo é fixado em `HS256` na conferência, e isso não é detalhe de estilo: sem fixar, um token com `"alg": "none"` e nenhuma assinatura seria aceito, e a API acreditaria no `sub` que o atacante escreveu. É o ataque mais conhecido contra JWT, e tem teste próprio.
 
@@ -110,28 +111,24 @@ O `QIT000006` é o único `403` desta API que fala de autorização, e é de pro
 | `POST /internal/account` | `UNIQUE INDEX ON account (customer_id) WHERE closed_at IS NULL` |
 | `POST /internal/posting` | `UNIQUE (posting.posting_key)` e `UNIQUE (posting.transaction_id)` |
 
-**Catálogo de erros deste serviço.** A faixa `QIT002001` a `QIT002009` já estava em uso pelo cadastro de cliente; como cliente e conta são o mesmo serviço, a numeração continua em sequência a partir de `QIT002010`, que é o padrão da implementação de referência da QI Tech.
+**Catálogo de erros deste serviço.** A faixa começa em `QIT002010`. Os números de `QIT002001` a `QIT002009` eram do cadastro de cliente, que **saiu deste serviço** para a customer-api: o contrato deles está na RFC 01, e os números ficam reservados para não mudarem de significado no meio do caminho. A numeração sequencial a partir de `QIT002010` segue o padrão da implementação de referência da QI Tech.
+
+O `QIT002013` (`409`, cliente já tem conta não encerrada) **foi retirado**: `POST /internal/account` não recusa o segundo pedido, ela devolve `200` com a conta que já existe. É isso que torna a rota idempotente para a onboarding-api, e uma recusa ali obrigaria quem chama a tratar o caso de sucesso como erro.
 
 | Código | Status | Quando |
 |---|---|---|
-| `QIT002001` | `404` | Cliente inexistente, ou de outra pessoa |
-| `QIT002002` | `409` | CPF já cadastrado |
-| `QIT002003` | `422` | Cliente menor de 18 anos |
-| `QIT002004` | `422` | Idade acima do limite aceito |
-| `QIT002005` | `422` | CPF com dígito verificador que não bate |
-| `QIT002006` | `422` | Data de nascimento que não existe |
-| `QIT002007` | `422` | Pessoa jurídica, ainda não aceita |
-| `QIT002008` | `409` | Documento já enviado para este cliente |
-| `QIT002009` | `404` | Cliente inexistente ao enviar documento |
+| `QIT002001` | `404` | Cliente inexistente ao abrir a conta. É o único número da faixa antiga que este serviço ainda usa: ele é a recusa de `POST /internal/account`, e não uma consulta de cliente |
 | `QIT002010` | `404` | Conta inexistente, ou de outra pessoa |
 | `QIT002011` | `409` | Conta bloqueada ou encerrada não movimenta |
 | `QIT002012` | `409` | Saldo insuficiente |
-| `QIT002013` | `409` | Cliente já tem conta não encerrada |
 | `QIT002014` | `409` | Conta com saldo diferente de zero não pode ser encerrada |
 | `QIT002015` | `400` | Cursor do extrato inválido ou com assinatura que não confere |
 | `QIT002016` | `409` | Mesma `posting_key` com um conjunto de lançamentos diferente |
 | `QIT002017` | `422` | O conjunto de lançamentos não soma zero |
 | `QIT002018` | `422` | Transição de estado que não existe |
+| `QIT002019` | `422` | Formato errado para o tipo de transação: depósito com origem, transferência sem destino, origem igual ao destino |
+| `QIT002020` | `409` | Mesma `Idempotency-Key` com um pedido diferente |
+| `QIT002021` | `400` | Movimentação sem `Idempotency-Key` |
 
 Duas escolhas de status que merecem uma linha, porque são fáceis de errar:
 
@@ -365,6 +362,37 @@ O que **não** acontece: B não lê o saldo antigo, B não sobrescreve o débito
 **A ordem da trava não basta por si, e isso custou um deadlock para aparecer.** A trava sempre saiu em ordem crescente de `id`, e mesmo assim dez transferências simultâneas para a mesma conta de destino devolviam nove `500`. O motivo: `transaction.origin_account_id` e `destination_account_id` são `FOREIGN KEY` para `account`, e por causa delas o próprio `INSERT` do cabeçalho da transação pega um `KEY SHARE` nas duas contas citadas. Com o cabeçalho gravado antes dos lançamentos, duas requisições ficavam cada uma com o `KEY SHARE` da conta de destino e as duas pediam o upgrade para `FOR UPDATE`: isso fecha um ciclo, e o Postgres mata uma das duas.
 
 A regra que o desenho adota é, portanto, mais ampla que "ordem crescente de `id`": **a trava mais forte vem primeiro, e nada que referencie a conta é gravado antes dela.** Ordem crescente resolve o ciclo entre duas travas fortes; ela não resolve o upgrade de uma trava fraca que a própria `FOREIGN KEY` pegou sem ninguém pedir.
+
+#### Encerrar a conta, e a disputa com quem está depositando
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#D9E2F3','primaryTextColor':'#1F2430','primaryBorderColor':'#1F3864','lineColor':'#1F3864','fontSize':'14px'}}}%%
+sequenceDiagram
+    participant OP as Operador
+    participant DEP as Depósito
+    participant DB as PostgreSQL
+
+    Note over OP,DEP: A conta está com saldo 0. Os dois pedidos chegam juntos.
+    OP->>DB: SELECT ... FOR UPDATE (a conta)
+    DEP->>DB: SELECT ... FOR UPDATE (a conta)
+    DB-->>OP: travada, saldo 0, estado ACTIVE
+    Note over DEP,DB: O depósito fica PARADO aqui
+    OP->>DB: saldo 0, pode encerrar: grava CLOSED, closed_at e o evento
+    OP->>DB: COMMIT
+    DB-->>OP: 200 CLOSED
+    DB-->>DEP: travada, estado CLOSED
+    Note over DEP: só agora o depósito lê o estado, e lê o NOVO
+    DEP->>DB: ROLLBACK
+    DB-->>DEP: 409 QIT002011
+```
+
+O que **não** acontece: o depósito não entra numa conta encerrada, e não sobra conta `CLOSED` com dinheiro preso dentro, que não movimentaria mais.
+
+**A ordem dos passos é a mesma da transferência, e pelo mesmo motivo.** O escopo do pedido é conferido primeiro, porque é a recusa mais barata e não precisa nem saber se a conta existe. A conta é lida **já travada**, porque encerrar decide em cima do saldo e o saldo pode estar mudando. E o estado é conferido **depois** da trava, com o valor de agora.
+
+Pedir o estado que a conta já tem responde `200` e **não grava evento**: `PATCH` é idempotente por definição no HTTP, e repetir o pedido não pode inflar o histórico.
+
+> **O que a trava aqui protege, exatamente.** Disputar com uma **transferência** não prova nada: ela só diminui o saldo, então encerrar lê 1000 e recusa, ou lê 0 e encerra uma conta vazia. As duas saídas respeitam a regra. É o **depósito** que empurra para o lado errado, porque aumenta o saldo. Esse detalhe não é teórico: o teste de corrida com transferência passava mesmo com a trava removida, e só o teste com depósito pegou a falta dela.
 
 #### Extrato: por que cursor e não página numerada
 

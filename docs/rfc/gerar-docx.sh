@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 MD=02-conta.md
-OUT="RFC 02 - API de cliente e conta.docx"
+OUT="RFC 02 - API de conta e transacao.docx"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 # 1. Tira cada bloco mermaid do markdown e renderiza em PNG.
@@ -45,7 +45,7 @@ PY
 pandoc "$TMP/doc.md" \
   --from=gfm --reference-doc=.build/reference.docx --resource-path="$TMP" \
   --toc --toc-depth=2 --columns=40 \
-  --metadata title="RFC 02: a API de cliente e conta, onde o dinheiro mora" \
+  --metadata title="RFC 02: a API de conta e transacao, onde o dinheiro mora" \
   -o "$OUT"
 echo "gerado: $OUT"
 
