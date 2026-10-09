@@ -10,7 +10,7 @@ from middlewares import (
     register_session_manager_middleware,
 )
 
-from resources import HealthCheckResource, SampleEntityResource, CustomerResource, AccountResource, PostingResource, TransactionResource
+from resources import HealthCheckResource, SampleEntityResource, AccountResource, PostingResource, TransactionResource
 from utils.logger import setup_logging
 
 

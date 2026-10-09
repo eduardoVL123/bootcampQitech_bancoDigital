@@ -97,11 +97,14 @@ from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
-from constants import DATABASE_URL
+from constants import DATABASE_URL, APP_ENV
 
-
-engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
+if APP_ENV == "local":
+    engine = create_engine(DATABASE_URL, poolclass=NullPool)
+else:
+    engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 

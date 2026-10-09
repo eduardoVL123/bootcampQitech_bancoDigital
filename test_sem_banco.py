@@ -1,7 +1,7 @@
 import requests
 import uuid
 
-BASE_URL = "http://localhost:3000" # Ajuste para 8000 se o seu rodar na 8000
+BASE_URL = "http://127.0.0.1:3010" # A customer-api roda na 3010
 HEADERS = {"INTERNAL-TOKEN": "default_token"}
 
 def print_result(test_name, success, expected, got):
