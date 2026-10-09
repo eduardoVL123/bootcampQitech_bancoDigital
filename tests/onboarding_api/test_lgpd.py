@@ -21,6 +21,7 @@ import pytest
 
 from tests.utils.mockserver import account_api_responde, biros_regulares
 from tests.utils.onboarding_api import (
+    FALHA_SIMULADA_LIGADA,
     Onboarding,
     cabecalhos_do_gateway,
     credencial_de_compliance,
@@ -191,6 +192,10 @@ class TestLgpd:
 
     @pytest.mark.fault_injection
     @pytest.mark.skipif(DOCKER is None, reason="precisa do docker para ler o log da API")
+    @pytest.mark.skipif(
+        not FALHA_SIMULADA_LIGADA,
+        reason="precisa da API e do pytest com FAULT_INJECTION_ENABLED=true",
+    )
     def test_erro_inesperado_do_banco_nao_leva_dado_pessoal_ao_log(self):
         """F10-04 (decisão D35). Um erro inesperado do banco, com os dados da
         pessoa no comando e na mensagem do PostgreSQL, responde 500 e fica no

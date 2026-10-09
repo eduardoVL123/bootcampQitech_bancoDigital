@@ -76,3 +76,9 @@ coverage.xml
 # --- Tipagem estática --------------------------------------
 .mypy_cache/
 .ruff_cache/
+
+# Log de container nao entra no repositorio. Ele nasce de
+# "docker compose logs > arquivo.txt", muda a cada execucao e nao tem
+# como ser revisado: o lugar dele e a maquina de quem esta depurando.
+*_logs.txt
+*.log
