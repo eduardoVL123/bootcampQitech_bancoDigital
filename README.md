@@ -331,7 +331,17 @@ cliente. Todas, menos `/` e `/health_check`, exigem o `INTERNAL-TOKEN`
 
 ### As RFCs
 
-Cada API tem a sua, e o markdown é a fonte. Para gerar o `.docx` e o
+| RFC | Cobre | Onde |
+|---|---|---|
+| **00** | o ecossistema: como as peças se encaixam, as fronteiras, o que cai se cada uma cair | `docs/rfc/00-ecossistema.md` |
+| **01** | cliente | `RFC 01 - API de Cliente.md` |
+| **02** | conta, livro, transação, tarifa e extrato | `docs/rfc/02-conta.md` |
+| **05** | abertura de conta | `docs/rfc/05-onboarding-api.md` |
+| **06** | webhooks de saída | `RFC 06 - API de Webhooks Outgoing.md` |
+
+Comece pela **00**: ela tem o mapa e diz, na última seção, o que o desenho não resolve.
+
+O markdown é a fonte. Para gerar o `.docx` e o
 **PDF** das quatro, com os diagramas renderizados:
 
 ```bash
