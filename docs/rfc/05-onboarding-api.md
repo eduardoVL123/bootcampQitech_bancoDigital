@@ -39,7 +39,8 @@ Fora do escopo:
 - leitura do RG por IA ou OCR;
 - login e renovação de credencial depois da abertura;
 - atualização cadastral e mais de uma conta por cliente;
-- monitoramento contínuo das transações (evolução da transaction-api).
+- monitoramento contínuo das transações (evolução da transaction-api);
+- **a entrada da webhook-api.** O worker entrega cada evento da outbox com `POST /internal/event`, e esse contrato está desenhado dos dois lados, aqui e na RFC 06. **O serviço que recebe não foi construído**: no `docker-compose.yml`, o `WEBHOOK_API_URL` aponta para o Mockserver, como os birôs. A metade de **saída** existe e funciona (o `webhook-worker` lê a `webhook_outbox`, assina e entrega aos parceiros, ver RFC 06); o que falta é a rota que junta as duas, gravando na mesma tabela o que chega por HTTP. A conta e a transação não precisam dela, porque dividem o banco e gravam direto na caixa de saída, no mesmo `COMMIT`.
 
 ### Explicando a solução de forma macro
 
