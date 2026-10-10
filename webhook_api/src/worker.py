@@ -129,7 +129,14 @@ def process_outbox_events(db_session) -> int:
 
 
 def main() -> None:
-    engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+    # Uma conexao, e so. O worker e um laco de uma thread so: o pool
+    # padrao do SQLAlchemy (5 mais 10 de overflow) reservaria ate 15
+    # conexoes para quem usa uma. Com seis clientes de banco no
+    # compose, sobra pouco do max_connections do Postgres para quem
+    # precisa de verdade.
+    engine = create_engine(
+        config.DATABASE_URL, pool_size=1, max_overflow=0, pool_pre_ping=True
+    )
     Session = sessionmaker(bind=engine)
 
     logger.info(
