@@ -100,6 +100,23 @@ A credencial é um JWT assinado em HS256 com a `AUTH_SECRET`, com `sub` igual à
 
 Confundir as duas primeiras camadas é a causa mais comum dos itens de autorização quebrada do OWASP. O `INTERNAL-TOKEN` diz **que aplicação** fala, não **quem**: sem a segunda camada, qualquer um que tenha o token lê o saldo de qualquer conta.
 
+#### A faixa que é de todos os serviços
+
+Cada RFC traz o catálogo dos erros do seu domínio. Os de baixo não são de domínio nenhum: nascem na borda, antes de qualquer regra de negócio rodar, e os três serviços repetem os mesmos números porque herdaram a mesma base.
+
+| Código | Status | Quando sai |
+|---|---|---|
+| `QIT000001` | `400` | o corpo não bate com o schema da rota |
+| `QIT000002` | `403` | `INTERNAL-TOKEN` ausente ou errado |
+| `QIT000003` · `QIT000004` · `QIT000005` | `401` | credencial ausente, inválida ou vencida |
+| `QIT000006` | `403` | a credencial é válida e o escopo não permite a operação |
+| `QIT000010` | `400` | parâmetro de rota ou de query fora do formato |
+| `QIT000404` | `404` | endereço que não existe nesta API |
+| `QIT000405` | `405` | endereço existe, método não |
+| `QIT000500` | `500` | **erro que ninguém nomeou.** Um `500` com este código é dívida: quer dizer que uma recusa prevista não ganhou código próprio |
+
+A `onboarding-api` tem os mesmos oito casos com **outra numeração**, e a diferença não é só o prefixo: credencial inválida é `QIT000004` na `api` e `ONB000006` na abertura; vencida é `QIT000005` e `ONB000007`; escopo insuficiente é `QIT000006` e `ONB000008`. Ela ainda tem dois que não existem do outro lado, `ONB000011` e `ONB000012`, para a chave de idempotência malformada e reusada. **A mesma situação tem número diferente em dois serviços do mesmo banco**, e é a pior parte do item 4 da última seção: unificar não é só trocar três letras.
+
 ### Banco de Dados
 
 ```mermaid
@@ -231,7 +248,7 @@ Escrito aqui porque a R7 cobra o preço das decisões, e porque um avaliador que
 1. **Não há gateway.** As portas dos três serviços estão publicadas na máquina, e `/internal/...` responde de fora. O `INTERNAL-TOKEN` é a única barreira, e o valor padrão do `.env.example` é de estudo.
 2. **A entrada da webhook-api não existe.** O `onboarding-worker` entrega os eventos dele por `POST /internal/event`, e no compose esse endereço é o Mockserver. A metade de **saída** funciona (RFC 06); falta a rota que junta as duas, gravando na mesma `webhook_outbox` o que chega por HTTP. São **duas caixas de saída** onde deveria haver uma.
 3. **Dois serviços escrevem `customer`:** a `customer-api` e a `onboarding-api`. A tabela tem `UNIQUE` no documento, então o banco impede o duplicado, mas quem é a fonte da verdade da `customer_key` não está decidido.
-4. **Duas convenções de código de erro:** `QIT` na `api` e na `customer-api`, `ONB` na `onboarding-api`. O da casa é `QIT`. O custo de unificar é um *find and replace* mais o catálogo da RFC 05; o de não unificar é a banca abrir um repositório e ver duas convenções.
+4. **Duas convenções de código de erro:** `QIT` na `api` e na `customer-api`, `ONB` na `onboarding-api`. O da casa é `QIT`: é o do `bootcamp-base-api` e o da implementação de referência. E não é só o prefixo: três situações da borda têm número diferente nos dois lados, como a tabela acima mostra. Unificar custa renumerar a `onboarding-api` e refazer o catálogo da RFC 05, com o `error_verification` avisando no start se dois erros colidirem. Não unificar custa a banca abrir um repositório e ver duas convenções para a mesma coisa.
 5. **A tarifa nunca é apropriada.** O valor entra em `FEE_HOLD` e fica. A conta `FEE_REVENUE` existe e nunca recebe nada, porque o prazo de 7 dias é escolha do time e não foi confirmado (RFC 02, pergunta em aberto 1).
 6. **Sem métrica e sem trace.** Há log estruturado com `request_id` costurando a requisição inteira, que é o sinal que cabe na aplicação. Métrica e trace vêm da infraestrutura, e não há infraestrutura aqui.
 7. **O `/health_check` responde liveness, não readiness.** Ele de propósito não toca no banco: diz que o processo está vivo, não que está pronto para receber tráfego. Um balanceador precisaria da segunda pergunta.

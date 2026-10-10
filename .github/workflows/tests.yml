@@ -1,10 +1,6 @@
 # Faz o que a banca vai fazer, numa maquina Linux limpa, a cada push:
 # sobe tudo do zero com o compose e roda o pytest contra as APIs.
 #
-# Roda nos branches da onboarding (feat/onboarding-...) e no branch de
-# integracao do grupo. O resultado aparece no commit e no PR, com um
-# visto verde ou um X vermelho. Tambem da para rodar a mao, na aba
-# Actions do GitHub ("Run workflow").
 # Roda na main, nos branches da onboarding (feat/onboarding-...), nos da
 # conta (feat/account-...) e no branch de integracao do grupo. Tambem
 # roda em todo pull request aberto contra a main. O resultado aparece no
@@ -19,8 +15,6 @@ name: testes
 on:
   push:
     branches:
-      - "feat/onboarding-*"
-      - feat/database-schema-and-models
       - main
       - "feat/onboarding-*"
       - "feat/account-*"

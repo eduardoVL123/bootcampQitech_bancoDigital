@@ -41,7 +41,7 @@ def token_de_operador() -> str:
 
 def token_com_outro_segredo(customer_key: str) -> str:
     """Assinado com um segredo que nao e o nosso: a assinatura nao fecha."""
-    return jwt.encode(_claims(customer_key, CUSTOMER_SCOPE), "segredo-de-quem-nao-e-o-banco", algorithm="HS256")
+    return jwt.encode(_claims(customer_key, CUSTOMER_SCOPE), "segredo-de-quem-nao-e-o-banco-e-nao-devia-assinar", algorithm="HS256")
 
 
 def token_vencido(customer_key: str) -> str:
