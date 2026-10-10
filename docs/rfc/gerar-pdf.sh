@@ -18,6 +18,7 @@ cd "$(dirname "$0")"
 # raiz do repositorio e duas aqui: enquanto o time nao decide um lugar
 # so, o script sabe os dois.
 declare -A RFCS=(
+  ["00-ecossistema.md"]="RFC 00 - O ecossistema"
   ["02-conta.md"]="RFC 02 - API de conta e transacao"
   ["05-onboarding-api.md"]="RFC 05 - API de abertura de conta"
   ["../../RFC 01 - API de Cliente.md"]="RFC 01 - API de Cliente"

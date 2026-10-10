@@ -28,6 +28,32 @@ Quando a `api` aprova uma transação, ela abre uma transação no banco de dado
 
 Como as duas ações ocorrem na mesma transação de banco de dados, é **impossível** que a transação mude de status sem que a mensagem vá para a "caixa de saída" (Outbox). Se faltar energia, o banco de dados desfaz tudo (Rollback) e o estado fica consistente.
 
+### 2.1.1. A tabela, e o que cada coluna decide
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#D9E2F3','primaryTextColor':'#1F2430','primaryBorderColor':'#1F3864','lineColor':'#1F3864','fontSize':'14px'}}}%%
+erDiagram
+    WEBHOOK_OUTBOX {
+        bigserial id PK
+        char36 event_id UK "o identificador para QUEM RECEBE: e por ele que o parceiro descarta repeticao"
+        varchar500 target_url "para onde vai"
+        varchar100 event_type "transaction.success"
+        jsonb payload "o corpo do evento, sem dado pessoal"
+        varchar30 status "PENDING, QUEUED_FOR_RETRY, DELIVERED, FAILED"
+        integer retries "quantas ja foram"
+        timestamptz next_attempt_at "QUANDO tentar de novo: e o que faz o recuo existir"
+        varchar255 last_error "o motivo da ultima falha, para olhar depois"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+```
+
+Tres colunas carregam o desenho inteiro, e vale dizer o que cada uma impede:
+
+- **`event_id`** existe porque a entrega por HTTP e "ao menos uma vez". Sem ele, o parceiro nao tem como saber que a segunda chegada e a mesma da primeira.
+- **`next_attempt_at`** existe porque sem ela nao ha recuo: o worker reenviaria na varredura seguinte, e as cinco tentativas queimariam em segundos contra um parceiro que ainda esta fora.
+- **Nao existe coluna de segredo.** O segredo do parceiro e configuracao, vem do ambiente, e uma coluna copiada em cada linha da fila seria um segredo a mais para vazar a cada evento.
+
 ### 2.2. Como o Exponential Backoff entra nisso?
 
 A tabela `webhook_outbox` é passiva: alguém precisa ler dela e entregar. Esse alguém é o **`webhook-worker`**, um processo separado no `docker-compose.yml`, igual ao `onboarding-worker`. Ele acorda a cada segundo, pega o que está na hora de entregar, assina, manda, e volta a dormir.
@@ -92,6 +118,72 @@ Esta tabela diz o que **está no código**, e não o que seria bom ter. Uma RFC 
 6. Deu erro, ou a conexão caiu? Conta a tentativa, grava o motivo em `last_error` e agenda a próxima em `next_attempt_at`, com recuo exponencial. Na quinta, vira `FAILED` e para.
 
 ---
+
+### 4.1. O caminho feliz, e onde o `COMMIT` cai
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#D9E2F3','primaryTextColor':'#1F2430','primaryBorderColor':'#1F3864','lineColor':'#1F3864','fontSize':'14px'}}}%%
+sequenceDiagram
+    participant C as Cliente
+    participant A as api (conta e transacao)
+    participant DB as PostgreSQL
+    participant W as webhook-worker
+    participant P as Parceiro
+
+    C->>A: POST /transaction (transferencia)
+    A->>DB: trava as contas, grava a transacao e os 4 lancamentos
+    A->>DB: INSERT na webhook_outbox (event_id, PENDING)
+    Note over A,DB: UM COMMIT so: a transferencia e o aviso, juntos
+    A->>DB: COMMIT
+    A-->>C: 201 {transaction_key}
+
+    Note over W: o worker acorda (a cada 1 s)
+    W->>DB: SELECT ... FOR UPDATE SKIP LOCKED<br/>status PENDING e next_attempt_at vencido
+    W->>P: POST assinado (X-Banco-Signature, X-Banco-Event-Id)
+    P-->>W: 2xx
+    W->>DB: DELIVERED, COMMIT deste evento
+```
+
+**O que nao acontece:** a api **nao** chama o parceiro. Ela so grava. Se chamasse antes do `COMMIT` e o commit falhasse, o parceiro saberia de uma transferencia que nao existe; se chamasse depois, e o processo morresse no meio, a transferencia existiria sem ninguem avisado e **sem registro de que faltou avisar**. Gravando junto, o pior caso e o parceiro receber duas vezes, e para isso existe o `event_id`.
+
+**O `COMMIT` do worker e por evento, nao por lote.** Com um commit no fim do lote, o processo morrer no meio devolveria o lote inteiro para `PENDING`, inclusive o que ja tinha chegado ao parceiro.
+
+### 4.2. O parceiro fora do ar, e o recuo
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#D9E2F3','primaryTextColor':'#1F2430','primaryBorderColor':'#1F3864','lineColor':'#1F3864','fontSize':'14px'}}}%%
+sequenceDiagram
+    participant W as webhook-worker
+    participant DB as PostgreSQL
+    participant P as Parceiro
+
+    Note over P: fora do ar
+    W->>P: tentativa 1
+    P--xW: conexao cai
+    W->>DB: retries=1, QUEUED_FOR_RETRY,<br/>next_attempt_at = agora + 1 min, COMMIT
+
+    Note over W,DB: nas varreduras seguintes o evento NAO e pego:<br/>next_attempt_at ainda nao venceu
+    W->>P: tentativa 2 (depois de 1 min)
+    P--xW: ainda fora
+    W->>DB: retries=2, proxima em 2 min
+
+    alt o parceiro volta
+        W->>P: tentativa 3 (depois de 2 min)
+        P-->>W: 202 aceito
+        W->>DB: DELIVERED, COMMIT
+    else continua fora ate a quinta
+        W->>DB: retries=5, FAILED, last_error gravado
+        Note over DB: fila morta: para de tentar,<br/>e nao apaga. O registro de que tentamos fica
+    end
+```
+
+A sequencia e 1, 2, 4, 8 e 16 minutos, de `base * 2^(tentativas - 1)` com a base de 60 segundos. **No `docker-compose.yml` a base e 2 segundos**, para o ambiente local e os testes nao levarem minutos: o valor esta la, visivel, e nao escondido no codigo.
+
+**Por que recuar, e nao insistir.** O parceiro ja esta com problema. Repetir a cada segundo acrescenta carga a quem menos pode receber, e e o que a AWS chama de retentativa egoista. O recuo da tempo de ele se recuperar.
+
+### 4.3. O que ainda nao e feito aqui: jitter
+
+Todos os eventos que falharam na mesma janela voltam **no mesmo instante**, porque o recuo e calculado do mesmo jeito para todos. Com um parceiro so e poucos eventos isto nao aparece; com muitos, as retentativas chegam em onda, exatamente quando o parceiro esta voltando. A correcao e barata e conhecida: somar um valor aleatorio ao `next_attempt_at` (jitter). **Nao esta feito**, e fica registrado aqui em vez de ficar implicito.
 
 ## 5. O que esta versão **não** resolve
 
