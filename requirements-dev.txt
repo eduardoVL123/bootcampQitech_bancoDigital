@@ -16,6 +16,7 @@ tzdata==2026.5
 # O .flake8 existe na raiz desde o projeto base e nunca teve quem o
 # rodasse: sem esta linha aqui, aquele arquivo e um combinado que
 # ninguem tem como cobrar. Rodar com: python -m flake8 .
-# Ainda NAO e portao de CI, porque hoje sobram apontamentos em
-# tests/ e em webhook_api/ e o CI ficaria vermelho por estilo.
+# Ainda NAO e portao de CI: hoje sobram 32 apontamentos, 22 em tests/,
+# 7 em src/ e 3 na customer-api/, quase todos espaco em linha vazia
+# (W293). A onboarding-api, a webhook_api e o database estao limpos.
 flake8==7.3.0

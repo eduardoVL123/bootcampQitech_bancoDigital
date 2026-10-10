@@ -36,7 +36,7 @@ class ComplianceResource:
         queue_page = controller.list_queue(status, query.get("reason_code"), limit, page * limit)
 
         # A paginação é assunto do endereço, e por isso quem monta o envelope é
-        # o resource, como no molde da base (src/resources/sample_entity.py).
+        # o resource, não o controller.
         page_envelope = {
             "data": queue_page["data"],
             "limit": limit,

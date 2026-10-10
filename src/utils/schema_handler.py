@@ -81,8 +81,8 @@ class SchemaHandler:
 
         Usa-se assim, no método do resource que recebe corpo:
 
-            class SampleEntityResource:
-                @SchemaHandler.validate("post_sample_entity.json")
+            class TransactionResource:
+                @SchemaHandler.validate("post_transaction.json")
                 def on_post(self, payload: dict) -> dict:
 
         O nome do arquivo é o único argumento, e ele aponta pra dentro
@@ -90,7 +90,7 @@ class SchemaHandler:
         DELETE — não leva decorator nenhum: não há o que conferir.
 
         Repare que o endereço HTTP não aparece aqui. Quem liga
-        "/sample_entity" a este método é o src/app.py, e é de propósito:
+        "/transaction" a este método é o src/app.py, e é de propósito:
         o resource cuida do CONTEÚDO da requisição, o app.py cuida do
         ENDEREÇO dela.
         """

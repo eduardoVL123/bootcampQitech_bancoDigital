@@ -342,7 +342,7 @@ cliente. Todas, menos `/` e `/health_check`, exigem o `INTERNAL-TOKEN`
 Comece pela **00**: ela tem o mapa e diz, na última seção, o que o desenho não resolve.
 
 O markdown é a fonte. Para gerar o `.docx` e o
-**PDF** das quatro, com os diagramas renderizados:
+**PDF** das cinco, com os diagramas renderizados:
 
 ```bash
 bash docs/rfc/gerar-pdf.sh
