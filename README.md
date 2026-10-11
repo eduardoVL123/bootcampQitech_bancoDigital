@@ -388,10 +388,10 @@ O resultado sai assim:
 ```
 tests/integration/test_healthcheck.py::TestHealthCheck::test_home PASSED
 ...
-=================== 372 passed, 26 skipped in 602.63s (0:10:02) ===================
+============== 356 passed, 27 skipped in 677.50s (0:11:17) ==============
 ```
 
-**Os 26 que pulam, e como rodar eles também.** Dois grupos de teste
+**Os 27 que pulam, e como rodar eles também.** Dois grupos de teste
 precisam de uma porta de serviço que fica **desligada por padrão**, de
 propósito: a injeção de falha, que faz a API quebrar num ponto exato
 para provar que nada fica pela metade, e o relógio simulado, que faz o
@@ -409,7 +409,7 @@ set -a && . ./.env && set +a
 pytest
 ```
 
-Aí são **399 passando e nada pulado**, que é o que o CI roda a cada
+Aí são **383 passando e nada pulado**, que é o que o CI roda a cada
 push. Vale rodar assim antes de qualquer entrega.
 
 Para rodar só um arquivo (ou só um teste), acrescente o caminho:
