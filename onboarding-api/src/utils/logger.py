@@ -13,7 +13,7 @@ from utils.request_context import get_request_id
 # — quem o preenche é o filtro logo abaixo. Uma linha sai assim:
 #
 #   2026-09-01 12:00:00 [INFO] bootcamp-api.middlewares.request_logger
-#   [8f3c1e42-...] - ENTROU GET /sample_entities
+#   [8f3c1e42-...] - ENTROU GET /onboardings
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(request_id)s] - %(message)s"
 
 # CPF e CNPJ, com e sem pontuação. O \b não separa letra de número, então
