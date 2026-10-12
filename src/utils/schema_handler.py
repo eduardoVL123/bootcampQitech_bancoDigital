@@ -124,9 +124,9 @@ class SchemaHandler:
 
         Usa-se assim, num metodo que recebe a requisicao inteira:
 
-            class SampleEntityResource:
-                @SchemaHandler.validate_query_params("get_sample_entities.json")
-                def on_get_list(self, request: Request) -> JSONResponse:
+            class AccountResource:
+                @SchemaHandler.validate_query_params("get_statement.json")
+                def on_get_statement(self, request: Request, account_key: str):
 
         Por que ler do `request` em vez dos argumentos da funcao: o
         FastAPI so entrega o que ele mesmo declarou. Um parametro com o

@@ -44,7 +44,7 @@ class DbUtils:
     depender de QUANTAS linhas existem no banco — contar, listar,
     paginar, filtrar. Nesses casos `DbUtils.rollback()` é a primeira
     linha do teste, antes de criar qualquer coisa (o exemplo está em
-    `tests/integration/test_sample_entities.py`). Um teste que só olha
+    `tests/integration/account/test_reconciliation.py`). Um teste que só olha
     as entidades que ele mesmo criou, pela chave que recebeu de volta,
     não precisa de limpeza nenhuma — e fica mais rápido sem ela.
 
