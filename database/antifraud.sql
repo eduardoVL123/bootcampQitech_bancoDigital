@@ -92,7 +92,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "VIAGEM_IMPOSSIVEL": {"max_kmh": 900, "min_km_gps": 100, "min_km_ip": 500, "points": 40},
     "GEO_IP_DIVERGENTE": {"km": 500, "points": 30},
     "AMBIENTE_INCOERENTE": {"points": 20},
-    "GEO_AUSENTE": {"points": {"app": 20, "web": 20, "api": 0}},
+    "GEO_AUSENTE": {"points": {"app": 20, "web": 20, "api": 0}, "habit_days": 90, "habit_min_attempts": 3},
     "APARELHO_COMPARTILHADO": {"days": 30, "min_documents": 3, "points": 25},
     "IP_COMPARTILHADO": {"window_minutes": 60, "min_documents": 5, "points": 15},
     "DESTINO_NOVO": {"days": 30, "points": 20, "very_new_hours": 24, "very_new_points": 30},

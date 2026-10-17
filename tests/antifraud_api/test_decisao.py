@@ -4,7 +4,7 @@ As regras usadas aqui sao as que nao dependem de historico (limite,
 noturno, geolocalizacao ausente e mesma titularidade). Cada teste cria
 pessoas novas, entao nenhum historico de outro teste entra na conta.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from tests.utils.pix import (
     AntifraudApi, Pagador, Recebedor, analisa, disparou, nova_base, pix, pontos, regra,
@@ -107,6 +107,28 @@ def test_sem_gps_pela_api_nao_soma():
     corpo = analisa(pix(Pagador(canal="api"), Recebedor(), 15000, _dia(14).isoformat(), gps=None))
 
     assert pontos(corpo, "GEO_AUSENTE") == 0
+
+
+def test_quem_nunca_manda_gps_nao_e_penalizado_pela_ausencia():
+    # Permissao de localizacao negada desde sempre: a ausencia e o normal
+    # deste titular, e nao baixa o corte de 2FA dele em todo Pix.
+    pagador, hoje = Pagador(canal="app", gps=None), _dia(14)
+    for dias in (9, 6, 3):
+        analisa(pix(pagador, Recebedor(), 15000, (hoje - timedelta(days=dias)).isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 15000, hoje.isoformat()))
+
+    assert not disparou(corpo, "GEO_AUSENTE")
+
+
+def test_quem_costuma_mandar_gps_e_chega_sem_ele_soma_20():
+    pagador, hoje = Pagador(canal="app"), _dia(14)
+    for dias in (9, 6, 3):
+        analisa(pix(pagador, Recebedor(), 15000, (hoje - timedelta(days=dias)).isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 15000, hoje.isoformat(), gps=None))
+
+    assert pontos(corpo, "GEO_AUSENTE") == 20
 
 
 def test_com_gps_nao_dispara():

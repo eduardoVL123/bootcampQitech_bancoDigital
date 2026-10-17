@@ -173,6 +173,16 @@ class HistoryRepository:
             doc=document, aparelho=device_id, fim=moment,
         ))
 
+    def gps_habit(self, document: str, moment, days: int) -> tuple:
+        """(tentativas com GPS, tentativas no total) do titular na janela, antes deste Pix."""
+        def consulta():
+            linha = self.session.execute(text(
+                "SELECT count(a.latitude), count(*) FROM pix_analysis a WHERE a.source_document = :doc "
+                "AND a.transaction_date > :inicio AND a.transaction_date <= :fim"
+            ), {"doc": document, "inicio": moment - timedelta(days=days), "fim": moment}).first()
+            return int(linha[0]), int(linha[1])
+        return self._remember(("gps_habit", document, days), consulta)
+
     def network_seen(self, document: str, network: str, moment) -> bool:
         return self._remember(("network_seen", document, network), lambda: self._scalar(
             "SELECT EXISTS (SELECT 1 FROM pix_analysis a WHERE a.source_document = :doc "
