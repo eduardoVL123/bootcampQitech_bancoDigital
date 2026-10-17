@@ -125,6 +125,33 @@ services:
       db:
         condition: service_healthy
 
+  # A antifraud-api (fase 2): recebe um Pix e decide se ele sai. Mesmo
+  # esqueleto da customer-api, com banco PROPRIO (antifraud), no mesmo
+  # container do Postgres, criado pelo database/antifraud.sql.
+  antifraud-api:
+    build:
+      context: ./antifraud-api
+      target: api
+    ports:
+      - "${ANTIFRAUD_API_PORT:-3020}:3000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/antifraud
+      APP_ENV: ${APP_ENV:-local}
+      SERVICE_NAME: antifraud-api
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+    volumes:
+      - ./antifraud-api/src:/app
+    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --reload
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3000/health_check\")'"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+
   # A onboarding-api: dona do cliente e da abertura de conta (RFC 05).
   # Mesmo esqueleto da api de cima, no mesmo banco (bootcamp): as tabelas
   # dela estao na secao 7 do database/database.sql.
