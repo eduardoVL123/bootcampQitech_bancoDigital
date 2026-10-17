@@ -91,14 +91,22 @@ class PixController(BaseController):
         destino = payload["destination_account"]
         source_document = digits_of(origem["owner"]["document_number"])
         destination_document = digits_of(destino["owner"]["document_number"])
-        source_account = self.account_repo.get_or_create(
-            OWN_PARTICIPANT, origem["branch"], origem["account_number"],
-            parse_moment(origem["opening_date"]), source_document,
-        )
-        destination_account = self.account_repo.get_or_create(
-            destino["participant"], destino["branch"], destino["account_number"],
-            parse_moment(destino["opening_date"]), destination_document,
-        )
+        # As contas sao criadas em ordem fixa (a da chave unica), e nao
+        # "origem, depois destino". O INSERT de uma conta nova segura a chave
+        # dela ate o commit: com A -> B e B -> A chegando juntos, as duas
+        # contas da casa e nunca vistas, cada pedido criava a sua origem e
+        # esperava a do outro. Era um deadlock ANTES das travas consultivas,
+        # que so protegem o que vem depois delas.
+        pedidos = {
+            "source": (OWN_PARTICIPANT, origem["branch"], origem["account_number"],
+                       parse_moment(origem["opening_date"]), source_document),
+            "destination": (destino["participant"], destino["branch"], destino["account_number"],
+                            parse_moment(destino["opening_date"]), destination_document),
+        }
+        contas = {}
+        for lado, argumentos in sorted(pedidos.items(), key=lambda item: item[1][:3]):
+            contas[lado] = self.account_repo.get_or_create(*argumentos)
+        source_account, destination_account = contas["source"], contas["destination"]
 
         device_id = payload["source"]["device_id"]
         self.history_repo.lock([

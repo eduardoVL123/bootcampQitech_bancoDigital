@@ -5,6 +5,8 @@ import pytest
 from tests.utils.pix import AntifraudApi, Pagador, Recebedor, nova_base, pix, regra
 from tests.utils.run_at_the_same_time import run_at_the_same_time
 
+CASA = "99999999"
+
 
 @pytest.mark.concurrency
 def test_concorrencia_velocity_conta_certo():
@@ -43,6 +45,25 @@ def test_pix_cruzados_nao_dao_deadlock():
     respostas = run_at_the_same_time(AntifraudApi.post, payloads)
 
     assert [r.status_code for r in respostas] == [201] * 12
+
+
+@pytest.mark.concurrency
+def test_pix_cruzados_entre_contas_novas_da_casa_nao_dao_deadlock():
+    # No teste de cima, o destino tem outro participant: a conta da Ana como
+    # origem e como destino sao contas DIFERENTES, e nenhum INSERT disputa
+    # com outro. Aqui as duas sao da casa e nunca foram vistas, entao A -> B
+    # e B -> A criam as mesmas duas contas, cada um comecando pela sua. Varias
+    # rodadas, porque o deadlock depende de quem chega primeiro (2 em 10
+    # antes da correcao).
+    for _ in range(10):
+        ana, bruno = Recebedor(participante=CASA), Recebedor(participante=CASA)
+        data = nova_base().isoformat()
+        payloads = [pix(ana.como_pagador(), bruno, 5000, data) for _ in range(3)]
+        payloads += [pix(bruno.como_pagador(), ana, 5000, data) for _ in range(3)]
+
+        respostas = run_at_the_same_time(AntifraudApi.post, payloads)
+
+        assert [r.status_code for r in respostas] == [201] * 6
 
 
 @pytest.mark.concurrency
