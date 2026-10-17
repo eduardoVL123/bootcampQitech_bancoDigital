@@ -13,8 +13,6 @@ O que tem aqui:
   - pix_normal(): o payload da seção 3.1 do documento, com tudo novo;
   - mutar(): uma cópia do payload com um campo trocado;
   - quando(): datas com fuso, a partir de uma base;
-  - apresenta_conta(): faz o motor conhecer uma conta, com um Pix pequeno para ela;
-  - sem_mascara(): o documento como o motor grava;
   - AntifraudDb.reset(): zera as tabelas de movimento, e só isso;
   - os documentos dos seeds de demonstração.
 """
@@ -57,20 +55,6 @@ RECEBEDOR_ALERTA_VENCIDO = "390.533.447-05"
 RECEBEDOR_VITIMA = "123.456.789-09"
 RECEBEDOR_NA_WATCHLIST = "275.484.389-23"
 APARELHO_NA_WATCHLIST = "dvc-watchlist-0001"
-
-# O mock do cadastro de empresas (company_registry_fixture). O banco nao e
-# zerado entre rodadas e as contas que um teste cria ficam. Por isso cada
-# grupo tem papel fixo, e nenhum teste ou cenario cria conta fora dele:
-# - GRUPO_*: so testes que esperam a confirmacao (mais contas nao mudam nada);
-# - LOJA_*: so as contas (LOJA_CNPJ, 60701190), (LOJA_CPF, 11111111) e
-#   (LOJA_CNPJ_BAIXADO, 22222222): nunca passa de duas contas novas;
-# - CNPJ_VINCULO_VENCIDO: so a conta (CNPJ_VINCULO_VENCIDO, 60701190).
-GRUPO_CPF = "418.572.936-73"
-GRUPO_CNPJS = ("93.624.817/0001-11", "97.150.368/0001-78", "85.316.940/0001-47")
-CNPJ_VINCULO_VENCIDO = "74.102.958/0001-20"   # no nome do GRUPO_CPF so em 2018
-LOJA_CPF = "306.149.527-43"
-LOJA_CNPJ = "81.947.205/0001-80"
-LOJA_CNPJ_BAIXADO = "96.283.574/0001-93"      # MEI da dona, baixado em 2020
 
 
 def endereco_da_api() -> str:
@@ -360,14 +344,3 @@ def historico(pagador: Pagador, valores: list, inicio: datetime, passo: timedelt
             recebedor = destino
         corpos.append(paga(pix(pagador, destino, valor, (inicio + passo * indice).isoformat())))
     return corpos
-
-
-def sem_mascara(documento: str) -> str:
-    """O documento como o motor grava: so letras e digitos, letras em maiuscula."""
-    return "".join(c for c in documento.upper() if c.isascii() and c.isalnum())
-
-
-def apresenta_conta(documento: str, participante: str, aberta_em: datetime, quando: datetime) -> dict:
-    """Faz o motor conhecer uma conta: um Pix de R$ 50 de um pagador novo para ela, em `quando`."""
-    recebedor = Recebedor(documento=documento, aberta_em=aberta_em, participante=participante)
-    return analisa(pix(Pagador(), recebedor, 5000, quando.isoformat()))

@@ -15,7 +15,7 @@ Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositó
 
 ## Como o motor de decisão funciona
 
-Cada Pix passa por **36 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
+Cada Pix passa por **35 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
 
 1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
 2. **Dado impossível não é risco, é erro.** Data que não existe (mês 13, 30 de fevereiro, fuso +25:00) volta `400`; data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422`. Nos dois casos, sem ser analisada.
@@ -81,7 +81,6 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 | `REDE_SUSPEITA` | o destino está a até dois saltos de uma conta com evidência qualificada (a âncora pagou o destino, ou pagou quem pagou), por Pix aprovados de pelo menos R$ 10 em 30 dias, e o pagador ainda não paga esse destino | +30, com o caminho no `metadata` | Vínculos de 1º e 2º grau, por SQL, sem banco de grafos. O vizinho não vira âncora nova, e a suspeita não se propaga sem fim. Sem o corte de valor, uma âncora que é cliente da casa contaminava qualquer conta com um Pix de R$ 0,01 |
 | `REPUTACAO_EXTERNA` | contadores do **mock** de reputação no formato do `destination_statistics` da API Pix da QI (`mule_accounts`, `scammer_accounts`, `distinct_fraud_reporters`, `open_reports`... em 90 dias, 12 meses, 60 meses) | **bloqueio** com golpe ou laranja em 90 dias · +40 com denúncia aberta ou ocorrência em 12 meses · fraude de cadastro: +40 se a conta destino tem menos de 90 dias, **bloqueio** se é do próprio pagador e tem menos de 30 dias, 0 para a conta antiga · papel de vítima: 0 | `mule_accounts` e `scammer_accounts` são marcações de fraude, que só existem depois de a instituição do recebedor analisar e confirmar: uma basta. Denúncia sem análise é `open_reports`, e essa só soma. Quem teve a identidade roubada é a vítima, não o fraudador, mas a conta NOVA no CPF dela pode ser a que o fraudador abriu: é o golpe da "conta segura". O mock é fictício, determinístico e marcado `is_mock` |
 | `REPUTACAO_INTERNA` | documento destino ou aparelho na lista interna vigente | documento com fraude confirmada: **bloqueio** · "não fui eu" do titular e aparelho: +40 | Casos confirmados (semeados) e o "não fui eu" do titular depois de um desafio. Contra conta que a casa já sabe que é de golpe, 2FA não protege: quem paga é a vítima, e ela passa na facial. O "não fui eu" é a palavra de um cliente só, e por isso soma sem bloquear. **Nunca** a decisão do próprio motor: uma rejeição por limite não diz nada sobre o recebedor, e alimentar a lista com ela geraria falsos positivos em cadeia |
-| `CONTAS_NOVAS_DO_GRUPO` | o grupo do titular do destino: o CPF responsável pelo CNPJ, pelo **mock** do cadastro de empresas (destino pessoa física: o próprio CPF), e os CNPJs **em aberto** desse CPF no instante do Pix. Conta as contas do grupo abertas há menos de 30 dias entre as que o motor já viu, a do destino inclusive, uma por documento e instituição | **0 pontos**. ≥ 3 contas novas: confirma a rejeição pelo eixo destino com ≥ 80 (`reject_destination_alone`); sem isso, facial e documento. CNPJ baixado e vínculo fora da vigência não entram | Decisão do time: a conta laranja nova e a loja nova na primeira semana recebem, as duas, de muita gente numa conta nova. O que separa as duas é o grupo: todo CNPJ tem um CPF responsável, e quem monta conta laranja abre várias, no CPF e nos CNPJs dele. Não soma pontos porque não é risco a mais, é a confirmação de que o 2FA não basta. O mock é fictício, determinístico e marcado `is_mock` |
 | `MESMA_TITULARIDADE` | mesmo documento nos dois lados | redutor até −10 | Transferir entre os próprios bancos é o Pix de menor risco. Desconta só da família de valor: contas do mesmo dono também podem ser tomadas |
 | `DESTINO_CONFIAVEL` | ≥ 3 pagamentos aprovados a este titular, em 3 dias diferentes, o primeiro há ≥ 7 dias, e o valor de agora ≤ o maior já pago | redutor até −10 | A regra do aluguel. Um Pix de R$ 10 não "aquece" o destino para um de R$ 2.500 |
 
@@ -99,15 +98,14 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 |---|---|---|
 | Algum bloqueio: limite do cliente, teto operacional, fraude confirmada do recebedor (mock ou lista interna), conta segura | `rejected` | `none` |
 | Score ≥ 80 **e** pelo menos dois eixos com ≥ 20 pontos | `rejected` | `none` |
-| Eixo destino com ≥ 80 pontos (`reject_destination_alone`) **e** o grupo do titular com ≥ 3 contas novas (`CONTAS_NOVAS_DO_GRUPO`) | `rejected` | `none` |
-| Eixo destino com ≥ 80 pontos, sem essa confirmação | `two_factor_required` | `facial_document`: facial e documento |
+| Eixo destino com ≥ 80 pontos, sozinho (`reject_destination_alone`) | `rejected` | `none` |
 | Score ≥ 60, ou um piso `facial_document` | `two_factor_required` | `facial_document`: facial e documento |
 | Score ≥ 40, ou um piso `facial` | `two_factor_required` | `facial` |
 | O resto | `approved` | `none` |
 
 O score é a soma das contribuições efetivas, de 0 a 100. **Ele não é probabilidade**: 80 pontos não são 80% de chance de fraude.
 
-**Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova. A exceção é a evidência **confirmada** do recebedor: ela bloqueia sozinha, porque a verificação só responde "é o dono da conta mesmo?", e no golpe quem paga é o próprio dono, enganado (Res. BCB 501/2025: recusar pagamento para conta com fundada suspeita de fraude). O eixo **destino** com 80 ou mais tem a mesma fraqueza: na conta laranja nova recebendo de 10 pessoas numa hora, ou no repasse para uma conta de 3 horas, a verificação seria feita pela vítima enganada ou pelo próprio dono da conta laranja, e os dois passam. Mas a loja nova, nos primeiros dias (antes de ter a régua dela), tem a mesma cara. Por isso ele só reprova sozinho com a confirmação do grupo do titular (decisão do time): todo CNPJ tem um CPF responsável, o motor junta esse CPF e os CNPJs em aberto dele e conta as contas do grupo abertas há menos de 30 dias. Com 3 ou mais, reprova; sem isso, pede facial e documento. Tirar `reject_destination_alone` da política desliga a reprovação pelo destino sozinho.
+**Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova. A exceção é a evidência **confirmada** do recebedor: ela bloqueia sozinha, porque a verificação só responde "é o dono da conta mesmo?", e no golpe quem paga é o próprio dono, enganado (Res. BCB 501/2025: recusar pagamento para conta com fundada suspeita de fraude). Pelo mesmo motivo, o eixo **destino** com 80 ou mais reprova sozinho: conta laranja nova recebendo de 10 pessoas numa hora, ou repasse para uma conta de 3 horas. A verificação seria feita pela vítima enganada ou pelo próprio dono da conta laranja, e os dois passam. O custo é a loja nova, nos primeiros 7 dias (antes de ter a régua dela), ter uma venda recusada no horário de pico; tirar a chave da política volta ao comportamento anterior.
 
 **Quando pede 2FA, e qual.** O status público é sempre um dos três do contrato. O nível vai no `metadata`: `facial` para a dúvida moderada (40 a 59 pontos, ou piso facial), `facial_document` para a forte (60 ou mais num eixo, ou piso reforçado). O motor **pede** a verificação; quem a executa é o app do cliente, e o resultado volta pelo `PATCH`.
 
@@ -130,7 +128,6 @@ Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta d
       {"rule": "CONTRAPARTE_INEDITA", "evaluation": "triggered", "raw_points": 15, "effective_points": 0, "correlated": true, "...": "..."}
     ],
     "reputation": {"provider": "mock_bureau", "is_mock": true, "signal": "not_found"},
-    "destination_group": {"provider": "mock_company_registry", "is_mock": true, "link": "self", "new_accounts": 1, "confirmed": false, "gate": "not_reached", "...": "..."},
     "latency_ms": 55
   }
 }
@@ -186,7 +183,6 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 | empresa pela api, sem GPS | approved | approved | 0 | sem_alerta_relevante |  | sim |
 | cliente novo, R$ 100 | approved | approved | 0 | sem_alerta_relevante |  | sim |
 | loja que recebe de 10 clientes por hora | approved | approved | 0 | sem_alerta_relevante |  | sim |
-| loja nova (7 dias), 10 clientes numa hora | facial_document | facial_document | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
 | primeiro aluguel (R$ 2.500) | approved ou facial ou facial_document | facial_document | 65 | primeiro_pagamento | PERFIL +50, CONTRAPARTE_INEDITA +15 | sim |
 | payload do documento oficial | facial | facial | 45 | primeiro_pagamento | NOTURNO +25, DESTINO_NOVO +20 | sim |
 | 6 clientes da mesma operadora (CGNAT), 21h | approved | approved | 25 | pagamento_recorrente | NOTURNO +25 | sim |
@@ -204,9 +200,8 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 | conta tomada (aparelho novo, Recife em 15 min) | facial_document ou rejected | rejected | 100 | conta_tomada | PERFIL +50, VIAGEM_IMPOSSIVEL +40, MONTANTE_DIARIO_ATIPICO +30, DESTINO_NOVO +20 | sim |
 | rajada de 10 Pix em 5 min | facial_document | facial_document | 60 | esvaziamento_fatiado | VELOCITY +60 | sim |
 | sondagem: R$ 30 mil, 25 mil, 19 mil | facial_document ou rejected | facial_document | 85 | sondagem_de_limite | SONDAGEM_DE_LIMITE +50, PERFIL_SEM_HISTORICO +20, CONTRAPARTE_INEDITA +15 | sim |
-| conta laranja: 10 pagadores, conta nova | facial_document ou rejected | facial_document | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
-| repasse rapido para conta de 3 horas | facial_document ou rejected | facial_document | 90 | conta_laranja | REPASSE_RAPIDO +60, DESTINO_NOVO +30 | sim |
-| conta laranja num grupo com 3 contas novas (CNPJs do mesmo CPF) | rejected | rejected | 80 | conta_laranja | CONTAS_NOVAS_DO_GRUPO (confirma), CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
+| conta laranja: 10 pagadores, conta nova | facial_document ou rejected | rejected | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
+| repasse rapido para conta de 3 horas | facial_document ou rejected | rejected | 90 | conta_laranja | REPASSE_RAPIDO +60, DESTINO_NOVO +30 | sim |
 | coordenacao: 3 titulares, 1 aparelho | facial ou facial_document ou rejected | facial_document | 60 | coordenacao_entre_contas | COORDENACAO_ENTRE_CONTAS +40, DESTINO_NOVO +20 | sim |
 | fatiamento: 4 x R$ 2.900 em 30 min | facial ou facial_document | facial | 40 | esvaziamento_fatiado | FATIAMENTO +40 | sim |
 | aparelho na lista interna | facial ou facial_document ou rejected | facial | 40 | risco_contextual | REPUTACAO_INTERNA +40 | sim |
@@ -217,18 +212,17 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 
 **Resumo**
 
-- Legitimos aprovados sem friccao: 9 de 13
-- Fraudes retidas (2FA ou rejeicao): 17 de 17
-- Cenarios no resultado esperado: 30 de 30
-- Latencia do motor em 98 analises: p50 48 ms, p95 56 ms (medida no ambiente de desenvolvimento, com a API no Docker, e não no ambiente da entrega: rodar a ferramenta de novo lá e colar os números)
+- Legitimos aprovados sem friccao: 9 de 12
+- Fraudes retidas (2FA ou rejeicao): 16 de 16
+- Cenarios no resultado esperado: 28 de 28
+- Latencia do motor em 78 analises: p50 20 ms, p95 26 ms (medida fora do Docker: rodar a ferramenta de novo no ambiente da entrega e colar os números)
 
-Dos quatro legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; o payload do desafio pede a facial, como o exemplo de saída do próprio documento; e a loja nova, na primeira semana, recebendo de 10 clientes numa hora, pede facial e documento: sem a régua dela, a concentração parece conta laranja, e o grupo da dona não tem contas novas que confirmem a rejeição.
+Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
 
 ## O que o motor não resolve
 
 - **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas.
 - **Reputação e localização de IP são mocks.** O mock de reputação segue o formato do `destination_statistics` da QI, e as faixas de IP são faixas de documentação com lugares fictícios. Em produção, a mesma tabela `ip_range_location` receberia uma base real (por exemplo a DB-IP City Lite, CC BY 4.0), sem mudar o motor.
-- **Quem responde por cada CNPJ é um mock.** O Pix só traz o documento de cada ponta, e nem o antifraude nem o onboarding da fase 1 guardam o CPF por trás de um CNPJ. A tabela `company_registry_fixture` tem vínculos fictícios; em produção receberia o CPF responsável de uma base de CNPJ (os dados abertos da Receita mascaram o CPF do sócio, então seria convênio ou bureau) ou do cadastro das contas PJ da casa, sem mudar o motor. Fora do mock, o CNPJ fica sem vínculo e o grupo é só ele. E a contagem só vê as contas que já passaram por um Pix analisado pelo motor: a que nunca recebeu de cliente da casa não entra, e a falta dela só leva à verificação, nunca à recusa.
 - **A verificação é pedida, não executada.** O motor diz `facial` ou `facial_document`; o app executa e devolve o resultado pelo `PATCH`.
 - **O calendário é enxuto:** dia do mês com tolerância, sem dia útil nem feriado.
 - **A data é de quem chama.** Até 5 minutos fora de ordem o motor confia; além disso, a `DATA_RETROATIVA` pede a verificação reforçada, mas o motor não usa o relógio do servidor para datas no passado.
@@ -244,8 +238,6 @@ Dos quatro legítimos que não passaram direto, nenhum foi reprovado: a transfer
 - **Alimentar a lista interna com as rejeições do motor:** descartado porque transforma um falso positivo em vários.
 - **`SELECT ... FOR UPDATE` nas contas:** descartado porque a chave estrangeira da análise pega `KEY SHARE` na conta do outro lado, e dois Pix cruzados fechariam um deadlock (a lição de 07/10 da fase 1). As travas consultivas não tocam em linha nenhuma.
 - **Análise manual (`in_manual_analysis`, que a API da QI tem):** descartada porque o desafio diz que no Pix não cabe análise manual, e o contrato só tem três status.
-- **Eixo destino com 80 ou mais reprovando sempre** (a primeira versão de `reject_destination_alone`): descartado pelo time porque a loja nova, nos primeiros 7 dias, teria a venda recusada no pico. Ficou a reprovação só com o grupo do titular confirmando.
-- **Pontos pelo grupo do titular:** descartado porque um grupo com contas novas não é, sozinho, sinal de golpe (quem abre empresa abre conta), e o time pediu uma confirmação para a rejeição, não um sinal a mais no score.
 
 ---
 

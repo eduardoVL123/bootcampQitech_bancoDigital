@@ -7,4 +7,3 @@ from repositories.limit_repository import LimitRepository
 from repositories.challenge_repository import ChallengeRepository
 from repositories.watchlist_repository import WatchlistRepository
 from repositories.reputation_repository import ReputationRepository
-from repositories.company_registry_repository import CompanyRegistryRepository

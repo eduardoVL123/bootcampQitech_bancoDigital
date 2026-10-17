@@ -73,7 +73,6 @@ class PixContext:
     limits: object = None
     reputation: object = None
     watchlist: object = None
-    registry: object = None
     results: dict = field(default_factory=dict)
     cache: dict = field(default_factory=dict)
 

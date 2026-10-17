@@ -7,7 +7,6 @@ from models.pix_analysis import PixAnalysis
 from models.pix_rule_result import PixRuleResult
 from models.account_limit import AccountLimit
 from models.reputation_fixture import ReputationFixture
-from models.company_registry_fixture import CompanyRegistryFixture
 from models.watchlist import Watchlist
 from models.ip_range_location import IpRangeLocation
 from models.pix_challenge_result import PixChallengeResult

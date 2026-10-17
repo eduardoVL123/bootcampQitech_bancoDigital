@@ -272,22 +272,6 @@ class HistoryRepository:
             return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
         return self._remember(("received", account_id, minutes), consulta)
 
-    def new_accounts_of(self, documents: list, moment, days: int) -> set:
-        """As contas novas destes documentos: (documento, instituicao) abertas nos `days` dias antes do Pix.
-
-        Entre as contas que o motor ja viu, pela opening_date, ancorada no
-        instante do Pix. A conta destino deste Pix ja esta em pix_account (o
-        controller a cria antes das regras) e entra se for nova. Duas contas
-        do mesmo documento na mesma instituicao contam uma vez.
-        """
-        return self._remember(("new_accounts", tuple(documents), days), lambda: {
-            (linha[0], linha[1]) for linha in self._all(
-                "SELECT DISTINCT c.owner_document, c.participant FROM pix_account c "
-                "WHERE c.owner_document = ANY(:docs) AND c.opening_date > :inicio AND c.opening_date <= :fim",
-                docs=list(documents), inicio=moment - timedelta(days=days), fim=moment,
-            )
-        })
-
     # ------------------------------------------------------------------
     # Eventos para as reguas de cada cliente (controllers/engine/reference.py)
     # ------------------------------------------------------------------
