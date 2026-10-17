@@ -7,6 +7,15 @@ from jsonschema import RefResolver, ValidationError, validate
 from constants import SCHEMA_PATH
 from errors import InvalidSchema
 
+# O jsonschema 4.17 monta a lista de metaschemas que ele conhece de forma
+# preguicosa, na PRIMEIRA validacao, e sem trava. Com varios pedidos
+# chegando juntos logo depois de a API subir, uma thread pegava a lista pela
+# metade e ia buscar o pedaco que faltava na internet
+# (https://json-schema.org/draft/2020-12/meta/core): sem rede, 500; com rede,
+# uma chamada externa no meio da validacao de um Pix. Criar um resolver aqui,
+# no import, monta a lista inteira numa thread so, antes do primeiro pedido.
+RefResolver("", None)
+
 
 class SchemaCache:
     """Guarda os schemas já lidos do disco, pra não reler a cada requisição.
