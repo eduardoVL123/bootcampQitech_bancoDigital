@@ -6,7 +6,7 @@ regua so existe com 7 dias ativos e 20 eventos."""
 from datetime import timedelta
 
 from tests.utils.pix import (
-    Pagador, Recebedor, analisa, disparou, nova_base, paga, pix, pontos, regra,
+    Pagador, Recebedor, analisa, disparou, nova_base, paga, pix, regra,
 )
 
 CASA = "99999999"

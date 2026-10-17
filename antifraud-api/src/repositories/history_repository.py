@@ -230,7 +230,7 @@ class HistoryRepository:
                 f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
                 conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
             )
-            return sum(int(l[1]) for l in linhas), {l[0] for l in linhas}
+            return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
         return self._remember(("received", account_id, minutes), consulta)
 
     # ------------------------------------------------------------------
@@ -239,7 +239,7 @@ class HistoryRepository:
 
     def outgoing_events(self, account_id: int, start, end) -> list:
         """(data, valor, aprovado) de cada saida da conta no periodo, em ordem."""
-        return [(l[0], int(l[1]), bool(l[2])) for l in self._all(
+        return [(item[0], int(item[1]), bool(item[2])) for item in self._all(
             f"SELECT a.transaction_date, a.amount, {APPROVED} FROM pix_analysis a "
             "WHERE a.source_account_id = :conta AND a.transaction_date >= :inicio AND a.transaction_date < :fim "
             "ORDER BY a.transaction_date",
@@ -248,7 +248,7 @@ class HistoryRepository:
 
     def incoming_events(self, account_id: int, start, end) -> list:
         """(data, valor, documento pagador) de cada entrada na conta no periodo, em ordem."""
-        return [(l[0], int(l[1]), l[2]) for l in self._all(
+        return [(item[0], int(item[1]), item[2]) for item in self._all(
             "SELECT a.transaction_date, a.amount, a.source_document FROM pix_analysis a "
             "WHERE a.destination_account_id = :conta AND a.transaction_date >= :inicio AND a.transaction_date < :fim "
             "ORDER BY a.transaction_date",

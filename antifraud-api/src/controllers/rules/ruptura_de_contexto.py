@@ -43,9 +43,9 @@ class RupturaDeContexto(Rule):
             return None
         pontos = ctx.history.approved_gps_points(ctx.source_document, ctx.moment, p["geo_window_days"])
         fuso = ctx.local_moment.tzinfo
-        if len(pontos) < p["geo_min_points"] or len({l[2].astimezone(fuso).date() for l in pontos}) < p["geo_min_days"]:
+        if len(pontos) < p["geo_min_points"] or len({item[2].astimezone(fuso).date() for item in pontos}) < p["geo_min_days"]:
             return None
-        mais_perto = min(haversine_km(float(l[0]), float(l[1]), ctx.gps.latitude, ctx.gps.longitude) for l in pontos)
+        mais_perto = min(haversine_km(float(item[0]), float(item[1]), ctx.gps.latitude, ctx.gps.longitude) for item in pontos)
         if mais_perto > p["far_km"]:
             return f"GPS a {mais_perto:.0f} km do ponto habitual mais proximo"
         return None
@@ -62,12 +62,12 @@ class RupturaDeContexto(Rule):
         inicio = ctx.local_moment.replace(hour=0, minute=0, second=0, microsecond=0)
         historico = ctx.history.approved_amounts_of_payer(ctx.source_account.id, inicio, params["PERFIL"]["window_days"])
         fuso = ctx.local_moment.tzinfo
-        dias = {l[1].astimezone(fuso).date() for l in historico}
+        dias = {item[1].astimezone(fuso).date() for item in historico}
         if len(historico) < p["history_min_payments"] or len(dias) < p["history_min_days"]:
             return None
         familiar = params["DESTINO_CONFIAVEL"]
         linhas = ctx.history.approved_to_document(ctx.source_document, ctx.destination_document, ctx.moment)
-        datas = [l[1].astimezone(fuso) for l in linhas]
+        datas = [item[1].astimezone(fuso) for item in linhas]
         e_familiar = (
             len(linhas) >= familiar["min_payments"]
             and len({d.date() for d in datas}) >= familiar["min_days"]

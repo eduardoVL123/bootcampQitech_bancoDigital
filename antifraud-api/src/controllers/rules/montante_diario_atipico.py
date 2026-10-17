@@ -23,8 +23,8 @@ class MontanteDiarioAtipico(Rule):
     def evaluate(self, ctx, params):
         p = params[self.code]
         inicio = day_start(ctx)
-        totais = [int(t) for t in ctx.history.daily_approved_totals(ctx.source_account.id, inicio, p["days"],
-                                                                     params["timezone"])]
+        diarios = ctx.history.daily_approved_totals(ctx.source_account.id, inicio, p["days"], params["timezone"])
+        totais = [int(total) for total in diarios]
         if len(totais) < p["min_days"]:
             return self.not_evaluable(f"So {len(totais)} dias com movimento; a regra pede {p['min_days']}.")
         minutos_de_hoje = int((ctx.moment - inicio).total_seconds() // 60) + 1

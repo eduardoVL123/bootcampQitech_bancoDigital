@@ -36,4 +36,4 @@ class IpLocationRepository:
         ), {"network": network, "inicio": moment - timedelta(days=LEARNED_WINDOW_DAYS), "fim": moment}).all()
         if len(linhas) < LEARNED_MIN_POINTS:
             return None
-        return (median(float(l.latitude) for l in linhas), median(float(l.longitude) for l in linhas))
+        return (median(float(item.latitude) for item in linhas), median(float(item.longitude) for item in linhas))
