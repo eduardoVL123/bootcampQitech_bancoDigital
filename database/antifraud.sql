@@ -56,7 +56,7 @@ CREATE TRIGGER fraud_policy_is_append_only
 
 INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "timezone": "America/Sao_Paulo",
-    "decision": {"facial": 40, "facial_document": 60, "reject": 80, "reject_min_axis_points": 20, "reject_min_axes": 2},
+    "decision": {"facial": 40, "facial_document": 60, "reject": 80, "reject_min_axis_points": 20, "reject_min_axes": 2, "reject_destination_alone": 80},
     "reducers": {"max_total": 20},
     "LIMITE_POR_PIX": {"high": 2000000, "points": 40, "ceiling": 10000000},
     "PERFIL": {

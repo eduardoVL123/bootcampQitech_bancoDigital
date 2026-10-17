@@ -13,12 +13,15 @@ A ordem dos passos e a politica, e cada um responde a uma pergunta:
 5. A tabela: rejeita com 80 ou mais SO SE dois eixos tiverem 20 ou mais.
    Risco alto concentrado num eixo pede a verificacao reforcada em vez de
    rejeitar: um sinal so, por mais forte, pode ter explicacao legitima.
+   A excecao e o eixo destino (`reject_destination_alone`): ali o 2FA nao
+   protege, porque quem faz a verificacao e o pagador, e o pagador enganado
+   (ou o dono da conta laranja repassando) passa nela.
 6. Os pisos: uma regra pode exigir um nivel minimo de verificacao sem
    somar pontos. Piso nunca reduz a decisao.
 """
 from dataclasses import dataclass
 
-from controllers.engine.context import AXES, FACIAL, FACIAL_DOCUMENT, LEVELS, MOVIMENTACAO, NONE
+from controllers.engine.context import AXES, DESTINO, FACIAL, FACIAL_DOCUMENT, LEVELS, MOVIMENTACAO, NONE
 from models import PixStatus
 
 VALUE_FAMILY = "valor_individual"
@@ -99,6 +102,8 @@ def decide(results: list, params: dict) -> Decision:
     if bloqueios:
         status, nivel = PixStatus.REJECTED, NONE
     elif score >= regras["reject"] and eixos_fortes >= regras["reject_min_axes"]:
+        status, nivel = PixStatus.REJECTED, NONE
+    elif eixos[DESTINO] >= regras.get("reject_destination_alone", 101):
         status, nivel = PixStatus.REJECTED, NONE
     elif score >= regras["facial_document"] or piso == FACIAL_DOCUMENT:
         status, nivel = PixStatus.TWO_FACTOR_REQUIRED, FACIAL_DOCUMENT

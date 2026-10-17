@@ -98,13 +98,14 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 |---|---|---|
 | Algum bloqueio: limite do cliente, teto operacional, fraude confirmada do recebedor (mock ou lista interna), conta segura | `rejected` | `none` |
 | Score ≥ 80 **e** pelo menos dois eixos com ≥ 20 pontos | `rejected` | `none` |
+| Eixo destino com ≥ 80 pontos, sozinho (`reject_destination_alone`) | `rejected` | `none` |
 | Score ≥ 60, ou um piso `facial_document` | `two_factor_required` | `facial_document`: facial e documento |
 | Score ≥ 40, ou um piso `facial` | `two_factor_required` | `facial` |
 | O resto | `approved` | `none` |
 
 O score é a soma das contribuições efetivas, de 0 a 100. **Ele não é probabilidade**: 80 pontos não são 80% de chance de fraude.
 
-**Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova. A exceção é a evidência **confirmada** do recebedor: ela bloqueia sozinha, porque a verificação só responde "é o dono da conta mesmo?", e no golpe quem paga é o próprio dono, enganado (Res. BCB 501/2025: recusar pagamento para conta com fundada suspeita de fraude).
+**Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova. A exceção é a evidência **confirmada** do recebedor: ela bloqueia sozinha, porque a verificação só responde "é o dono da conta mesmo?", e no golpe quem paga é o próprio dono, enganado (Res. BCB 501/2025: recusar pagamento para conta com fundada suspeita de fraude). Pelo mesmo motivo, o eixo **destino** com 80 ou mais reprova sozinho: conta laranja nova recebendo de 10 pessoas numa hora, ou repasse para uma conta de 3 horas. A verificação seria feita pela vítima enganada ou pelo próprio dono da conta laranja, e os dois passam. O custo é a loja nova, nos primeiros 7 dias (antes de ter a régua dela), ter uma venda recusada no horário de pico; tirar a chave da política volta ao comportamento anterior.
 
 **Quando pede 2FA, e qual.** O status público é sempre um dos três do contrato. O nível vai no `metadata`: `facial` para a dúvida moderada (40 a 59 pontos, ou piso facial), `facial_document` para a forte (60 ou mais num eixo, ou piso reforçado). O motor **pede** a verificação; quem a executa é o app do cliente, e o resultado volta pelo `PATCH`.
 
@@ -199,8 +200,8 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 | conta tomada (aparelho novo, Recife em 15 min) | facial_document ou rejected | rejected | 100 | conta_tomada | PERFIL +50, VIAGEM_IMPOSSIVEL +40, MONTANTE_DIARIO_ATIPICO +30, DESTINO_NOVO +20 | sim |
 | rajada de 10 Pix em 5 min | facial_document | facial_document | 60 | esvaziamento_fatiado | VELOCITY +60 | sim |
 | sondagem: R$ 30 mil, 25 mil, 19 mil | facial_document ou rejected | facial_document | 85 | sondagem_de_limite | SONDAGEM_DE_LIMITE +50, PERFIL_SEM_HISTORICO +20, CONTRAPARTE_INEDITA +15 | sim |
-| conta laranja: 10 pagadores, conta nova | facial_document ou rejected | facial_document | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
-| repasse rapido para conta de 3 horas | facial_document ou rejected | facial_document | 90 | conta_laranja | REPASSE_RAPIDO +60, DESTINO_NOVO +30 | sim |
+| conta laranja: 10 pagadores, conta nova | facial_document ou rejected | rejected | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
+| repasse rapido para conta de 3 horas | facial_document ou rejected | rejected | 90 | conta_laranja | REPASSE_RAPIDO +60, DESTINO_NOVO +30 | sim |
 | coordenacao: 3 titulares, 1 aparelho | facial ou facial_document ou rejected | facial_document | 60 | coordenacao_entre_contas | COORDENACAO_ENTRE_CONTAS +40, DESTINO_NOVO +20 | sim |
 | fatiamento: 4 x R$ 2.900 em 30 min | facial ou facial_document | facial | 40 | esvaziamento_fatiado | FATIAMENTO +40 | sim |
 | aparelho na lista interna | facial ou facial_document ou rejected | facial | 40 | risco_contextual | REPUTACAO_INTERNA +40 | sim |

@@ -24,12 +24,16 @@ def test_cinco_pagadores_para_conta_nova_somam_40():
     assert pontos(corpos[4], "CONTA_LARANJA") == 40
 
 
-def test_dez_pagadores_para_conta_nova_somam_60_sem_bloquear():
+def test_dez_pagadores_para_conta_nova_somam_60_e_o_eixo_destino_reprova():
+    # 60 de concentracao + 20 de conta nova = 80, tudo no eixo destino. Antes,
+    # um eixo so dava 2FA; mas quem faz a verificacao e a vitima pagando, e
+    # ela passa. reject_destination_alone na politica decide.
     hoje = nova_base()
     corpos = _varios_pagam(Recebedor(aberta_em=hoje - timedelta(days=10)), 10, hoje)
 
     assert pontos(corpos[-1], "CONTA_LARANJA") == 60
-    assert corpos[-1]["status"] == "two_factor_required"
+    assert corpos[-1]["metadata"]["risk_axes"]["destino"] == 80
+    assert corpos[-1]["status"] == "rejected"
     assert corpos[-1]["metadata"]["scenario"] == "conta_laranja"
 
 
@@ -99,7 +103,9 @@ def test_repasse_para_destino_familiar_sem_perfil_avaliavel_soma_20():
     assert pontos(corpo, "REPASSE_RAPIDO") == 20
 
 
-def test_repasse_e_destino_novo_num_eixo_so_pedem_facial_document():
+def test_repasse_para_conta_de_3_horas_reprova_pelo_eixo_destino():
+    # Quem repassa e a propria conta laranja (cliente da casa): o dono dela
+    # passa na facial. 90 so no eixo destino reprova.
     hoje = nova_base()
     conta = _recebe_de_quatro(hoje)
     novo = Recebedor(aberta_em=hoje - timedelta(hours=3))
@@ -107,8 +113,7 @@ def test_repasse_e_destino_novo_num_eixo_so_pedem_facial_document():
     corpo = analisa(pix(conta.como_pagador(), novo, 350000, (hoje + timedelta(minutes=10)).isoformat()))
 
     assert corpo["metadata"]["risk_axes"]["destino"] == 90
-    assert corpo["status"] == "two_factor_required"
-    assert corpo["metadata"]["authentication"]["level"] == "facial_document"
+    assert corpo["status"] == "rejected"
 
 
 def test_coordenacao_pede_facial_e_suprime_aparelho_compartilhado():
