@@ -1,13 +1,15 @@
 """O perfil de valor do pagador, contra a primeira referencia elegivel.
 
 Ordem das referencias, sem somar avaliacoes:
-1. o par pagador -> recebedor (5 pagamentos em 3 dias, cobrindo 14 dias):
-   o aluguel compara com os alugueis, o fornecedor com o fornecedor;
+1. o par pagador -> recebedor (5 pagamentos em 3 dias, cobrindo 14 dias,
+   em 365 dias): o aluguel compara com os alugueis, o fornecedor com o
+   fornecedor. A janela do par e maior que a das outras de proposito: um
+   pagamento mensal nunca juntaria 5 ocorrencias em 90 dias;
 2. a fase do calendario do PADRAO_MENSAL, quando ele identificou uma;
 3. as saidas gerais do pagador (10 pagamentos em 3 dias).
 
-Todas usam so aprovados dos 90 dias ate o inicio de hoje (Sao Paulo): o
-proprio Pix e os de hoje nao entram na regua.
+As outras usam os aprovados dos 90 dias ate o inicio de hoje (Sao Paulo):
+o proprio Pix e os de hoje nao entram na regua.
 """
 from dataclasses import dataclass
 from datetime import timedelta
@@ -60,7 +62,8 @@ def _reference(ctx, params):
     janela = p["window_days"]
     refs = p["references"]
 
-    par = ctx.history.approved_amounts_of_pair(ctx.source_document, ctx.destination_document, inicio, janela)
+    janela_do_par = refs["pair"].get("window_days", janela)
+    par = ctx.history.approved_amounts_of_pair(ctx.source_document, ctx.destination_document, inicio, janela_do_par)
     if _eligible(ctx, par, refs["pair"]):
         return "pair", par
 

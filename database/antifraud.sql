@@ -62,7 +62,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "PERFIL": {
         "window_days": 90, "min_difference": 50000,
         "references": {
-            "pair": {"min_payments": 5, "min_days": 3, "min_span_days": 14},
+            "pair": {"min_payments": 5, "min_days": 3, "min_span_days": 14, "window_days": 365},
             "calendar_phase": {"min_payments": 10, "min_days": 3},
             "payer": {"min_payments": 10, "min_days": 3}
         },

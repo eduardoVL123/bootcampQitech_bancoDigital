@@ -234,12 +234,15 @@ def payload_do_documento() -> dict:
     """O payload da secao 3.1 do documento oficial, com id e contas novos.
 
     Os documentos sao trocados por novos para o teste nao depender do que
-    outros testes ja gravaram com os CPFs do exemplo.
+    outros testes ja gravaram com os CPFs do exemplo. As datas recuam 7 dias
+    (17/10 vira 10/10, e a abertura do destino 10/10 vira 03/10): o horario,
+    as 22:15, e a idade da conta destino, 7 dias e 13 horas, ficam iguais, e
+    o teste deixa de depender do relogio (o 17/10 as 22:15 ja foi futuro).
     """
     corpo = {
         "id": f"pix-{uuid4()}",
         "amount": 150000,
-        "transaction_date": "2026-10-17T22:15:00-03:00",
+        "transaction_date": "2026-10-10T22:15:00-03:00",
         "source_account": {
             "branch": "0001",
             "account_number": nova_conta(),
@@ -250,7 +253,7 @@ def payload_do_documento() -> dict:
             "participant": "60701190",
             "branch": "3675",
             "account_number": nova_conta(),
-            "opening_date": "2026-10-10T09:00:00-03:00",
+            "opening_date": "2026-10-03T09:00:00-03:00",
             "owner": {"document_number": RandomGenerator.generate_cpf()},
         },
         "source": {

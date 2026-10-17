@@ -10,6 +10,11 @@ from controllers.rules.montante_diario_atipico import MontanteDiarioAtipico
 from controllers.rules.noturno import Noturno
 from controllers.rules.geo_ausente import GeoAusente
 from controllers.rules.mesma_titularidade import MesmaTitularidade
+from controllers.rules.origem_nova import OrigemNova
+from controllers.rules.conta_reativada import ContaReativada
+from controllers.rules.destino_novo import DestinoNovo
+from controllers.rules.contraparte_inedita import ContraparteInedita
+from controllers.rules.destino_confiavel import DestinoConfiavel
 from controllers.rules.velocity import Velocity
 from controllers.rules.limite_do_cliente import LimiteDoCliente
 from controllers.rules.aumento_pendente import AumentoPendente
@@ -28,7 +33,12 @@ RULES = [
     SondagemDeLimite(),
     LimiteDoCliente(),
     AumentoPendente(),
+    OrigemNova(),
+    ContaReativada(),
     Noturno(),
     GeoAusente(),
+    DestinoNovo(),
+    ContraparteInedita(),
     MesmaTitularidade(),
+    DestinoConfiavel(),
 ]

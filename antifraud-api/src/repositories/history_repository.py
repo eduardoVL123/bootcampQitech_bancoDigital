@@ -104,6 +104,13 @@ class HistoryRepository:
             return linha[0], linha[1]
         return self._remember(("attempt_dates", account_id), consulta)
 
+    def last_attempt_before(self, account_id: int, before):
+        return self._remember(("last_before", account_id), lambda: self._scalar(
+            "SELECT max(a.transaction_date) FROM pix_analysis a WHERE a.source_account_id = :conta "
+            "AND a.transaction_date <= :antes",
+            conta=account_id, antes=before,
+        ))
+
     def approved_amounts_of_payer(self, account_id: int, moment, days: int) -> list:
         return self._remember(("payer_amounts", account_id, days), lambda: self._all(
             f"SELECT a.amount, a.transaction_date FROM pix_analysis a WHERE a.source_account_id = :conta "
