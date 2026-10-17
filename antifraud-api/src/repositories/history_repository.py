@@ -183,6 +183,23 @@ class HistoryRepository:
             return int(linha[0]), int(linha[1])
         return self._remember(("gps_habit", document, days), consulta)
 
+    def device_registration(self, document: str, device_id: str, moment, day_start) -> tuple:
+        """(aparelho do primeiro Pix do titular, aparelho ja confirmado num desafio, aprovado hoje nele)."""
+        def consulta():
+            linha = self.session.execute(text(
+                "SELECT "
+                "(SELECT a.device_id FROM pix_analysis a WHERE a.source_document = :doc AND a.transaction_date <= :fim "
+                " ORDER BY a.transaction_date, a.id LIMIT 1), "
+                "EXISTS (SELECT 1 FROM pix_analysis a JOIN pix_challenge_result c ON c.analysis_id = a.id "
+                " WHERE a.source_document = :doc AND a.device_id = :aparelho AND c.result = 'approved_by_client' "
+                " AND a.transaction_date <= :fim), "
+                f"(SELECT coalesce(sum(a.amount), 0) FROM pix_analysis a WHERE a.source_document = :doc "
+                f" AND a.device_id = :aparelho AND a.transaction_date >= :dia AND a.transaction_date <= :fim "
+                f" AND {APPROVED})"
+            ), {"doc": document, "aparelho": device_id, "fim": moment, "dia": day_start}).first()
+            return linha[0], bool(linha[1]), int(linha[2])
+        return self._remember(("device_registration", document, device_id), consulta)
+
     def network_seen(self, document: str, network: str, moment) -> bool:
         return self._remember(("network_seen", document, network), lambda: self._scalar(
             "SELECT EXISTS (SELECT 1 FROM pix_analysis a WHERE a.source_document = :doc "

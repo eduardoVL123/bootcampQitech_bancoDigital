@@ -17,6 +17,7 @@ from controllers.rules.destino_novo import DestinoNovo
 from controllers.rules.contraparte_inedita import ContraparteInedita
 from controllers.rules.destino_confiavel import DestinoConfiavel
 from controllers.rules.aparelho_novo import AparelhoNovo
+from controllers.rules.aparelho_nao_cadastrado import AparelhoNaoCadastrado
 from controllers.rules.rede_nova import RedeNova
 from controllers.rules.viagem_impossivel import ViagemImpossivel
 from controllers.rules.geo_ip_divergente import GeoIpDivergente
@@ -53,6 +54,7 @@ RULES = [
     ContaReativada(),
     Noturno(),
     AparelhoNovo(),
+    AparelhoNaoCadastrado(),
     RedeNova(),
     ViagemImpossivel(),
     GeoIpDivergente(),

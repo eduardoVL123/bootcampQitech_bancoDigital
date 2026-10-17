@@ -5,7 +5,7 @@ import random
 from datetime import timedelta
 
 from tests.utils.pix import (
-    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, Pagador, Recebedor, analisa, disparou,
+    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, Pagador, Recebedor, analisa, disparou, paga,
     historico, nova_base, novo_ip, pix, pontos, regra,
 )
 
@@ -174,6 +174,41 @@ def test_cinco_titulares_no_mesmo_ip_soma_15():
     corpo = analisa(pix(Pagador(), Recebedor(), 5000, hoje.isoformat(), ip=ip))
 
     assert pontos(corpo, "IP_COMPARTILHADO") == 15
+
+
+def test_aparelho_sem_cadastro_acima_de_200_pede_facial():
+    # Res. BCB 402/2024: aparelho nunca usado pelo cliente fica em R$ 200 por
+    # Pix; acima disso, precisa de cadastro (a verificacao).
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+
+    corpo = analisa(pix(pagador, Recebedor(), 25000, hoje.isoformat(), aparelho=f"dvc-{random.randint(0, 10**9)}"))
+
+    assert disparou(corpo, "APARELHO_NAO_CADASTRADO")
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_aparelho_sem_cadastro_ate_200_passa_mas_o_dia_soma_ate_1000():
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+    novo = f"dvc-{random.randint(0, 10**9)}"
+    corpos = [analisa(pix(pagador, Recebedor(), 19000, (hoje + timedelta(minutes=20 * i)).isoformat(), aparelho=novo))
+              for i in range(6)]
+
+    assert not disparou(corpos[0], "APARELHO_NAO_CADASTRADO")
+    assert disparou(corpos[5], "APARELHO_NAO_CADASTRADO")  # 6 x R$ 190 = R$ 1.140 no dia
+
+
+def test_aparelho_confirmado_numa_verificacao_fica_cadastrado():
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+    novo = f"dvc-{random.randint(0, 10**9)}"
+    primeiro = pix(pagador, Recebedor(), 25000, hoje.isoformat(), aparelho=novo)
+    paga(primeiro)  # pede a facial, e o cliente confirma: o aparelho fica cadastrado
+
+    corpo = analisa(pix(pagador, Recebedor(), 25000, (hoje + timedelta(hours=1)).isoformat(), aparelho=novo))
+
+    assert not disparou(corpo, "APARELHO_NAO_CADASTRADO")
 
 
 def test_ip_de_operadora_na_rede_de_sempre_nao_soma():

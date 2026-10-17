@@ -88,6 +88,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "NOTURNO": {"start_hour": 20, "end_hour": 6, "min_amount": 100000, "points": 25},
     "PADRAO_MENSAL": {"months": 3, "min_amount": 100000, "tolerance_days": 2, "share": 0.6, "min_per_month": 2, "multiple": 3, "points": 25},
     "APARELHO_NOVO": {"min_prior_attempts": 3, "points": 20},
+    "APARELHO_NAO_CADASTRADO": {"per_pix": 20000, "per_day": 100000, "channels": ["app", "web"]},
     "REDE_NOVA": {"min_prior_attempts": 3, "points": 15},
     "VIAGEM_IMPOSSIVEL": {"max_kmh": 900, "min_km_gps": 100, "min_km_ip": 500, "points": 40},
     "GEO_IP_DIVERGENTE": {"km": 500, "points": 30},
