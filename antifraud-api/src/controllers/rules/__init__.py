@@ -8,6 +8,7 @@ from controllers.rules.perfil_sem_historico import PerfilSemHistorico
 from controllers.rules.limite_por_pix import LimitePorPix
 from controllers.rules.montante_diario_atipico import MontanteDiarioAtipico
 from controllers.rules.noturno import Noturno
+from controllers.rules.padrao_mensal import PadraoMensal
 from controllers.rules.geo_ausente import GeoAusente
 from controllers.rules.mesma_titularidade import MesmaTitularidade
 from controllers.rules.origem_nova import OrigemNova
@@ -58,6 +59,7 @@ RULES = [
     GeoAusente(),
     AparelhoCompartilhado(),
     IpCompartilhado(),
+    PadraoMensal(),
     DestinoNovo(),
     ContraparteInedita(),
     ContaLaranja(),

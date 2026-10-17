@@ -67,9 +67,11 @@ def _reference(ctx, params):
     if _eligible(ctx, par, refs["pair"]):
         return "pair", par
 
-    fase = ctx.cache.get("calendar_phase_amounts")
-    if fase and _eligible(ctx, fase, refs["calendar_phase"]):
-        return "calendar_phase", fase
+    from controllers.engine.calendar import calendar_for
+
+    calendario = calendar_for(ctx, params)
+    if calendario.evaluable and _eligible(ctx, calendario.phase, refs["calendar_phase"]):
+        return "calendar_phase", calendario.phase
 
     pagador = ctx.history.approved_amounts_of_payer(ctx.source_account.id, inicio, janela)
     if _eligible(ctx, pagador, refs["payer"]):
