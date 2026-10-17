@@ -40,7 +40,8 @@ def test_cinco_pagadores_para_conta_antiga_somam_20():
 
 
 def test_mesmo_pagador_repetido_nao_e_conta_laranja():
-    pagador, recebedor, hoje = Pagador(), Recebedor(aberta_em=nova_base() - timedelta(days=10)), nova_base()
+    hoje = nova_base()
+    pagador, recebedor = Pagador(), Recebedor(aberta_em=hoje - timedelta(days=10))
     corpos = [analisa(pix(pagador, recebedor, 5000, (hoje + timedelta(minutes=2 * i)).isoformat())) for i in range(6)]
 
     assert not disparou(corpos[-1], "CONTA_LARANJA")
