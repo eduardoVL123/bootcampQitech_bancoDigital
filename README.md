@@ -15,7 +15,7 @@ Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositó
 
 ## Como o motor de decisão funciona
 
-Cada Pix passa por **34 regras**. Nenhuma decide sozinha, com três exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
+Cada Pix passa por **33 regras**. Nenhuma decide sozinha, com três exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
 
 1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
 2. **Dado impossível não é risco, é erro.** Data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422` sem ser analisada.
@@ -147,6 +147,8 @@ curl -s -X POST http://localhost:3020/pix/transaction \
        "source":{"device_id":"dvc-9f2c71a8","channel":"app","ip":"198.51.100.23","geolocation":{"latitude":-23.56,"longitude":-46.65}}}'
 curl -s http://localhost:3020/pix/transaction/pix-000123 -H "INTERNAL-TOKEN: default_token"
 ```
+
+É o payload exato da seção 3.1 do desafio. Antes das 22:15 de 17/10/2026, essa data ainda está no futuro e a API responde `422 QIT006002`, como deve: o motor não aceita Pix com data mais de 5 minutos à frente do relógio.
 
 Os testes (black box, só por HTTP, sem importar nada de `src/`):
 
