@@ -1,0 +1,70 @@
+{
+  "title": "PostPixTransaction",
+  "description": "O Pix a analisar, no contrato da secao 3.1 do documento do desafio.",
+  "type": "object",
+  "definitions": {
+    "datetime_with_offset": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "document_number": {
+      "type": "string",
+      "pattern": "^([0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}|[0-9]{11}|[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}/[0-9]{4}-[0-9]{2}|[0-9]{14})$"
+    },
+    "owner": {
+      "type": "object",
+      "properties": {"document_number": {"$ref": "post_pix_transaction.json#/definitions/document_number"}},
+      "required": ["document_number"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "amount": {"type": "integer", "minimum": 1, "maximum": 999999999999},
+    "transaction_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"},
+    "source_account": {
+      "type": "object",
+      "properties": {
+        "branch": {"type": "string", "pattern": "^[0-9]{1,4}$"},
+        "account_number": {"type": "string", "pattern": "^[0-9]{1,20}$"},
+        "opening_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"},
+        "owner": {"$ref": "post_pix_transaction.json#/definitions/owner"}
+      },
+      "required": ["branch", "account_number", "opening_date", "owner"],
+      "additionalProperties": false
+    },
+    "destination_account": {
+      "type": "object",
+      "properties": {
+        "participant": {"type": "string", "pattern": "^[0-9]{8}$"},
+        "branch": {"type": "string", "pattern": "^[0-9]{1,4}$"},
+        "account_number": {"type": "string", "pattern": "^[0-9]{1,20}$"},
+        "opening_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"},
+        "owner": {"$ref": "post_pix_transaction.json#/definitions/owner"}
+      },
+      "required": ["participant", "branch", "account_number", "opening_date", "owner"],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "device_id": {"type": "string", "minLength": 1, "maxLength": 64},
+        "channel": {"type": "string", "enum": ["app", "web", "api"]},
+        "ip": {"type": "string", "minLength": 2, "maxLength": 45},
+        "geolocation": {
+          "type": "object",
+          "properties": {
+            "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+            "longitude": {"type": "number", "minimum": -180, "maximum": 180}
+          },
+          "required": ["latitude", "longitude"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["device_id", "channel", "ip"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["id", "amount", "transaction_date", "source_account", "destination_account", "source"],
+  "additionalProperties": false
+}

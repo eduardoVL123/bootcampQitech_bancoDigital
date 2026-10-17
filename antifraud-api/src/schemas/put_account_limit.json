@@ -1,0 +1,15 @@
+{
+  "title": "PutAccountLimit",
+  "description": "O limite por Pix que o proprio titular escolhe para a conta.",
+  "type": "object",
+  "properties": {
+    "branch": {"type": "string", "pattern": "^[0-9]{1,4}$"},
+    "account_number": {"type": "string", "pattern": "^[0-9]{1,20}$"},
+    "opening_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"},
+    "owner": {"$ref": "post_pix_transaction.json#/definitions/owner"},
+    "amount": {"type": "integer", "minimum": 1, "maximum": 999999999999},
+    "requested_at": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"}
+  },
+  "required": ["branch", "account_number", "opening_date", "owner", "amount", "requested_at"],
+  "additionalProperties": false
+}

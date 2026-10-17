@@ -1,0 +1,11 @@
+{
+  "title": "PatchPixTransaction",
+  "description": "O resultado do desafio que o motor pediu, informado pelo cliente.",
+  "type": "object",
+  "properties": {
+    "challenge_result": {"type": "string", "enum": ["approved_by_client", "reproved_by_client"]},
+    "event_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"}
+  },
+  "required": ["challenge_result", "event_date"],
+  "additionalProperties": false
+}
