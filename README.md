@@ -1,6 +1,6 @@
 # [Nome do grupo]: Antifraude Pix
 
-**Integrantes:** Carlos · Eduardo Lopes Valerio · Enrico Martim
+**Integrantes:** Carlos Alberto Magalhães Neto · Eduardo Lopes Valerio · Enrico Martim Zúcollo
 
 Uma API que recebe um Pix e decide, antes de o dinheiro sair, se ele **aprova**, **pede verificação** (2FA) ou **reprova**, e explica o porquê. Ela mora em [`antifraud-api/`](antifraud-api/), sobe junto com o banco digital da fase 1 e tem **banco de dados próprio** (`antifraud`).
 
