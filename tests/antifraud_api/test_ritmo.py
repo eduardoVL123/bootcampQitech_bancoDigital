@@ -169,6 +169,7 @@ def test_datas_recuando_nao_escondem_a_rajada():
     assert disparou(ultimo, "DATA_RETROATIVA")
     assert ultimo["status"] == "two_factor_required"
     assert ultimo["metadata"]["authentication"]["level"] == "facial_document"
+    assert ultimo["metadata"]["scenario"] == "data_fora_de_ordem"
 
 
 def test_data_pouco_fora_de_ordem_nao_e_retroativa():

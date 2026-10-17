@@ -22,8 +22,8 @@ from statistics import median
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.utils.pix import (  # noqa: E402
-    APARELHO_NA_WATCHLIST, RECEBEDOR_MARCACAO_CRITICA, RECIFE_GPS, AntifraudApi, Pagador, Recebedor, analisa,
-    historico, nova_base, paga, payload_do_documento, pix,
+    APARELHO_NA_WATCHLIST, RECEBEDOR_MARCACAO_CRITICA, RECEBEDOR_NA_WATCHLIST, RECEBEDOR_VITIMA, RECIFE_GPS,
+    AntifraudApi, Pagador, Recebedor, analisa, historico, nova_base, novo_ip, paga, payload_do_documento, pix,
 )
 
 CASA = "99999999"
@@ -115,6 +115,31 @@ def payload_do_documento_oficial():
     return _post(payload_do_documento())
 
 
+def clientes_da_mesma_operadora():
+    """CGNAT: seis clientes no mesmo IP, cada um na rede de sempre, pagando um amigo as 21h."""
+    hoje, ip, ultimo = nova_base().replace(hour=21, minute=0), novo_ip("100.64.12"), None
+    for indice in range(6):
+        amigo, cliente = Recebedor(), Pagador()
+        cliente.ip = ip
+        historico(cliente, [150000] * 3, hoje - timedelta(days=40), timedelta(days=3), recebedor=amigo)
+        ultimo = _post(pix(cliente, amigo, 150000, (hoje + timedelta(minutes=indice)).isoformat()))
+    return ultimo
+
+
+def almoco_depois_do_2fa_do_carro():
+    hoje = nova_base()
+    pagador = _cliente_regular(hoje)
+    _post(pix(pagador, Recebedor(pj=True), 2500000, hoje.isoformat()))
+    return _post(pix(pagador, Recebedor(pj=True), 3000, (hoje + timedelta(minutes=10)).isoformat()))
+
+
+def quem_nunca_manda_gps():
+    hoje = nova_base()
+    pagador = Pagador(gps=None)
+    historico(pagador, [6000, 9000, 7000], hoje - timedelta(days=9), timedelta(days=3), recebedores_novos=True)
+    return _post(pix(pagador, Recebedor(aberta_em=hoje - timedelta(days=20)), 8000, hoje.isoformat()))
+
+
 # ----------------------------------------------------------------------
 # Trafego fraudulento: o que o motor TEM de segurar
 # ----------------------------------------------------------------------
@@ -197,6 +222,39 @@ def noite_valor_alto_sem_gps():
     return _post(pix(Pagador(), Recebedor(), 2500000, nova_base().replace(hour=23).isoformat(), gps=None))
 
 
+def falsa_central_para_conta_confirmada():
+    """A vitima paga do celular e do lugar de sempre, um valor do perfil dela."""
+    hoje = nova_base()
+    vitima = Pagador()
+    historico(vitima, [200000, 250000, 300000, 350000, 400000, 280000, 320000, 260000, 310000, 290000],
+              hoje - timedelta(days=12), timedelta(days=1), recebedores_novos=True)
+    return _post(pix(vitima, Recebedor(documento=RECEBEDOR_NA_WATCHLIST, aberta_em=hoje - timedelta(days=3)), 300000,
+                     hoje.isoformat()))
+
+
+def conta_segura_no_proprio_cpf():
+    """O golpista abriu uma conta no nome da vitima e manda ela proteger o saldo ali."""
+    hoje = nova_base()
+    vitima = Pagador(documento=RECEBEDOR_VITIMA)
+    conta_do_golpista = Recebedor(documento=RECEBEDOR_VITIMA, aberta_em=hoje - timedelta(hours=3),
+                                  participante="12345678")
+    return _post(pix(vitima, conta_do_golpista, 1500000, hoje.isoformat()))
+
+
+def datas_recuando():
+    """Seis Pix mandados agora, com a transaction_date recuando uma hora cada."""
+    pagador, base, ultimo = Pagador(), nova_base(), None
+    for indice in range(6):
+        ultimo = _post(pix(pagador, Recebedor(), 5000, (base - timedelta(hours=indice)).isoformat()))
+    return ultimo
+
+
+def aparelho_sem_cadastro():
+    hoje = nova_base()
+    pagador = _cliente_regular(hoje)
+    return _post(pix(pagador, Recebedor(), 50000, hoje.isoformat(), aparelho=f"dvc-novo-{pagador.conta}"))
+
+
 LEGITIMOS = [
     ("compra do dia a dia", compra_do_dia_a_dia, {"approved"}),
     ("aluguel recorrente (5 meses)", aluguel_recorrente, {"approved"}),
@@ -207,6 +265,9 @@ LEGITIMOS = [
     ("loja que recebe de 10 clientes por hora", loja_movimentada, {"approved"}),
     ("primeiro aluguel (R$ 2.500)", primeiro_aluguel, {"approved", "facial", "facial_document"}),
     ("payload do documento oficial", payload_do_documento_oficial, {"facial"}),
+    ("6 clientes da mesma operadora (CGNAT), 21h", clientes_da_mesma_operadora, {"approved"}),
+    ("almoco de R$ 30 depois do 2FA do carro", almoco_depois_do_2fa_do_carro, {"approved"}),
+    ("quem nunca manda GPS, destino de 20 dias", quem_nunca_manda_gps, {"approved"}),
 ]
 
 FRAUDES = [
@@ -222,6 +283,10 @@ FRAUDES = [
     ("coordenacao: 3 titulares, 1 aparelho", coordenacao_entre_contas, {"facial", "facial_document", "rejected"}),
     ("fatiamento: 4 x R$ 2.900 em 30 min", fatiamento, {"facial", "facial_document"}),
     ("aparelho na lista interna", aparelho_na_lista_interna, {"facial", "facial_document", "rejected"}),
+    ("falsa central para conta confirmada (lista interna)", falsa_central_para_conta_confirmada, {"rejected"}),
+    ("conta segura no proprio CPF (fraude de cadastro)", conta_segura_no_proprio_cpf, {"rejected"}),
+    ("6 Pix com a data recuando 1 h cada", datas_recuando, {"facial_document", "rejected"}),
+    ("aparelho sem cadastro, R$ 500", aparelho_sem_cadastro, {"facial", "facial_document", "rejected"}),
 ]
 
 
@@ -232,10 +297,21 @@ def _resultado(corpo: dict) -> str:
 
 
 def _regras(corpo: dict) -> str:
-    com_pontos = [r for r in corpo["metadata"]["rules"] if r["effective_points"] or r["hard_block"]]
+    """As regras que mudaram a decisao: pontos, bloqueio ou piso (as de piso nao somam pontos)."""
+    def pesou(r):
+        return r["effective_points"] or r["hard_block"] or (r["evaluation"] == "triggered"
+                                                            and r["authentication_floor"] != "none")
+
+    def texto(r):
+        if r["hard_block"]:
+            return f"{r['rule']} (bloqueio)"
+        if not r["effective_points"]:
+            return f"{r['rule']} (piso {r['authentication_floor']})"
+        return f"{r['rule']} {r['effective_points']:+d}"
+
+    com_pontos = [r for r in corpo["metadata"]["rules"] if pesou(r)]
     com_pontos.sort(key=lambda r: (-r["hard_block"], -abs(r["effective_points"])))
-    return ", ".join(f"{r['rule']} {r['effective_points']:+d}" if not r["hard_block"] else f"{r['rule']} (bloqueio)"
-                     for r in com_pontos[:4])
+    return ", ".join(texto(r) for r in com_pontos[:4])
 
 
 def roda(grupo):
