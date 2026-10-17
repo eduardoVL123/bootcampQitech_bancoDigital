@@ -14,8 +14,9 @@ class ReputacaoExterna(Rule):
       recebedor analisar e confirmar. Denuncia que ainda nao foi analisada e
       `open_reports`, e essa so soma pontos;
     - alerta: denuncia aberta, ou golpe ou laranja nos ultimos 12 meses: +40;
-    - fraude de cadastro ou papel de vitima: 0. Quem teve a identidade
-      roubada e a vitima, nao o fraudador.
+    - fraude de cadastro ou papel de vitima: 0 para a conta antiga. Quem
+      teve a identidade roubada e a vitima, nao o fraudador. Conta NOVA nesse
+      CPF e outra historia (ver _conta_nova_em_cpf_com_fraude_de_cadastro);
     So vale a evidencia vigente no instante do Pix (available_from e
     expires_at). Ficticio, deterministico e marcado como tal.
     """
@@ -37,11 +38,15 @@ class ReputacaoExterna(Rule):
         estatisticas = registro.statistics
         base = {**MOCK, "fixture_version": registro.fixture_version, "entity_role": registro.entity_role,
                 "evidence_id": registro.evidence_id}
-        if registro.entity_role == "victim":
-            return self.not_triggered("Papel de vitima no mock.", reputation={**base, "signal": "victim"})
 
         def janela(campo, periodo):
             return int(estatisticas.get(campo, {}).get(periodo, 0))
+
+        cadastro = self._conta_nova_em_cpf_com_fraude_de_cadastro(ctx, p, janela, registro, base)
+        if cadastro is not None:
+            return cadastro
+        if registro.entity_role == "victim":
+            return self.not_triggered("Papel de vitima no mock.", reputation={**base, "signal": "victim"})
 
         golpe_90 = janela("mule_accounts", "d90") + janela("scammer_accounts", "d90")
         golpe_12m = janela("mule_accounts", "m12") + janela("scammer_accounts", "m12")
@@ -56,3 +61,30 @@ class ReputacaoExterna(Rule):
                                   "em 12 meses).", data_origin="mock", evidence_ids=[registro.evidence_id],
                                   reputation={**base, "signal": "risk_alert"})
         return self.not_triggered(reputation={**base, "signal": "no_relevant_alerts"})
+
+    def _conta_nova_em_cpf_com_fraude_de_cadastro(self, ctx, p, janela, registro, base):
+        """Fraude de cadastro: a PESSOA e vitima, mas a CONTA nova pode ser do fraudador.
+
+        `application_frauds` conta contas abertas com o documento de alguem.
+        O dono do CPF e vitima e nao vira fraudador (a conta antiga dele
+        continua limpa). Mas o motor decide se manda dinheiro para ESTA conta,
+        e uma conta aberta ha pouco num CPF que ja teve conta aberta por
+        fraude e exatamente a conta que o fraudador abriu.
+
+        Para o proprio titular, e o golpe da "conta segura": o golpista abre
+        uma conta no nome da vitima e manda ela "proteger" o saldo ali. O
+        nome e o CPF na tela tranquilizam, e a facial ela passa. Bloqueio.
+        """
+        if not (janela("application_frauds", "d90") or janela("application_frauds", "m12")):
+            return None
+        idade = (ctx.moment - ctx.destination_account.opening_date).days
+        if idade >= p["application_fraud_new_account_days"]:
+            return None
+        sinal = {**base, "signal": "application_fraud_new_account"}
+        if ctx.source_document == ctx.destination_document and idade < p["application_fraud_same_holder_days"]:
+            return self.triggered(0, f"Mock: conta aberta ha {idade} dias no CPF de quem paga, que ja teve conta aberta "
+                                  "por fraude de cadastro (golpe da conta segura).", hard_block=True, data_origin="mock",
+                                  evidence_ids=[registro.evidence_id], reputation=sinal)
+        return self.triggered(p["alert_points"], f"Mock: conta destino aberta ha {idade} dias num CPF com fraude de "
+                              "cadastro; o titular e vitima, a conta nova pode ser do fraudador.", data_origin="mock",
+                              evidence_ids=[registro.evidence_id], reputation=sinal)

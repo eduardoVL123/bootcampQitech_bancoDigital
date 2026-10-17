@@ -39,6 +39,31 @@ def test_vitima_nao_e_tratada_como_fraudador():
     assert corpo["metadata"]["reputation"]["entity_role"] == "victim"
 
 
+def test_conta_nova_em_cpf_com_fraude_de_cadastro_soma_40():
+    # A pessoa e vitima (a conta antiga dela continua limpa, teste de cima),
+    # mas a conta aberta ha 10 dias nesse CPF pode ser a do fraudador.
+    hoje = nova_base()
+    corpo = analisa(pix(Pagador(), Recebedor(documento=RECEBEDOR_VITIMA, aberta_em=hoje - timedelta(days=10)), 5000,
+                        hoje.isoformat()))
+
+    assert pontos(corpo, "REPUTACAO_EXTERNA") == 40
+    assert corpo["metadata"]["reputation"]["signal"] == "application_fraud_new_account"
+
+
+def test_conta_segura_no_proprio_cpf_com_fraude_de_cadastro_rejeita():
+    # O golpe da "conta segura": o golpista abre uma conta no nome da vitima
+    # e manda ela "proteger" o saldo ali. Antes: 30 pontos e approved.
+    hoje = nova_base()
+    vitima = Pagador(documento=RECEBEDOR_VITIMA)
+    conta_do_golpista = Recebedor(documento=RECEBEDOR_VITIMA, aberta_em=hoje - timedelta(hours=3),
+                                  participante="12345678")
+
+    corpo = analisa(pix(vitima, conta_do_golpista, 1500000, hoje.isoformat()))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["scenario"] == "risco_critico_do_recebedor"
+
+
 def test_documento_sem_registro_no_mock_e_not_found():
     corpo = analisa(pix(Pagador(), Recebedor(), 5000, nova_base().isoformat()))
 
