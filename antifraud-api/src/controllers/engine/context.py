@@ -70,6 +70,7 @@ class PixContext:
     gps: Optional[Location]
     ip_location: Optional[Location]
     history: object
+    limits: object = None
     results: dict = field(default_factory=dict)
     cache: dict = field(default_factory=dict)
 

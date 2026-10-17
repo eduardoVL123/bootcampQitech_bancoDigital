@@ -18,7 +18,9 @@ from errors import (
     InvalidSchema, NotFoundPixAnalysis, PixIdReused, TransactionBeforeAccountOpening, TransactionDateInTheFuture,
 )
 from models import PixAnalysis
-from repositories import AccountRepository, HistoryRepository, IpLocationRepository, PixRepository, PolicyRepository
+from repositories import (
+    AccountRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository, PolicyRepository,
+)
 from utils.document_number import digits_of, has_valid_check_digits, is_legal_person
 from utils.geo import in_brazil, ip_network
 
@@ -55,6 +57,7 @@ class PixController(BaseController):
         self.history_repo = HistoryRepository(self.context)
         self.ip_location_repo = IpLocationRepository(self.context)
         self.policy_repo = PolicyRepository(self.context)
+        self.limit_repo = LimitRepository(self.context)
 
     def get(self, pix_id: str) -> PixAnalysis:
         analysis = self.pix_repo.get_by_pix_id(pix_id)
@@ -120,7 +123,7 @@ class PixController(BaseController):
             destination_account=destination_account, source_document=source_document,
             destination_document=destination_document, device_id=device_id,
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
-            ip_location=ip_location, history=self.history_repo,
+            ip_location=ip_location, history=self.history_repo, limits=self.limit_repo,
         )
         ctx.cache["params"] = params
 
