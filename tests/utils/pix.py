@@ -312,3 +312,31 @@ class AntifraudDb:
                 )
         finally:
             engine.dispose()
+
+
+def paga(payload: dict, confirma: bool = True) -> dict:
+    """Manda o Pix e, se o motor pediu verificacao, confirma como o cliente faria.
+
+    E assim que um historico de valores altos se forma pela porta da
+    frente: o 2FA confirmado conta como dinheiro que saiu.
+    """
+    corpo = analisa(payload)
+    if confirma and corpo["status"] == "two_factor_required":
+        resposta = AntifraudApi.patch(payload["id"], {
+            "challenge_result": "approved_by_client",
+            "event_date": payload["transaction_date"],
+        })
+        assert resposta.status_code == 200, resposta.text
+    return corpo
+
+
+def historico(pagador: Pagador, valores: list, inicio: datetime, passo: timedelta, recebedor: Recebedor = None,
+              recebedores_novos: bool = False) -> list:
+    """Uma sequencia de Pix aprovados (ou confirmados) do pagador, a partir de `inicio`."""
+    corpos = []
+    for indice, valor in enumerate(valores):
+        destino = Recebedor() if recebedores_novos else (recebedor or Recebedor())
+        if recebedor is None and not recebedores_novos:
+            recebedor = destino
+        corpos.append(paga(pix(pagador, destino, valor, (inicio + passo * indice).isoformat())))
+    return corpos

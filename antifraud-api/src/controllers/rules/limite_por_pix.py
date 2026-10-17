@@ -1,4 +1,5 @@
 from controllers.engine.context import MOVIMENTACAO
+from controllers.engine.profile import profile_for
 from controllers.engine.rule import Rule
 from utils.money import brl
 
@@ -24,8 +25,8 @@ class LimitePorPix(Rule):
             )
         if ctx.amount < p["high"]:
             return self.not_triggered()
-        perfil = ctx.cache.get("profile")
-        if perfil is not None and perfil.evaluable and perfil.compatible:
+        perfil = profile_for(ctx, params)
+        if perfil.compatible:
             return self.not_triggered(
                 f"{brl(ctx.amount)} atinge o corte de {brl(p['high'])}, mas e compativel com o perfil "
                 f"do cliente (referencia {perfil.reference}).",
