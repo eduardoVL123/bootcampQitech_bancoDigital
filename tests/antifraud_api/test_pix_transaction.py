@@ -2,6 +2,8 @@
 import re
 from datetime import timedelta
 
+import pytest
+
 from tests.utils.pix import AntifraudApi, agora_sp, mutar, pix_normal
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -123,6 +125,25 @@ def test_sem_geolocalizacao_e_aceito():
 
 def test_data_sem_fuso_da_400():
     resposta = AntifraudApi.post(mutar(pix_normal(), "transaction_date", "2026-10-17T22:15:00"))
+
+    assert resposta.status_code == 400
+
+
+@pytest.mark.parametrize("data", [
+    "2025-13-04T14:00:00-03:00",  # mes 13
+    "2025-02-30T14:00:00-03:00",  # 30 de fevereiro
+    "2025-03-04T14:00:00+25:00",  # fuso que nao existe
+])
+def test_data_com_formato_certo_que_nao_existe_da_400(data):
+    # Passa no pattern do schema e nao existe: antes virava 500.
+    resposta = AntifraudApi.post(mutar(pix_normal(), "transaction_date", data))
+
+    assert resposta.status_code == 400
+    assert resposta.json()["code"] == "QIT000001"
+
+
+def test_abertura_de_conta_que_nao_existe_da_400():
+    resposta = AntifraudApi.post(mutar(pix_normal(), "destination_account.opening_date", "2019-02-29T10:00:00-03:00"))
 
     assert resposta.status_code == 400
 
