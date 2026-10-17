@@ -6,9 +6,9 @@ Roda contra a antifraud-api de pe (docker compose up -d --build --wait):
 
 Cada cenario cria pessoas ficticias com historico gerado pela propria API
 (o mesmo POST que a banca usa) e aplica uma mutacao: valor, horario, mes,
-aparelho, rede, GPS, IP ou reputacao do recebedor. No fim, imprime uma
-tabela em markdown, a taxa de aprovacao no trafego legitimo, a taxa de
-retencao no fraudulento e a latencia do motor.
+aparelho, rede, GPS, IP, reputacao do recebedor ou o grupo do titular do
+recebedor. No fim, imprime uma tabela em markdown, a taxa de aprovacao no
+trafego legitimo, a taxa de retencao no fraudulento e a latencia do motor.
 
 E massa SINTETICA: os numeros verificam que o motor faz o que o README
 descreve. Nao medem eficacia contra fraude real.
@@ -22,8 +22,9 @@ from statistics import median
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.utils.pix import (  # noqa: E402
-    APARELHO_NA_WATCHLIST, RECEBEDOR_MARCACAO_CRITICA, RECEBEDOR_NA_WATCHLIST, RECEBEDOR_VITIMA, RECIFE_GPS,
-    AntifraudApi, Pagador, Recebedor, analisa, historico, nova_base, novo_ip, paga, payload_do_documento, pix,
+    APARELHO_NA_WATCHLIST, GRUPO_CNPJS, LOJA_CNPJ, RECEBEDOR_MARCACAO_CRITICA, RECEBEDOR_NA_WATCHLIST, RECEBEDOR_VITIMA,
+    RECIFE_GPS, AntifraudApi, Pagador, Recebedor, analisa, apresenta_conta, historico, nova_base, novo_ip, paga,
+    payload_do_documento, pix,
 )
 
 CASA = "99999999"
@@ -106,6 +107,15 @@ def loja_movimentada():
         for indice in range(10):
             analisa(pix(Pagador(), loja, 5000, (inicio + timedelta(minutes=3 * indice)).isoformat()))
     ultimo = None
+    for indice in range(10):
+        ultimo = _post(pix(Pagador(), loja, 5000, (hoje + timedelta(minutes=3 * indice)).isoformat()))
+    return ultimo
+
+
+def loja_nova_na_primeira_semana():
+    """Loja aberta ha 7 dias, ainda sem a regua dela: 10 clientes numa hora parecem conta laranja."""
+    hoje = nova_base()
+    loja, ultimo = Recebedor(documento=LOJA_CNPJ, aberta_em=hoje - timedelta(days=7)), None
     for indice in range(10):
         ultimo = _post(pix(Pagador(), loja, 5000, (hoje + timedelta(minutes=3 * indice)).isoformat()))
     return ultimo
@@ -194,6 +204,17 @@ def repasse_rapido():
                      (hoje + timedelta(minutes=10)).isoformat()))
 
 
+def conta_laranja_num_grupo_com_contas_novas():
+    """Outros dois CNPJs do mesmo CPF abriram conta nesta semana, em outros bancos."""
+    hoje = nova_base()
+    apresenta_conta(GRUPO_CNPJS[1], "11111111", hoje - timedelta(days=5), hoje - timedelta(hours=2))
+    apresenta_conta(GRUPO_CNPJS[2], "22222222", hoje - timedelta(days=3), hoje - timedelta(hours=2))
+    laranja, ultimo = Recebedor(documento=GRUPO_CNPJS[0], aberta_em=hoje - timedelta(days=5)), None
+    for indice in range(10):
+        ultimo = _post(pix(Pagador(), laranja, 50000, (hoje + timedelta(minutes=indice)).isoformat()))
+    return ultimo
+
+
 def coordenacao_entre_contas():
     hoje = nova_base()
     aparelho, destino, ultimo = f"dvc-fazenda-{random.randint(0, 10**9)}", Recebedor(aberta_em=hoje - timedelta(days=2)), None
@@ -263,6 +284,7 @@ LEGITIMOS = [
     ("empresa pela api, sem GPS", empresa_pela_api_sem_gps, {"approved"}),
     ("cliente novo, R$ 100", cliente_novo_valor_baixo, {"approved"}),
     ("loja que recebe de 10 clientes por hora", loja_movimentada, {"approved"}),
+    ("loja nova (7 dias), 10 clientes numa hora", loja_nova_na_primeira_semana, {"facial_document"}),
     ("primeiro aluguel (R$ 2.500)", primeiro_aluguel, {"approved", "facial", "facial_document"}),
     ("payload do documento oficial", payload_do_documento_oficial, {"facial"}),
     ("6 clientes da mesma operadora (CGNAT), 21h", clientes_da_mesma_operadora, {"approved"}),
@@ -280,6 +302,8 @@ FRAUDES = [
     ("sondagem: R$ 30 mil, 25 mil, 19 mil", sondagem_de_limite, {"facial_document", "rejected"}),
     ("conta laranja: 10 pagadores, conta nova", conta_laranja, {"facial_document", "rejected"}),
     ("repasse rapido para conta de 3 horas", repasse_rapido, {"facial_document", "rejected"}),
+    ("conta laranja num grupo com 3 contas novas (CNPJs do mesmo CPF)", conta_laranja_num_grupo_com_contas_novas,
+     {"rejected"}),
     ("coordenacao: 3 titulares, 1 aparelho", coordenacao_entre_contas, {"facial", "facial_document", "rejected"}),
     ("fatiamento: 4 x R$ 2.900 em 30 min", fatiamento, {"facial", "facial_document"}),
     ("aparelho na lista interna", aparelho_na_lista_interna, {"facial", "facial_document", "rejected"}),
@@ -297,20 +321,28 @@ def _resultado(corpo: dict) -> str:
 
 
 def _regras(corpo: dict) -> str:
-    """As regras que mudaram a decisao: pontos, bloqueio ou piso (as de piso nao somam pontos)."""
+    """As regras que mudaram a decisao: pontos, bloqueio, piso ou a confirmacao do grupo do titular
+    (as de piso e a de confirmacao nao somam pontos)."""
+    confirmou = corpo["metadata"].get("destination_group", {}).get("gate") == "rejected"
+
+    def decisiva(r):
+        return r["hard_block"] or (confirmou and r["rule"] == "CONTAS_NOVAS_DO_GRUPO")
+
     def pesou(r):
-        return r["effective_points"] or r["hard_block"] or (r["evaluation"] == "triggered"
-                                                            and r["authentication_floor"] != "none")
+        return r["effective_points"] or decisiva(r) or (r["evaluation"] == "triggered"
+                                                        and r["authentication_floor"] != "none")
 
     def texto(r):
         if r["hard_block"]:
             return f"{r['rule']} (bloqueio)"
+        if decisiva(r):
+            return f"{r['rule']} (confirma)"
         if not r["effective_points"]:
             return f"{r['rule']} (piso {r['authentication_floor']})"
         return f"{r['rule']} {r['effective_points']:+d}"
 
     com_pontos = [r for r in corpo["metadata"]["rules"] if pesou(r)]
-    com_pontos.sort(key=lambda r: (-r["hard_block"], -abs(r["effective_points"])))
+    com_pontos.sort(key=lambda r: (-decisiva(r), -abs(r["effective_points"])))
     return ", ".join(texto(r) for r in com_pontos[:4])
 
 

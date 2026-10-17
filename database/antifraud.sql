@@ -110,6 +110,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000},
     "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 1, "application_fraud_new_account_days": 90, "application_fraud_same_holder_days": 30},
     "REPUTACAO_INTERNA": {"points": 40},
+    "CONTAS_NOVAS_DO_GRUPO": {"new_account_days": 30, "min_new_accounts": 3},
     "MESMA_TITULARIDADE": {"discount": 10},
     "DESTINO_CONFIAVEL": {"discount": 10, "min_payments": 3, "min_days": 3, "min_span_days": 7},
     "DATA_RETROATIVA": {"tolerance_seconds": 300},
@@ -133,6 +134,11 @@ CREATE TABLE pix_account(
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT pix_account_unique UNIQUE (participant, branch, account_number)
 );
+
+-- As contas de um titular pela data de abertura: a pergunta da
+-- CONTAS_NOVAS_DO_GRUPO ("quais contas destes documentos abriram nos
+-- ultimos 30 dias"). E a unica consulta por titular nesta tabela.
+CREATE INDEX pix_account_owner_document ON pix_account (owner_document, opening_date);
 
 -- ------------------------------------------------------------
 -- 4. A ANALISE DE CADA PIX
@@ -293,7 +299,34 @@ CREATE TABLE ip_range_location(
 CREATE INDEX ip_range_location_network ON ip_range_location USING gist (network inet_ops);
 
 -- ------------------------------------------------------------
--- 8. O RESULTADO DO DESAFIO (2FA), QUANDO O CLIENTE INFORMA
+-- 8. QUEM RESPONDE POR CADA CNPJ (MOCK DO CADASTRO DE EMPRESAS)
+-- ------------------------------------------------------------
+-- Todo CNPJ tem um CPF responsavel. O Pix so traz o documento de cada
+-- ponta, e nem o antifraude nem o onboarding da fase 1 sabem quem
+-- responde por um CNPJ: no hackathon, este mock ficticio, deterministico
+-- e marcado como tal. Em producao, a mesma tabela receberia uma base real
+-- (o cadastro das contas PJ da casa, ou um bureau), e o motor nao mudaria.
+-- Uma linha vale enquanto o CNPJ esta EM ABERTO no nome daquele CPF:
+-- available_from e a abertura (ou a troca de responsavel), expires_at a
+-- baixa (ou a troca). Um CNPJ tem no maximo uma linha vigente por instante.
+
+CREATE TABLE company_registry_fixture(
+    id SERIAL PRIMARY KEY,
+    cnpj VARCHAR(14) NOT NULL CHECK (cnpj ~ '^[0-9A-Z]{12}[0-9]{2}$'),
+    responsible_cpf VARCHAR(11) NOT NULL CHECK (responsible_cpf ~ '^[0-9]{11}$'),
+    evidence_id VARCHAR(40) NOT NULL UNIQUE,
+    available_from TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    fixture_version VARCHAR(30) NOT NULL,
+    is_mock BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (expires_at > available_from),
+    CONSTRAINT company_registry_fixture_unique UNIQUE (cnpj, available_from)
+);
+
+CREATE INDEX company_registry_fixture_cpf ON company_registry_fixture (responsible_cpf, available_from);
+
+-- ------------------------------------------------------------
+-- 9. O RESULTADO DO DESAFIO (2FA), QUANDO O CLIENTE INFORMA
 -- ------------------------------------------------------------
 
 CREATE TABLE pix_challenge_result(
@@ -309,7 +342,7 @@ CREATE TRIGGER pix_challenge_result_is_append_only
     FOR EACH ROW EXECUTE FUNCTION refuse_change();
 
 -- ------------------------------------------------------------
--- 9. SEEDS DE DEMONSTRACAO (TODOS FICTICIOS)
+-- 10. SEEDS DE DEMONSTRACAO (TODOS FICTICIOS)
 -- ------------------------------------------------------------
 
 INSERT INTO reputation_fixture (document, scope, statistics, entity_role, evidence_id, available_from, expires_at, fixture_version) VALUES
@@ -338,3 +371,21 @@ INSERT INTO ip_range_location (network, latitude, longitude, country, source) VA
     ('198.51.100.0/24', -23.560000, -46.650000, 'BR', 'mock'),
     ('203.0.113.0/24', -8.050000, -34.900000, 'BR', 'mock'),
     ('192.0.2.0/24', 38.720000, -9.140000, 'PT', 'mock');
+
+-- O vinculo CNPJ -> CPF responsavel. Os testes rodam muitas vezes no mesmo
+-- banco, entao cada grupo tem um papel fixo (tests/utils/pix.py):
+-- - o grupo do CPF 418.572.936-73: tres CNPJs em aberto em todo o periodo
+--   dos testes, e um que so esteve no nome dele em 2018 (vinculo vencido).
+--   So recebe contas novas de testes que esperam a confirmacao;
+-- - a loja da 306.149.527-43 e o MEI dela, baixado em 2020: nunca passa
+--   de duas contas novas.
+-- Os CNPJs nao podem ser de empresa real: a base (os 8 primeiros digitos)
+-- fica acima da faixa que a Receita ja emitiu, e o oitavo digito nao e o
+-- digito verificador do antigo CGC. Um CNPJ novo aqui segue a mesma regra.
+INSERT INTO company_registry_fixture (cnpj, responsible_cpf, evidence_id, available_from, expires_at, fixture_version) VALUES
+    ('93624817000111', '41857293673', 'mock-company-001', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    ('97150368000178', '41857293673', 'mock-company-002', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    ('85316940000147', '41857293673', 'mock-company-003', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    ('74102958000120', '41857293673', 'mock-company-004', '2018-01-01T00:00:00-03:00', '2019-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    ('81947205000180', '30614952743', 'mock-company-005', '2021-02-24T09:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    ('96283574000193', '30614952743', 'mock-company-006', '2019-05-02T09:00:00-03:00', '2020-11-30T18:00:00-03:00', '2026-10-17-v1');

@@ -30,6 +30,7 @@ from controllers.rules.coordenacao_entre_contas import CoordenacaoEntreContas
 from controllers.rules.rede_suspeita import RedeSuspeita
 from controllers.rules.reputacao_externa import ReputacaoExterna
 from controllers.rules.reputacao_interna import ReputacaoInterna
+from controllers.rules.contas_novas_do_grupo import ContasNovasDoGrupo
 from controllers.rules.ruptura_de_contexto import RupturaDeContexto
 from controllers.rules.data_retroativa import DataRetroativa
 from controllers.rules.velocity import Velocity
@@ -71,6 +72,7 @@ RULES = [
     RedeSuspeita(),
     ReputacaoExterna(),
     ReputacaoInterna(),
+    ContasNovasDoGrupo(),
     MesmaTitularidade(),
     DestinoConfiavel(),
     RupturaDeContexto(),

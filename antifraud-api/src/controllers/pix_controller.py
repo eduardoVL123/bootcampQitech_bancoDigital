@@ -19,8 +19,8 @@ from errors import (
 )
 from models import PixAnalysis
 from repositories import (
-    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository,
-    PolicyRepository, ReputationRepository, WatchlistRepository,
+    AccountRepository, ChallengeRepository, CompanyRegistryRepository, HistoryRepository, IpLocationRepository,
+    LimitRepository, PixRepository, PolicyRepository, ReputationRepository, WatchlistRepository,
 )
 from utils.document_number import has_valid_check_digits, is_legal_person, normalize_document
 from utils.dates import parse_moment
@@ -59,6 +59,7 @@ class PixController(BaseController):
         self.challenge_repo = ChallengeRepository(self.context)
         self.reputation_repo = ReputationRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
+        self.registry_repo = CompanyRegistryRepository(self.context)
 
     def get(self, pix_id: str) -> PixAnalysis:
         analysis = self.pix_repo.get_by_pix_id(pix_id)
@@ -139,7 +140,7 @@ class PixController(BaseController):
             destination_document=destination_document, device_id=device_id,
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
             ip_location=ip_location, history=self.history_repo, limits=self.limit_repo,
-            reputation=self.reputation_repo, watchlist=self.watchlist_repo,
+            reputation=self.reputation_repo, watchlist=self.watchlist_repo, registry=self.registry_repo,
         )
         ctx.cache["params"] = params
 
@@ -243,6 +244,7 @@ class PixController(BaseController):
             regras.append(item)
 
         reputacao = ctx.result("REPUTACAO_EXTERNA")
+        grupo = ctx.result("CONTAS_NOVAS_DO_GRUPO")
         return {
             "policy_version": policy.version,
             "risk_score": decisao.score,
@@ -260,6 +262,11 @@ class PixController(BaseController):
             "signals": self._signals(ctx),
             "reputation": (reputacao.extra.get("reputation") if reputacao else None)
             or {"provider": "mock_bureau", "is_mock": True, "signal": "not_evaluated"},
+            "destination_group": {
+                **((grupo.extra.get("group") if grupo else None)
+                   or {"provider": "mock_company_registry", "is_mock": True, "link": "not_evaluated"}),
+                "gate": decisao.destination_gate,
+            },
             "latency_ms": round((time.perf_counter() - inicio) * 1000, 1),
         }
 
