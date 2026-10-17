@@ -1,0 +1,67 @@
+# O CI curto da fase 2: so os testes da antifraud-api (tests/antifraud_api).
+#
+# O testes (tests.yml) sobe tudo e roda a suite inteira, e passa de 15
+# minutos. Enquanto o antifraude e desenvolvido num branch, isso e espera
+# demais a cada push, e os testes da fase 1 nao mudam com ele. Aqui sobe
+# so o banco e a antifraud-api, e roda so a pasta dela.
+#
+# Roda no branch de trabalho do antifraude e nos branches com o nome
+# combinado para ele (feat/antifraud-...). Tambem da para rodar a mao, na
+# aba Actions do GitHub ("Run workflow").
+#
+# NAO roda na main nem em pull_request, de proposito. O portao da main
+# continua sendo o testes: quando o branch abrir PR para a main, e ele
+# que roda a suite inteira, fase 1 e fase 2 juntas, antes de juntar.
+name: testes-antifraude
+
+on:
+  push:
+    branches:
+      - claude/wizardly-hopper-bq6shy
+      - "feat/antifraud-*"
+  workflow_dispatch:
+
+# Dois pushes seguidos no mesmo branch: a rodada antiga e cancelada, e
+# so a do commit mais novo continua. Aqui pode cancelar sempre, porque
+# este workflow nunca roda na main.
+concurrency:
+  group: testes-antifraude-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    # A suite da antifraud-api leva uns 2 minutos; o resto e construir as
+    # duas imagens do zero. 20 minutos sobra, e segura uma rodada travada.
+    timeout-minutes: 20
+    env:
+      # Onde os testes acham a API (porta 3020) e o banco (porta 5432),
+      # que o compose publica na maquina do Actions.
+      #
+      # As duas falsificacoes de teste do tests.yml (FAULT_INJECTION_ENABLED
+      # e SIMULATED_CLOCK_ENABLED) ficam de fora: so a onboarding-api le
+      # as duas, e nem a antifraud-api nem os testes dela usam. A data de
+      # cada Pix vai no proprio payload.
+      SERVER_LOCALHOST: "127.0.0.1"
+    steps:
+      - uses: actions/checkout@v7
+
+      # So o que os testes da antifraud-api usam: ela depende so do db (o
+      # banco antifraud nasce no mesmo Postgres, pelo database/antifraud.sql).
+      # Redis, LocalStack, Mockserver e as outras APIs nao sobem.
+      - name: Sobe so o banco e a antifraud-api do zero
+        run: docker compose up -d --build --wait --wait-timeout 300 db antifraud-api
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Instala as dependencias dos testes
+        run: pip install -r requirements-dev.txt
+
+      - name: Roda os testes da antifraud-api
+        run: pytest -v tests/antifraud_api
+
+      - name: Mostra os logs se algo falhou
+        if: failure()
+        run: docker compose logs --no-color db antifraud-api
