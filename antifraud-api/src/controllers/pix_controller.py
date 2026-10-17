@@ -22,7 +22,7 @@ from repositories import (
     AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository,
     PolicyRepository, ReputationRepository, WatchlistRepository,
 )
-from utils.document_number import digits_of, has_valid_check_digits, is_legal_person
+from utils.document_number import has_valid_check_digits, is_legal_person, normalize_document
 from utils.dates import parse_moment
 from utils.geo import in_brazil, ip_network
 
@@ -89,8 +89,8 @@ class PixController(BaseController):
 
         origem = payload["source_account"]
         destino = payload["destination_account"]
-        source_document = digits_of(origem["owner"]["document_number"])
-        destination_document = digits_of(destino["owner"]["document_number"])
+        source_document = normalize_document(origem["owner"]["document_number"])
+        destination_document = normalize_document(destino["owner"]["document_number"])
         # As contas sao criadas em ordem fixa (a da chave unica), e nao
         # "origem, depois destino". O INSERT de uma conta nova segura a chave
         # dela ate o commit: com A -> B e B -> A chegando juntos, as duas
@@ -191,7 +191,7 @@ class PixController(BaseController):
         canonical = json.loads(json.dumps(payload))
         for lado in ("source_account", "destination_account"):
             dono = canonical[lado]["owner"]
-            dono["document_number"] = digits_of(dono["document_number"])
+            dono["document_number"] = normalize_document(dono["document_number"])
         return canonical
 
     def _check_dates(self, payload: dict, moment: datetime) -> None:

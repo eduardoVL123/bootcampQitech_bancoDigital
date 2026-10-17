@@ -183,6 +183,30 @@ def test_data_antes_da_abertura_do_destino_da_422():
     assert resposta.json()["code"] == "QIT006003"
 
 
+def test_cnpj_alfanumerico_e_aceito_e_e_o_mesmo_com_e_sem_mascara():
+    # Desde julho de 2026 a Receita emite CNPJ com letras (IN RFB 2.229/2024).
+    # Antes: 400 no schema; e "so os digitos" juntaria empresas diferentes.
+    payload = mutar(pix_normal(), "destination_account.owner.document_number", "12.ABC.345/01DE-35")
+
+    resposta = AntifraudApi.post(payload)
+
+    assert resposta.status_code == 201
+    sinais = resposta.json()["metadata"]["signals"]
+    assert sinais["payee_type"] == "PJ"
+    assert sinais["destination_document_check_digit_valid"] is True
+
+    sem_mascara = mutar(payload, "destination_account.owner.document_number", "12abc34501de35")
+    assert AntifraudApi.post(sem_mascara).status_code == 200
+
+
+def test_cnpj_alfanumerico_com_digito_errado_vai_para_signals():
+    payload = mutar(pix_normal(), "destination_account.owner.document_number", "12.ABC.345/01DE-36")
+
+    corpo = AntifraudApi.post(payload).json()
+
+    assert corpo["metadata"]["signals"]["destination_document_check_digit_valid"] is False
+
+
 def test_documento_com_digito_errado_vai_para_signals_sem_bloquear():
     payload = mutar(pix_normal(), "destination_account.owner.document_number", "111.111.111-12")
 

@@ -5,7 +5,7 @@ from controllers.base_controller import BaseController
 from errors import TransactionBeforeAccountOpening, TransactionDateInTheFuture
 from repositories import AccountRepository, HistoryRepository, LimitRepository, PolicyRepository
 from utils.dates import parse_moment
-from utils.document_number import digits_of
+from utils.document_number import normalize_document
 
 
 class LimitController(BaseController):
@@ -32,7 +32,7 @@ class LimitController(BaseController):
         if opening_date > requested_at:
             raise TransactionBeforeAccountOpening("account")
 
-        documento = digits_of(payload["owner"]["document_number"])
+        documento = normalize_document(payload["owner"]["document_number"])
         conta = self.account_repo.get_or_create(
             OWN_PARTICIPANT, payload["branch"], payload["account_number"], opening_date, documento,
         )
