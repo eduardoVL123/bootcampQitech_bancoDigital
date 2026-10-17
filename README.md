@@ -1,4 +1,4 @@
-# [Nome do grupo]: Antifraude Pix
+# Grupo 8: Antifraude Pix
 
 **Integrantes:** Carlos Alberto Magalhães Neto · Eduardo Lopes Valerio · Enrico Martim Zúcollo
 
