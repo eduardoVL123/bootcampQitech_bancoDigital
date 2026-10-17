@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
     application.add_api_route("/health_check", health_check_resource.on_get_health_check, methods=["GET"])
     application.add_api_route("/pix/transaction", pix_resource.on_post, methods=["POST"])
     application.add_api_route("/pix/transaction/{pix_id}", pix_resource.on_get_by_id, methods=["GET"])
+    application.add_api_route("/pix/transaction/{pix_id}", pix_resource.on_patch, methods=["PATCH"])
     application.add_api_route("/pix/account_limit", limit_resource.on_put, methods=["PUT"])
 
     register_error_handlers(application)

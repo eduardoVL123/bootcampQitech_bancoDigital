@@ -63,3 +63,25 @@ class PixIdReused(QIException):
         description = f"The Pix {pix_id} was already analyzed with a different content. A new Pix needs a new id."
         translation = "Este id já foi usado por outro Pix. Um Pix novo precisa de um id novo."
         super().__init__(title, self.code, http_status, description, translation)
+
+
+class ChallengeNotRequired(QIException):
+    code = "QIT006005"
+
+    def __init__(self, pix_id, status) -> None:
+        title = "Analysis did not require a challenge"
+        http_status = 409
+        description = f"The Pix {pix_id} was analyzed as {status}, and there is no challenge to answer."
+        translation = "Esta análise não pediu verificação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class ChallengeAlreadyAnswered(QIException):
+    code = "QIT006006"
+
+    def __init__(self, pix_id, result) -> None:
+        title = "Challenge already answered"
+        http_status = 409
+        description = f"The challenge of the Pix {pix_id} was already answered as {result}."
+        translation = "Esta verificação já teve outro resultado informado."
+        super().__init__(title, self.code, http_status, description, translation)

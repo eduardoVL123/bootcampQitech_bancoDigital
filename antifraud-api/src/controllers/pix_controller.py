@@ -19,9 +19,10 @@ from errors import (
 )
 from models import PixAnalysis
 from repositories import (
-    AccountRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository, PolicyRepository,
+    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository, PolicyRepository,
 )
 from utils.document_number import digits_of, has_valid_check_digits, is_legal_person
+from utils.dates import parse_moment
 from utils.geo import in_brazil, ip_network
 
 AUTHENTICATION = {
@@ -29,10 +30,6 @@ AUTHENTICATION = {
     "facial": ["facial"],
     "facial_document": ["facial", "document"],
 }
-
-
-def parse_moment(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class PixController(BaseController):
@@ -58,12 +55,16 @@ class PixController(BaseController):
         self.ip_location_repo = IpLocationRepository(self.context)
         self.policy_repo = PolicyRepository(self.context)
         self.limit_repo = LimitRepository(self.context)
+        self.challenge_repo = ChallengeRepository(self.context)
 
     def get(self, pix_id: str) -> PixAnalysis:
         analysis = self.pix_repo.get_by_pix_id(pix_id)
         if analysis is None:
             raise NotFoundPixAnalysis(pix_id)
         return analysis
+
+    def challenge_of(self, analysis: PixAnalysis):
+        return self.challenge_repo.get(analysis.id)
 
     def analyze(self, payload: dict) -> tuple:
         """Devolve (analise, ja_existia). O resource traduz em 201 ou 200."""

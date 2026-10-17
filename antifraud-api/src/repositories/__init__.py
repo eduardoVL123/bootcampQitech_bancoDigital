@@ -4,3 +4,5 @@ from repositories.ip_location_repository import IpLocationRepository
 from repositories.pix_repository import PixRepository
 from repositories.policy_repository import PolicyRepository
 from repositories.limit_repository import LimitRepository
+from repositories.challenge_repository import ChallengeRepository
+from repositories.watchlist_repository import WatchlistRepository

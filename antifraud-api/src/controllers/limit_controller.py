@@ -2,9 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 from constants import OWN_PARTICIPANT, TIME_SKEW_SECONDS
 from controllers.base_controller import BaseController
-from controllers.pix_controller import parse_moment
 from errors import TransactionBeforeAccountOpening, TransactionDateInTheFuture
 from repositories import AccountRepository, HistoryRepository, LimitRepository, PolicyRepository
+from utils.dates import parse_moment
 from utils.document_number import digits_of
 
 
