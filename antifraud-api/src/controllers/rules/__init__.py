@@ -15,6 +15,14 @@ from controllers.rules.conta_reativada import ContaReativada
 from controllers.rules.destino_novo import DestinoNovo
 from controllers.rules.contraparte_inedita import ContraparteInedita
 from controllers.rules.destino_confiavel import DestinoConfiavel
+from controllers.rules.aparelho_novo import AparelhoNovo
+from controllers.rules.rede_nova import RedeNova
+from controllers.rules.viagem_impossivel import ViagemImpossivel
+from controllers.rules.geo_ip_divergente import GeoIpDivergente
+from controllers.rules.ambiente_incoerente import AmbienteIncoerente
+from controllers.rules.aparelho_compartilhado import AparelhoCompartilhado
+from controllers.rules.ip_compartilhado import IpCompartilhado
+from controllers.rules.ruptura_de_contexto import RupturaDeContexto
 from controllers.rules.velocity import Velocity
 from controllers.rules.limite_do_cliente import LimiteDoCliente
 from controllers.rules.aumento_pendente import AumentoPendente
@@ -36,9 +44,17 @@ RULES = [
     OrigemNova(),
     ContaReativada(),
     Noturno(),
+    AparelhoNovo(),
+    RedeNova(),
+    ViagemImpossivel(),
+    GeoIpDivergente(),
+    AmbienteIncoerente(),
     GeoAusente(),
+    AparelhoCompartilhado(),
+    IpCompartilhado(),
     DestinoNovo(),
     ContraparteInedita(),
     MesmaTitularidade(),
     DestinoConfiavel(),
+    RupturaDeContexto(),
 ]
