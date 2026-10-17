@@ -133,3 +133,10 @@ def test_reducao_depois_de_15_minutos_nao_e_sondagem():
     corpos = _sequencia(Pagador(), [3000000, 1900000], timedelta(minutes=20))
 
     assert not disparou(corpos[1], "SONDAGEM_DE_LIMITE")
+
+
+def test_um_pix_sozinho_acima_de_50_mil_nao_e_montante():
+    corpo = analisa(pix(Pagador(), Recebedor(), 6000000, nova_base().isoformat()))
+
+    assert not disparou(corpo, "MONTANTE_24H")
+    assert disparou(corpo, "LIMITE_POR_PIX")

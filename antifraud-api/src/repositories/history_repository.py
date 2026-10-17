@@ -135,13 +135,6 @@ class HistoryRepository:
             origem=source_document, destino=destination_document, fim=moment,
         ))
 
-    def approved_between(self, account_id: int, start, end) -> int:
-        return self._remember(("approved_between", account_id), lambda: int(self._scalar(
-            f"SELECT coalesce(sum(a.amount), 0) FROM pix_analysis a WHERE a.source_account_id = :conta "
-            f"AND a.transaction_date >= :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-            conta=account_id, inicio=start, fim=end,
-        )))
-
     def daily_approved_totals(self, account_id: int, day_start, days: int, timezone: str) -> list:
         """O total aprovado de cada dia com movimento, nos dias completos antes de hoje."""
         return self._remember(("daily_totals", account_id, days), lambda: [linha[0] for linha in self._all(

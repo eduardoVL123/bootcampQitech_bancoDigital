@@ -8,7 +8,9 @@ class Montante24h(Rule):
     """Aprovados da conta em 24h, mais este, acima de R$ 50.000.
 
     Com referencia, exige tambem o desvio do padrao do cliente: o corte
-    fixo E o desvio. Sem referencia, so o corte.
+    fixo E o desvio. Sem referencia, so o corte. Mede acumulo: exige pelo
+    menos um aprovado anterior nas 24h. Um Pix sozinho acima do corte e
+    assunto do LIMITE_POR_PIX e do PERFIL.
     """
 
     code = "MONTANTE_24H"
@@ -17,9 +19,9 @@ class Montante24h(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        aprovado, _ = ctx.history.approved_sum_and_count(ctx.source_account.id, ctx.moment, 24 * 60)
+        aprovado, quantos = ctx.history.approved_sum_and_count(ctx.source_account.id, ctx.moment, 24 * 60)
         total = aprovado + ctx.amount
-        if total <= p["limit"]:
+        if quantos == 0 or total <= p["limit"]:
             return self.not_triggered()
         desvio = deviates(ctx, params, "approved_amount", 24 * 60, total, p["deviation"])
         if desvio is not None and not desvio.deviates:

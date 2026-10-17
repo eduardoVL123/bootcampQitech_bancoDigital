@@ -122,9 +122,20 @@ def test_dia_atipico_soma_30():
     pagador, hoje = Pagador(), _hoje()
     historico(pagador, [15000] * 14, hoje - timedelta(days=7, hours=4), timedelta(hours=12), recebedores_novos=True)
 
+    analisa(pix(pagador, Recebedor(), 10000, (hoje - timedelta(hours=1)).isoformat()))
+
     corpo = analisa(pix(pagador, Recebedor(), 140000, hoje.isoformat()))
 
     assert pontos(corpo, "MONTANTE_DIARIO_ATIPICO") == 30
+
+
+def test_um_pix_sozinho_no_dia_nao_e_dia_atipico():
+    pagador, hoje = Pagador(), _hoje()
+    historico(pagador, [15000] * 14, hoje - timedelta(days=7, hours=4), timedelta(hours=12), recebedores_novos=True)
+
+    corpo = analisa(pix(pagador, Recebedor(), 140000, hoje.isoformat()))
+
+    assert not disparou(corpo, "MONTANTE_DIARIO_ATIPICO")
 
 
 def test_menos_de_7_dias_de_historia_deixa_o_dia_nao_avaliavel():
