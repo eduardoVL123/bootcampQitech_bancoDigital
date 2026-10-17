@@ -16,7 +16,7 @@ from utils.logger import setup_logging
 def create_app() -> FastAPI:
     """Monta a antifraud-api: middlewares, rotas e error handlers.
 
-    Mesmo esqueleto da customer-api e da api da fase 1. A ordem dos
+    Mesmo esqueleto da customer-api e da api da fase 1, de onde foi copiado. A ordem dos
     middlewares e a mesma, pelo mesmo motivo (ver src/app.py da raiz): a
     ultima linha registrada e a primeira a rodar.
     """
