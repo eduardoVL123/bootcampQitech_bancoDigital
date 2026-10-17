@@ -88,7 +88,8 @@ class HistoryRepository:
     def restrictive_attempts(self, account_id: int, moment, minutes: int) -> list:
         """As tentativas recentes que nao viraram dinheiro, em ordem."""
         return self._remember(("restrictive", account_id, minutes), lambda: self._all(
-            f"SELECT a.transaction_date, a.amount FROM pix_analysis a WHERE a.source_account_id = :conta "
+            f"SELECT a.transaction_date, a.amount, a.destination_document FROM pix_analysis a "
+            f"WHERE a.source_account_id = :conta "
             f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {RESTRICTIVE} "
             "ORDER BY a.transaction_date",
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,

@@ -129,6 +129,28 @@ def test_mesmo_valor_depois_de_2fa_nao_e_sondagem():
     assert not disparou(corpos[1], "SONDAGEM_DE_LIMITE")
 
 
+def test_pix_pequeno_para_outro_destino_depois_de_2fa_nao_e_sondagem():
+    # O carro pediu 2FA; o almoco, dez minutos depois, e outro pagamento.
+    base, pagador = nova_base(), Pagador()
+    carro = analisa(pix(pagador, Recebedor(pj=True), 2500000, base.isoformat()))
+    assert carro["status"] == "two_factor_required"
+
+    almoco = analisa(pix(pagador, Recebedor(pj=True), 3000, (base + timedelta(minutes=10)).isoformat()))
+
+    assert not disparou(almoco, "SONDAGEM_DE_LIMITE")
+
+
+def test_valor_proximo_para_outro_destino_ainda_e_sondagem():
+    # Trocar de conta e continuar baixando perto do valor recusado continua
+    # sendo sondar: 25 mil, depois 19 mil para outra conta.
+    base, pagador = nova_base(), Pagador()
+    analisa(pix(pagador, Recebedor(), 2500000, base.isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 1900000, (base + timedelta(minutes=3)).isoformat()))
+
+    assert disparou(corpo, "SONDAGEM_DE_LIMITE")
+
+
 def test_reducao_depois_de_15_minutos_nao_e_sondagem():
     corpos = _sequencia(Pagador(), [3000000, 1900000], timedelta(minutes=20))
 

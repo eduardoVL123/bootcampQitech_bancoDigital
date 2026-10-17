@@ -84,7 +84,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "ORIGEM_NOVA": {"max_age_hours": 48, "min_amount": 100000, "points": 25},
     "CONTA_REATIVADA": {"min_account_age_days": 30, "idle_days": 60, "burst_minutes": 60, "burst_count": 3, "min_amount": 500000, "points": 30},
     "AUMENTO_PENDENTE": {"delay_hours": 24, "ratio": 0.5, "points": 40},
-    "SONDAGEM_DE_LIMITE": {"window_minutes": 15, "one": 30, "two": 50},
+    "SONDAGEM_DE_LIMITE": {"window_minutes": 15, "one": 30, "two": 50, "other_destination_min_ratio": 0.3},
     "NOTURNO": {"start_hour": 20, "end_hour": 6, "min_amount": 100000, "points": 25},
     "PADRAO_MENSAL": {"months": 3, "min_amount": 100000, "tolerance_days": 2, "share": 0.6, "min_per_month": 2, "multiple": 3, "points": 25},
     "APARELHO_NOVO": {"min_prior_attempts": 3, "points": 20},
