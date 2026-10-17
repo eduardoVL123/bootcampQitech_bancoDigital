@@ -106,7 +106,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     },
     "REPASSE_RAPIDO": {"window_minutes": 60, "min_payers": 3, "share": 0.8, "points": 60, "inconclusive_points": 20},
     "COORDENACAO_ENTRE_CONTAS": {"window_minutes": 10, "min_documents": 3, "destination_max_days": 7, "points": 40},
-    "REDE_SUSPEITA": {"days": 30, "points": 30},
+    "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000},
     "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 1, "application_fraud_new_account_days": 90, "application_fraud_same_holder_days": 30},
     "REPUTACAO_INTERNA": {"points": 40},
     "MESMA_TITULARIDADE": {"discount": 10},

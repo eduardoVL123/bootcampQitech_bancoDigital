@@ -140,6 +140,29 @@ def test_destino_a_dois_saltos_de_uma_ancora_soma_30():
     assert rede["hops"] == 2
 
 
+def test_aresta_de_centavos_nao_contamina_o_destino():
+    # Uma ancora que e cliente da casa manda R$ 0,01 para uma loja. Antes, todo
+    # mundo que pagasse a loja depois levava +30.
+    hoje = nova_base()
+    ancora, loja = Pagador(documento=RECEBEDOR_MARCACAO_CRITICA), Recebedor(pj=True)
+    analisa(pix(ancora, loja, 1, (hoje - timedelta(hours=2)).isoformat()))
+
+    corpo = analisa(pix(Pagador(), loja, 5000, hoje.isoformat()))
+
+    assert not disparou(corpo, "REDE_SUSPEITA")
+
+
+def test_destino_que_o_pagador_ja_paga_nao_ganha_a_suspeita():
+    hoje = nova_base()
+    cliente, loja = Pagador(), Recebedor(pj=True)
+    analisa(pix(cliente, loja, 5000, (hoje - timedelta(days=5)).isoformat()))
+    analisa(pix(Pagador(documento=RECEBEDOR_MARCACAO_CRITICA), loja, 5000, (hoje - timedelta(days=1)).isoformat()))
+
+    corpo = analisa(pix(cliente, loja, 5000, hoje.isoformat()))
+
+    assert not disparou(corpo, "REDE_SUSPEITA")
+
+
 def test_tres_saltos_nao_dispara():
     hoje = nova_base()
     ancora = Pagador(documento=RECEBEDOR_MARCACAO_CRITICA)

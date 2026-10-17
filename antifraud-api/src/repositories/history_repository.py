@@ -267,13 +267,16 @@ class HistoryRepository:
             conta=account_id, inicio=start, fim=end,
         )]
 
-    def network_path(self, anchors: set, destination_document: str, moment, days: int):
+    def network_path(self, anchors: set, destination_document: str, moment, days: int, min_amount: int = 1):
         """O caminho de ate dois saltos de uma ancora ate o destino, por Pix aprovados.
 
         Um salto: a ancora pagou o destino. Dois: a ancora pagou alguem que
         pagou o destino. So as ancoras espalham suspeita; o vizinho nao vira
         ancora nova, e a suspeita nao se propaga sem fim. Devolve (saltos,
         caminho) ou None.
+
+        Aresta abaixo de `min_amount` nao conta: sem o corte, uma ancora que
+        e cliente da casa contaminava qualquer conta com um Pix de R$ 0,01.
         """
         if not anchors:
             return None
@@ -281,8 +284,8 @@ class HistoryRepository:
         um_salto = self._all(
             f"SELECT a.source_document FROM pix_analysis a WHERE a.source_document = ANY(:ancoras) "
             f"AND a.destination_document = :destino AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
-            f"AND {APPROVED} LIMIT 1",
-            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+            f"AND a.amount >= :minimo AND {APPROVED} LIMIT 1",
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if um_salto:
             return 1, [um_salto[0][0], destination_document]
@@ -292,8 +295,9 @@ class HistoryRepository:
             f"WHERE a.destination_document = :destino AND b.source_document = ANY(:ancoras) "
             f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
             f"AND b.transaction_date > :inicio AND b.transaction_date <= a.transaction_date "
+            f"AND a.amount >= :minimo AND b.amount >= :minimo "
             f"AND {APPROVED} AND {APPROVED.replace('a.', 'b.')} LIMIT 1",
-            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if dois_saltos:
             meio, ancora = dois_saltos[0]
