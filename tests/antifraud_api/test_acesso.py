@@ -176,6 +176,23 @@ def test_cinco_titulares_no_mesmo_ip_soma_15():
     assert pontos(corpo, "IP_COMPARTILHADO") == 15
 
 
+def test_ip_de_operadora_na_rede_de_sempre_nao_soma():
+    # CGNAT: seis clientes da mesma operadora, cada um no IP de sempre,
+    # pagando um amigo de sempre as 21h. Antes, do quinto em diante levava
+    # NOTURNO 25 + IP_COMPARTILHADO 15 = 40 e a facial.
+    hoje = nova_base().replace(hour=21, minute=0)
+    ip = f"{_rede_desconhecida()}.88"
+    corpos = []
+    for indice in range(6):
+        amigo, cliente = Recebedor(), Pagador()
+        cliente.ip = ip
+        historico(cliente, [150000] * 3, hoje - timedelta(days=40), timedelta(days=3), recebedor=amigo)
+        corpos.append(analisa(pix(cliente, amigo, 150000, (hoje + timedelta(minutes=indice)).isoformat())))
+
+    assert not any(disparou(corpo, "IP_COMPARTILHADO") for corpo in corpos)
+    assert all(corpo["status"] == "approved" for corpo in corpos)
+
+
 def _cliente_estabelecido(hoje):
     pagador = Pagador()
     historico(pagador, [28000, 29000, 30000, 31000, 32000, 28000, 29000, 30000, 31000, 32000],

@@ -109,12 +109,15 @@ class PixController(BaseController):
         source_account, destination_account = contas["source"], contas["destination"]
 
         device_id = payload["source"]["device_id"]
+        # O IP fica de fora das travas de proposito: atras de um CGNAT de
+        # operadora, milhares de clientes dividem o mesmo IP, e travar por ele
+        # enfileirava todos. A unica regra que conta por IP (IP_COMPARTILHADO,
+        # +15) aceita errar por um num pico simultaneo.
         self.history_repo.lock([
             f"payer:{source_document}",
             f"payee:{destination_document}",
             f"account:{destination_account.id}",
             f"device:{device_id}",
-            f"ip:{ip}",
         ])
 
         existente = self.pix_repo.get_by_pix_id(payload["id"])

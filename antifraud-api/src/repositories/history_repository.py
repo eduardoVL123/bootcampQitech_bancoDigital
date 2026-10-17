@@ -47,7 +47,7 @@ class HistoryRepository:
     # ------------------------------------------------------------------
 
     def lock(self, keys: list) -> None:
-        """Trava, ate o commit, o pagador, o recebedor, o aparelho e o IP.
+        """Trava, ate o commit, o pagador, o recebedor e o aparelho (o IP nao: ver o controller).
 
         Sao travas consultivas (pg_advisory_xact_lock): nao prendem linha
         nenhuma, so serializam quem pede a mesma chave. Dois Pix do mesmo
