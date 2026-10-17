@@ -261,3 +261,36 @@ class HistoryRepository:
             "ORDER BY a.transaction_date",
             conta=account_id, inicio=start, fim=end,
         )]
+
+    def network_path(self, anchors: set, destination_document: str, moment, days: int):
+        """O caminho de ate dois saltos de uma ancora ate o destino, por Pix aprovados.
+
+        Um salto: a ancora pagou o destino. Dois: a ancora pagou alguem que
+        pagou o destino. So as ancoras espalham suspeita; o vizinho nao vira
+        ancora nova, e a suspeita nao se propaga sem fim. Devolve (saltos,
+        caminho) ou None.
+        """
+        if not anchors:
+            return None
+        inicio, fim = moment - timedelta(days=days), moment
+        um_salto = self._all(
+            f"SELECT a.source_document FROM pix_analysis a WHERE a.source_document = ANY(:ancoras) "
+            f"AND a.destination_document = :destino AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+            f"AND {APPROVED} LIMIT 1",
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+        )
+        if um_salto:
+            return 1, [um_salto[0][0], destination_document]
+        dois_saltos = self._all(
+            f"SELECT a.source_document, b.source_document FROM pix_analysis a JOIN pix_analysis b "
+            f"ON b.destination_document = a.source_document "
+            f"WHERE a.destination_document = :destino AND b.source_document = ANY(:ancoras) "
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+            f"AND b.transaction_date > :inicio AND b.transaction_date <= a.transaction_date "
+            f"AND {APPROVED} AND {APPROVED.replace('a.', 'b.')} LIMIT 1",
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+        )
+        if dois_saltos:
+            meio, ancora = dois_saltos[0]
+            return 2, [ancora, meio, destination_document]
+        return None

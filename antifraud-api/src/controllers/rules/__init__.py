@@ -22,6 +22,12 @@ from controllers.rules.geo_ip_divergente import GeoIpDivergente
 from controllers.rules.ambiente_incoerente import AmbienteIncoerente
 from controllers.rules.aparelho_compartilhado import AparelhoCompartilhado
 from controllers.rules.ip_compartilhado import IpCompartilhado
+from controllers.rules.conta_laranja import ContaLaranja
+from controllers.rules.repasse_rapido import RepasseRapido
+from controllers.rules.coordenacao_entre_contas import CoordenacaoEntreContas
+from controllers.rules.rede_suspeita import RedeSuspeita
+from controllers.rules.reputacao_externa import ReputacaoExterna
+from controllers.rules.reputacao_interna import ReputacaoInterna
 from controllers.rules.ruptura_de_contexto import RupturaDeContexto
 from controllers.rules.velocity import Velocity
 from controllers.rules.limite_do_cliente import LimiteDoCliente
@@ -54,6 +60,12 @@ RULES = [
     IpCompartilhado(),
     DestinoNovo(),
     ContraparteInedita(),
+    ContaLaranja(),
+    RepasseRapido(),
+    CoordenacaoEntreContas(),
+    RedeSuspeita(),
+    ReputacaoExterna(),
+    ReputacaoInterna(),
     MesmaTitularidade(),
     DestinoConfiavel(),
     RupturaDeContexto(),

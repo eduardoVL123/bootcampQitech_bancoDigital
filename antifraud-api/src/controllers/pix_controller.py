@@ -19,7 +19,8 @@ from errors import (
 )
 from models import PixAnalysis
 from repositories import (
-    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository, PolicyRepository,
+    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository,
+    PolicyRepository, ReputationRepository, WatchlistRepository,
 )
 from utils.document_number import digits_of, has_valid_check_digits, is_legal_person
 from utils.dates import parse_moment
@@ -56,6 +57,8 @@ class PixController(BaseController):
         self.policy_repo = PolicyRepository(self.context)
         self.limit_repo = LimitRepository(self.context)
         self.challenge_repo = ChallengeRepository(self.context)
+        self.reputation_repo = ReputationRepository(self.context)
+        self.watchlist_repo = WatchlistRepository(self.context)
 
     def get(self, pix_id: str) -> PixAnalysis:
         analysis = self.pix_repo.get_by_pix_id(pix_id)
@@ -125,6 +128,7 @@ class PixController(BaseController):
             destination_document=destination_document, device_id=device_id,
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
             ip_location=ip_location, history=self.history_repo, limits=self.limit_repo,
+            reputation=self.reputation_repo, watchlist=self.watchlist_repo,
         )
         ctx.cache["params"] = params
 

@@ -20,7 +20,6 @@ def test_concorrencia_velocity_conta_certo():
 
 
 @pytest.mark.concurrency
-@pytest.mark.xfail(strict=True, reason="CONTA_LARANJA entra na Tarefa 10")
 def test_concorrencia_conta_laranja_conta_certo():
     recebedor, data = Recebedor(aberta_em=nova_base().replace(year=2019)), nova_base().isoformat()
     payloads = [pix(Pagador(), recebedor, 5000, data) for _ in range(8)]

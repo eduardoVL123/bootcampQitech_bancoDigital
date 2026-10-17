@@ -6,3 +6,4 @@ from repositories.policy_repository import PolicyRepository
 from repositories.limit_repository import LimitRepository
 from repositories.challenge_repository import ChallengeRepository
 from repositories.watchlist_repository import WatchlistRepository
+from repositories.reputation_repository import ReputationRepository
