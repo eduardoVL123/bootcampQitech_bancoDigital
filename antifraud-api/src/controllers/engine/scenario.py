@@ -16,8 +16,12 @@ def _limite(ctx, decision) -> bool:
 
 
 def _recebedor_critico(ctx, decision) -> bool:
-    resultado = ctx.result("REPUTACAO_EXTERNA")
-    return resultado is not None and resultado.is_triggered and resultado.hard_block
+    """Bloqueio por evidencia do recebedor: a do mock externo ou a da lista interna."""
+    for regra in ("REPUTACAO_EXTERNA", "REPUTACAO_INTERNA"):
+        resultado = ctx.result(regra)
+        if resultado is not None and resultado.is_triggered and resultado.hard_block:
+            return True
+    return False
 
 
 def _conta_tomada(ctx, decision) -> bool:

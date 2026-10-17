@@ -5,10 +5,22 @@ from controllers.engine.rule import Rule
 class ReputacaoInterna(Rule):
     """O documento destino ou o aparelho estao na lista interna vigente.
 
-    A lista tem casos confirmados (semeados) e o "nao fui eu" do titular
-    depois de um desafio. Nunca a decisao do proprio motor: uma rejeicao por
-    limite nao diz nada sobre o recebedor, e alimentar a lista com ela faria
-    um falso positivo gerar outros em cadeia.
+    A lista tem casos confirmados (semeados, `creator = external`) e o "nao
+    fui eu" do titular depois de um desafio (`creator = client`). Nunca a
+    decisao do proprio motor: uma rejeicao por limite nao diz nada sobre o
+    recebedor, e alimentar a lista com ela faria um falso positivo gerar
+    outros em cadeia.
+
+    Documento destino com fraude CONFIRMADA e bloqueio, nao 2FA. A
+    verificacao responde "e o dono da conta mesmo?", e no golpe quem paga e
+    o proprio dono, enganado: ele faz a facial e passa. Contra conta que a
+    casa ja sabe que e de golpe, so recusar protege (e a Res. BCB 501/2025
+    manda recusar pagamento para conta com fundada suspeita de fraude).
+
+    O "nao fui eu" do titular continua somando +40, sem bloquear: e a
+    palavra de um cliente so, e bloquear com ela deixaria qualquer cliente
+    travar o recebimento de qualquer pessoa. O aparelho tambem fica em +40:
+    risco de quem paga, e ai a verificacao funciona.
     """
 
     code = "REPUTACAO_INTERNA"
@@ -19,9 +31,14 @@ class ReputacaoInterna(Rule):
         p = params[self.code]
         for tipo, valor in (("document", ctx.destination_document), ("device", ctx.device_id)):
             entrada = ctx.watchlist.listed(tipo, valor, ctx.moment)
-            if entrada is not None:
-                alvo = "Documento destino" if tipo == "document" else "Aparelho"
-                return self.triggered(p["points"], f"{alvo} na lista interna ({entrada.report_type}, {entrada.creator}).",
-                                      data_origin="history", evidence_ids=[entrada.evidence_id],
+            if entrada is None:
+                continue
+            if tipo == "document" and entrada.creator == "external" and entrada.report_type == "fraud":
+                return self.triggered(0, "Documento destino na lista interna como fraude confirmada.",
+                                      hard_block=True, data_origin="history", evidence_ids=[entrada.evidence_id],
                                       creator=entrada.creator)
+            alvo = "Documento destino" if tipo == "document" else "Aparelho"
+            return self.triggered(p["points"], f"{alvo} na lista interna ({entrada.report_type}, {entrada.creator}).",
+                                  data_origin="history", evidence_ids=[entrada.evidence_id],
+                                  creator=entrada.creator)
         return self.not_triggered()

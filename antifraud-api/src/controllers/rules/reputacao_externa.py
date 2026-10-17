@@ -7,8 +7,12 @@ MOCK = {"provider": "mock_bureau", "is_mock": True}
 class ReputacaoExterna(Rule):
     """O que o mock de reputacao diz do recebedor, no formato do destination_statistics da QI.
 
-    - marcacao critica: golpe ou conta laranja nos ultimos 90 dias, por pelo
-      menos 2 denunciantes diferentes, com papel de suspeito: bloqueio;
+    - marcacao critica: golpe ou conta laranja nos ultimos 90 dias, com papel
+      de suspeito: bloqueio. Basta UM denunciante (`min_reporters` na
+      politica): no DICT, `mule_accounts` e `scammer_accounts` contam
+      marcacoes de fraude, que so existem depois de a instituicao do
+      recebedor analisar e confirmar. Denuncia que ainda nao foi analisada e
+      `open_reports`, e essa so soma pontos;
     - alerta: denuncia aberta, ou golpe ou laranja nos ultimos 12 meses: +40;
     - fraude de cadastro ou papel de vitima: 0. Quem teve a identidade
       roubada e a vitima, nao o fraudador.

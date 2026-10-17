@@ -107,7 +107,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "REPASSE_RAPIDO": {"window_minutes": 60, "min_payers": 3, "share": 0.8, "points": 60, "inconclusive_points": 20},
     "COORDENACAO_ENTRE_CONTAS": {"window_minutes": 10, "min_documents": 3, "destination_max_days": 7, "points": 40},
     "REDE_SUSPEITA": {"days": 30, "points": 30},
-    "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 2},
+    "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 1},
     "REPUTACAO_INTERNA": {"points": 40},
     "MESMA_TITULARIDADE": {"discount": 10},
     "DESTINO_CONFIAVEL": {"discount": 10, "min_payments": 3, "min_days": 3, "min_span_days": 7},
@@ -322,7 +322,11 @@ INSERT INTO reputation_fixture (document, scope, statistics, entity_role, eviden
      'suspected_perpetrator', 'mock-evidence-003', '2018-01-01T00:00:00-03:00', '2019-01-01T00:00:00-03:00', '2026-10-17-v1'),
     ('12345678909', 'person',
      '{"mule_accounts": {"d90": 0, "m12": 0, "m60": 0}, "scammer_accounts": {"d90": 0, "m12": 0, "m60": 0}, "application_frauds": {"d90": 2, "m12": 2, "m60": 2}, "distinct_fraud_reporters": {"d90": 2, "m12": 2, "m60": 2}, "open_reports": 0, "rejected_reports": {"d90": 0, "m12": 0, "m60": 0}, "settlements": {"d90": 10, "m12": 30, "m60": 80}}',
-     'victim', 'mock-evidence-004', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1');
+     'victim', 'mock-evidence-004', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v1'),
+    -- Uma marcacao de laranja confirmada em 90 dias, por um denunciante so.
+    ('37024556803', 'person',
+     '{"mule_accounts": {"d90": 1, "m12": 1, "m60": 1}, "scammer_accounts": {"d90": 0, "m12": 0, "m60": 0}, "application_frauds": {"d90": 0, "m12": 0, "m60": 0}, "distinct_fraud_reporters": {"d90": 1, "m12": 1, "m60": 1}, "open_reports": 0, "rejected_reports": {"d90": 0, "m12": 0, "m60": 0}, "settlements": {"d90": 12, "m12": 12, "m60": 12}}',
+     'suspected_perpetrator', 'mock-evidence-005', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v2');
 
 INSERT INTO watchlist (kind, value, report_type, creator, evidence_id, available_from, expires_at) VALUES
     ('document', '27548438923', 'fraud', 'external', 'seed-watchlist-document-001', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00'),
