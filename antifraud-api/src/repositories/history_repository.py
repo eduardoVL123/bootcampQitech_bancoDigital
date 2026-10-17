@@ -104,6 +104,17 @@ class HistoryRepository:
             return linha[0], linha[1]
         return self._remember(("attempt_dates", account_id), consulta)
 
+    def latest_attempt(self, account_id: int):
+        """A data mais nova ja analisada para a conta, SEM limite superior.
+
+        E a unica consulta que olha depois do instante do Pix: serve para
+        ver que ele chegou com data anterior a Pix que ja aconteceram.
+        """
+        return self._remember(("latest", account_id), lambda: self._scalar(
+            "SELECT max(a.transaction_date) FROM pix_analysis a WHERE a.source_account_id = :conta",
+            conta=account_id,
+        ))
+
     def last_attempt_before(self, account_id: int, before):
         return self._remember(("last_before", account_id), lambda: self._scalar(
             "SELECT max(a.transaction_date) FROM pix_analysis a WHERE a.source_account_id = :conta "

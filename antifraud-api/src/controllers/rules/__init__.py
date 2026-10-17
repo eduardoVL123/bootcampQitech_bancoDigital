@@ -30,6 +30,7 @@ from controllers.rules.rede_suspeita import RedeSuspeita
 from controllers.rules.reputacao_externa import ReputacaoExterna
 from controllers.rules.reputacao_interna import ReputacaoInterna
 from controllers.rules.ruptura_de_contexto import RupturaDeContexto
+from controllers.rules.data_retroativa import DataRetroativa
 from controllers.rules.velocity import Velocity
 from controllers.rules.limite_do_cliente import LimiteDoCliente
 from controllers.rules.aumento_pendente import AumentoPendente
@@ -71,4 +72,5 @@ RULES = [
     MesmaTitularidade(),
     DestinoConfiavel(),
     RupturaDeContexto(),
+    DataRetroativa(),
 ]

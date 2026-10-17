@@ -135,6 +135,30 @@ def test_reducao_depois_de_15_minutos_nao_e_sondagem():
     assert not disparou(corpos[1], "SONDAGEM_DE_LIMITE")
 
 
+def test_datas_recuando_nao_escondem_a_rajada():
+    # Seis Pix mandados agora, com as datas recuando uma hora cada: cada um
+    # "acontece" antes dos anteriores, e nenhuma janela via os outros.
+    # Antes: approved com 0 pontos. Com as datas reais, a VELOCITY pegaria.
+    base, pagador = nova_base(), Pagador()
+    corpos = [analisa(pix(pagador, Recebedor(), 5000, (base - timedelta(hours=i)).isoformat())) for i in range(6)]
+
+    assert not disparou(corpos[0], "DATA_RETROATIVA")
+    ultimo = corpos[-1]
+    assert disparou(ultimo, "DATA_RETROATIVA")
+    assert ultimo["status"] == "two_factor_required"
+    assert ultimo["metadata"]["authentication"]["level"] == "facial_document"
+
+
+def test_data_pouco_fora_de_ordem_nao_e_retroativa():
+    # A organizacao avisou: as datas podem chegar pouco fora de ordem.
+    base, pagador = nova_base(), Pagador()
+    analisa(pix(pagador, Recebedor(), 5000, base.isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 5000, (base - timedelta(minutes=3)).isoformat()))
+
+    assert not disparou(corpo, "DATA_RETROATIVA")
+
+
 def test_um_pix_sozinho_acima_de_50_mil_nao_e_montante():
     corpo = analisa(pix(Pagador(), Recebedor(), 6000000, nova_base().isoformat()))
 

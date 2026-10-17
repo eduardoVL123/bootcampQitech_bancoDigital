@@ -111,6 +111,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "REPUTACAO_INTERNA": {"points": 40},
     "MESMA_TITULARIDADE": {"discount": 10},
     "DESTINO_CONFIAVEL": {"discount": 10, "min_payments": 3, "min_days": 3, "min_span_days": 7},
+    "DATA_RETROATIVA": {"tolerance_seconds": 300},
     "RUPTURA_DE_CONTEXTO": {"far_km": 50, "geo_min_points": 5, "geo_min_days": 3, "geo_window_days": 90, "history_min_payments": 10, "history_min_days": 3}
 }');
 
