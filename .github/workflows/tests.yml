@@ -40,7 +40,9 @@ concurrency:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # A fase 2 (antifraud-api) acrescentou uns 160 testes: a suite
+    # inteira passa de 15 minutos com as falsificacoes ligadas.
+    timeout-minutes: 40
     env:
       # As duas falsificacoes de teste ligadas na API (o compose le daqui)
       # e no pytest: sem elas, os testes do bucket fora, do Redis fora e

@@ -1,4 +1,233 @@
-# Banco digital, Bootcamp QI Tech 2026
+# [Nome do grupo]: Antifraude Pix
+
+**Integrantes:** Carlos · Eduardo Lopes Valerio · Enrico Martim
+
+Uma API que recebe um Pix e decide, antes de o dinheiro sair, se ele **aprova**, **pede verificação** (2FA) ou **reprova**, e explica o porquê. Ela mora em [`antifraud-api/`](antifraud-api/), sobe junto com o banco digital da fase 1 e tem **banco de dados próprio** (`antifraud`).
+
+| Rota | O que faz |
+|---|---|
+| `POST /pix/transaction` | Analisa o Pix (contrato da seção 3.1 do desafio) e devolve `key`, `status` e `metadata`. `201` na primeira vez; `200` se o mesmo `id` chegar de novo com o mesmo conteúdo |
+| `GET /pix/transaction/{id}` | Devolve a análise gravada, pelo `id` do Pix |
+| `PATCH /pix/transaction/{id}` | O cliente informa o resultado da verificação pedida (`approved_by_client` ou `reproved_by_client`), como no fluxo de desafio da API Pix da QI. A análise original não muda |
+| `PUT /pix/account_limit` | O titular escolhe o próprio limite por Pix. Reduzir vale na hora; aumentar só vale 24 horas depois |
+
+Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositório.
+
+## Como o motor de decisão funciona
+
+Cada Pix passa por **34 regras**. Nenhuma decide sozinha, com três exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
+
+1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
+2. **Dado impossível não é risco, é erro.** Data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422` sem ser analisada.
+3. **O histórico é lido com travas.** Antes de consultar o histórico, a análise trava o pagador, o recebedor, o aparelho e o IP com travas consultivas do Postgres (`pg_advisory_xact_lock`), sempre na mesma ordem. Oito Pix simultâneos da mesma conta veem a contagem certa (1, 2, ..., 8), e dois Pix cruzados (A → B e B → A) não travam um ao outro. Há teste para cada caso, e a mutação que tira a trava faz os testes ficarem vermelhos.
+4. **As regras rodam** contra o Pix e o histórico. Toda janela de tempo é ancorada na `transaction_date` do Pix, nunca no relógio do servidor, e a hora local é sempre a de São Paulo (o mesmo instante escrito com outro fuso dá o mesmo resultado).
+5. **A decisão** combina as pontuações (próxima seção) e o **cenário** dá nome ao que o motor acha que está acontecendo (`conta_laranja`, `conta_tomada`, `pagamento_recorrente`...). O cenário só explica: não soma pontos.
+6. **Tudo é gravado**, a análise e uma linha por regra avaliada, inclusive as que não dispararam. As tabelas de análise recusam `UPDATE` e `DELETE` por trigger: o GET de um Pix antigo devolve exatamente o que foi decidido, com a versão da política que valia.
+
+**Os parâmetros não estão no código.** Cortes, pesos e janelas moram na tabela `fraud_policy`, em JSON, com versão. Mudar um parâmetro é gravar uma política nova; cada análise guarda a versão que usou.
+
+**"Aprovado" é dinheiro que saiu.** `two_factor_required` não aconteceu (resposta da organização), então não entra em montante, perfil nem familiaridade, até o cliente confirmar a verificação pelo `PATCH`. Já as **tentativas** contam todos os status: quem leva 2FA ou recusa e insiste é exatamente o sinal.
+
+**A régua de cada cliente.** As regras de ritmo, montante e concentração comparam o cliente com ele mesmo quando há histórico: para cada dia com movimento nos 30 dias anteriores, o motor guarda o pico da janela (por exemplo, o máximo de tentativas em 5 minutos naquele dia) e calcula a mediana `m` e a dispersão robusta `s = MAD / 0,6745`. O corte vira `max(mínimo, ⌈2m⌉, ⌈m + 3s⌉)`. A régua é congelada no início do dia (o ataque de hoje não entra na régua de hoje), dias sem movimento ficam de fora (nunca viram zero), e sem 7 dias ativos e 20 eventos a regra usa uma régua de reserva **firme**, porque conta nova ou pouco usada é exatamente o perfil da conta laranja e da conta recém-tomada.
+
+## Regras
+
+Valores em reais só para leitura; no banco e no código são centavos. **Bloqueio** = reprova sozinha. **Piso** = exige um nível mínimo de verificação sem somar pontos.
+
+### Movimentação (o pagador e o dinheiro)
+
+| Regra | Lógica | Parâmetros | Por quê |
+|---|---|---|---|
+| `LIMITE_POR_PIX` | valor do Pix | ≥ R$ 20.000: +40 · > R$ 100.000: **bloqueio**. Só informativo quando o `PERFIL` diz que o valor é normal para o cliente | Valor alto pede confirmação, não recusa: carro e imóvel existem. Quem paga R$ 40 mil ao fornecedor todo mês não leva 2FA por isso. O teto é operacional do protótipo, não teto do Pix |
+| `PERFIL` | z modificado = 0,6745 × (valor − mediana) / MAD dos aprovados, contra a **primeira referência elegível**: (1) o par pagador → recebedor (5 pagamentos em 3 dias, cobrindo 14 dias, em 365 dias); (2) a fase do mês do `PADRAO_MENSAL`; (3) as saídas gerais (10 pagamentos em 3 dias, em 90 dias). Exige diferença ≥ R$ 500 | z > 3,5 e > 2× mediana: +30 · z > 7 e > 3× mediana: +50 · com MAD = 0: > 3×: +30, > 6×: +50 | Compara com o contexto certo: R$ 42 mil é normal para o fornecedor que recebe R$ 40 mil e estranho para o contato que recebe R$ 150. A mediana não se deixa puxar pelo próprio aluguel. 3,5 é o corte de outlier do z modificado (Iglewicz e Hoaglin). O par usa 365 dias porque um pagamento mensal nunca juntaria 5 ocorrências em 90 |
+| `PERFIL_SEM_HISTORICO` | nenhuma referência elegível e valor alto | > R$ 5.000: +20 e **piso facial** | Sem referência não é fraude, mas também não é perfil normal |
+| `VELOCITY` | tentativas de saída da conta em 5 e 30 min, contando esta, de qualquer status | **Com régua:** ≥ moderado +40 · ≥ alto +60 e piso facial+documento. **Reserva** (5 min): ≥ 3 +25 · ≥ 5 +40 e piso facial · ≥ 10 +60 e piso facial+documento | Quem faz 40 Pix por hora no trabalho não está numa rajada; a conta nova que faz 5 em 5 minutos está |
+| `MONTANTE_24H` | aprovados em 24h + este, com pelo menos um aprovado antes | > R$ 50.000: +40. Com régua, exige também desviar do pico diário do cliente | Exposição acumulada abaixo do limite por Pix. Um Pix sozinho acima do corte é assunto do limite e do perfil (a massa de cenários pegou essa dupla contagem) |
+| `FATIAMENTO` | 3 ou mais aprovados na última hora e a soma com este | > R$ 10.000: +40. Com régua, exige também o desvio | Vários Pix médios na mesma hora, cada um abaixo do corte de valor |
+| `MONTANTE_DIARIO_ATIPICO` | acumulado aprovado de hoje + este contra a mediana dos totais diários, com pelo menos um aprovado antes hoje | > 3× a mediana e excesso ≥ R$ 1.000: +30. Mínimo de 7 dias com movimento em 30 | O dia como unidade de perfil. Compara o parcial de hoje com dias completos, conservador de propósito |
+| `ORIGEM_NOVA` | conta pagadora com menos de 48h | valor > R$ 1.000: +25 | Conta recém-aberta movimentando é o começo típico de conta laranja ou de cadastro com dado roubado |
+| `CONTA_REATIVADA` | atividade antiga observada, ≥ 60 dias parada, e agora ≥ 3 tentativas em 1h ou valor > R$ 5.000 | +30 | Conta comprada ou tomada fica parada e é usada de uma vez. O primeiro contato com o motor não é reativação |
+| `LIMITE_DO_CLIENTE` | valor acima do limite que o titular escolheu, o vigente no instante | **bloqueio** | É a vontade do dono da conta. Sem limite cadastrado, não se aplica |
+| `AUMENTO_PENDENTE` | pedido de aumento de limite há menos de 24h, ainda não vigente, e valor > 50% do limite atual | +40 | O roteiro da conta tomada: subir o limite e esvaziar. O aumento só vale em 24h (o Banco Central descreve 24 a 48h) |
+| `SONDAGEM_DE_LIMITE` | depois de um 2FA ou recusa nos últimos 15 min, tentar de novo com valor menor | 1 redução: +30 · 2 reduções seguidas: +50 e piso facial+documento | Ir baixando até achar o valor que passa. Uma redução pode ser ajuste legítimo |
+| `NOTURNO` | 20h às 6h em São Paulo, pessoa física para outra pessoa física | valor > R$ 1.000: +25 | O Banco Central limita a R$ 1.000 o Pix noturno entre pessoas físicas (IN BCB 331/2022). Aqui é heurística de risco, não a regra regulatória |
+| `PADRAO_MENSAL` | o cliente concentra pagamentos ≥ R$ 1.000 numa janela de dias do mês (≥ 60% deles, em ≥ 3 meses); este Pix está fora da janela, ≥ 3× a mediana dessa fase do mês, para destino ou aparelho novo | +25 e piso facial (0 se o `PERFIL` já pontuou o valor) | A rotina individual. Versão enxuta: só o dia do mês, com ±2 dias; sem dia útil nem feriado |
+
+### Acesso (de onde e como)
+
+| Regra | Lógica | Parâmetros | Por quê |
+|---|---|---|---|
+| `APARELHO_NOVO` | `device_id` nunca usado pelo titular, que tem ≥ 3 tentativas | +20 | Troca de aparelho é o momento da conta tomada |
+| `REDE_NOVA` | a rede do IP (o /24) nunca usada pelo titular, que tem ≥ 3 tentativas | +15 | Mesma lógica, mais fraca: rede muda mais que aparelho |
+| `VIAGEM_IMPOSSIVEL` | distância (Haversine) entre este Pix e o último ponto conhecido do titular, dividida pelo tempo. O ponto é o GPS; sem GPS, o lugar do IP | > 900 km/h e > 100 km (GPS) ou > 500 km (IP): +40. Com aparelho novo junto: piso facial+documento | 900 km/h é o cruzeiro de um avião comercial. Com IP, o piso de distância sobe porque IP é impreciso |
+| `GEO_IP_DIVERGENTE` | GPS e lugar do IP a mais de 500 km | +30 | GPS forjado ou aparelho operado de longe. 500 km cobrem a operadora que sai para a internet por outro estado |
+| `AMBIENTE_INCOERENTE` | GPS ou IP fora do retângulo do Brasil | +20 | Brasileiro viaja, então só soma |
+| `GEO_AUSENTE` | o Pix chega sem `geolocation` | `app` +20 · `web` +20 · `api` 0 | O campo é opcional no contrato e nunca dá erro. Pelo app e pela web a ausência pesa, sem obrigar verificação sozinha (decisão do time com o tech lead). Pela `api`, uma empresa pagando pelo próprio sistema não tem GPS |
+| `APARELHO_COMPARTILHADO` | ≥ 3 titulares pagando pelo mesmo aparelho em 30 dias | +25 | Família divide celular: sinal, não bloqueio |
+| `IP_COMPARTILHADO` | ≥ 5 titulares no mesmo IP na última hora | +15 | Operadora põe milhares atrás do mesmo IP: nunca decide sozinho |
+| `RUPTURA_DE_CONTEXTO` | acesso (aparelho novo, ou GPS a > 50 km de todos os pontos habituais) **e** dinheiro (perfil ou ritmo fora da régua do próprio cliente) **e** relacionamento (destino sem familiaridade, num cliente com histórico) | **0 pontos** e piso facial+documento | O retrato da conta tomada. Não soma: cada componente já pontuou na sua regra. IP diferente e GPS ausente não contam como "lugar diferente" |
+
+### Destino (quem recebe)
+
+| Regra | Lógica | Parâmetros | Por quê |
+|---|---|---|---|
+| `DESTINO_NOVO` | idade da conta destino | < 30 dias: +20 · < 1 dia: +30 | Golpe usa conta de passagem nova. A conta do exemplo do desafio tem 7 dias e 13 horas: com corte em 7 dias, a regra não a pegaria |
+| `CONTRAPARTE_INEDITA` | primeiro pagamento aprovado deste titular para aquele titular | valor > R$ 1.000: +15 | Todo aluguel um dia foi o primeiro: só soma com outros sinais |
+| `CONTA_LARANJA` | titulares diferentes pagando a mesma conta na última hora, de qualquer status | **Com régua do recebedor:** ≥ moderado +40 · ≥ alto +60. **Reserva:** conta < 30 dias, ≥ 5 +40, ≥ 10 +60; conta antiga, ≥ 5 +20, ≥ 10 +30 | Concentração. A loja que sempre recebe de 30 clientes por hora não é laranja; a conta laranja típica é nova e sem histórico |
+| `REPASSE_RAPIDO` | a conta recebeu de ≥ 3 titulares na última hora e este Pix leva ≥ 80% do que entrou, para outro titular | +60 se o destino é novo para ela ou há desvio de perfil · 0 se é o fornecedor de sempre com perfil e ritmo normais · +20 se inconclusivo | Dispersão: o lado de saída da conta laranja |
+| `COORDENACAO_ENTRE_CONTAS` | um aparelho, ≥ 3 titulares pagadores, a mesma conta destino com menos de 7 dias, em 10 min | +40 e piso facial. Zera o `APARELHO_COMPARTILHADO` dos mesmos titulares | Várias contas operadas juntas para escoar para uma conta nova. O mesmo fato não conta duas vezes |
+| `REDE_SUSPEITA` | o destino está a até dois saltos de uma conta com evidência qualificada (a âncora pagou o destino, ou pagou quem pagou), por Pix aprovados em 30 dias | +30, com o caminho no `metadata` | Vínculos de 1º e 2º grau, por SQL, sem banco de grafos. O vizinho não vira âncora nova, e a suspeita não se propaga sem fim |
+| `REPUTACAO_EXTERNA` | contadores do **mock** de reputação no formato do `destination_statistics` da API Pix da QI (`mule_accounts`, `scammer_accounts`, `distinct_fraud_reporters`, `open_reports`... em 90 dias, 12 meses, 60 meses) | **bloqueio** com golpe ou laranja em 90 dias e ≥ 2 denunciantes · +40 com denúncia aberta ou ocorrência em 12 meses · 0 para fraude de cadastro ou papel de vítima | Dois denunciantes para uma denúncia isolada não bloquear ninguém. Quem teve a identidade roubada é a vítima, não o fraudador. O mock é fictício, determinístico e marcado `is_mock` |
+| `REPUTACAO_INTERNA` | documento destino ou aparelho na lista interna vigente | +40 | Casos confirmados (semeados) e o "não fui eu" do titular depois de um desafio. **Nunca** a decisão do próprio motor: uma rejeição por limite não diz nada sobre o recebedor, e alimentar a lista com ela geraria falsos positivos em cadeia |
+| `MESMA_TITULARIDADE` | mesmo documento nos dois lados | redutor até −10 | Transferir entre os próprios bancos é o Pix de menor risco. Desconta só da família de valor: contas do mesmo dono também podem ser tomadas |
+| `DESTINO_CONFIAVEL` | ≥ 3 pagamentos aprovados a este titular, em 3 dias diferentes, o primeiro há ≥ 7 dias, e o valor de agora ≤ o maior já pago | redutor até −10 | A regra do aluguel. Um Pix de R$ 10 não "aquece" o destino para um de R$ 2.500 |
+
+**Sinais sem pontos** (em `metadata.signals`): PF ou PJ de cada ponta, dígito verificador dos documentos (um CPF inventado numa massa de teste não vira fraude), idade das contas, fuso do horário, de onde veio a localização do IP.
+
+## Como as regras viram decisão
+
+**Eixos e famílias.** Cada regra pertence a uma família de evidências que medem o mesmo fato, e cada família a um de três eixos: **movimentação** (o pagador e o dinheiro), **acesso** (de onde e como) e **destino** (quem recebe). **Dentro de uma família, só a maior pontuação conta**: limite e perfil olham, os dois, o valor, e um Pix alto fora do perfil soma 50, não 90. As regras correlacionadas aparecem no `metadata` com `effective_points: 0` e `correlated: true`.
+
+**Os redutores** (mesma titularidade e destino confiável) tiram até 10 pontos cada, só da família de valor, juntos no máximo 20, sem deixar a família negativa. Não reduzem pisos nem bloqueios.
+
+**A decisão**, nesta ordem de prioridade:
+
+| Condição | `status` | Verificação (`metadata.authentication.level`) |
+|---|---|---|
+| Algum bloqueio: limite do cliente, teto operacional, marcação crítica do recebedor | `rejected` | `none` |
+| Score ≥ 80 **e** pelo menos dois eixos com ≥ 20 pontos | `rejected` | `none` |
+| Score ≥ 60, ou um piso `facial_document` | `two_factor_required` | `facial_document`: facial e documento |
+| Score ≥ 40, ou um piso `facial` | `two_factor_required` | `facial` |
+| O resto | `approved` | `none` |
+
+O score é a soma das contribuições efetivas, de 0 a 100. **Ele não é probabilidade**: 80 pontos não são 80% de chance de fraude.
+
+**Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova.
+
+**Quando pede 2FA, e qual.** O status público é sempre um dos três do contrato. O nível vai no `metadata`: `facial` para a dúvida moderada (40 a 59 pontos, ou piso facial), `facial_document` para a forte (60 ou mais num eixo, ou piso reforçado). O motor **pede** a verificação; quem a executa é o app do cliente, e o resultado volta pelo `PATCH`.
+
+Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta destino com 7 dias):
+
+```json
+{
+  "key": "…",
+  "status": "two_factor_required",
+  "metadata": {
+    "risk_score": 45,
+    "risk_axes": {"movimentacao": 25, "acesso": 0, "destino": 20},
+    "reason": "NOTURNO",
+    "reason_description": "R$ 1.500,00 as 22:15 (Sao Paulo), de pessoa fisica para outra pessoa fisica.",
+    "authentication": {"level": "facial", "required_checks": ["facial"], "execution": "required_not_executed"},
+    "scenario": "primeiro_pagamento",
+    "rules": [
+      {"rule": "NOTURNO", "evaluation": "triggered", "raw_points": 25, "effective_points": 25, "...": "..."},
+      {"rule": "DESTINO_NOVO", "evaluation": "triggered", "raw_points": 20, "effective_points": 20, "...": "..."},
+      {"rule": "CONTRAPARTE_INEDITA", "evaluation": "triggered", "raw_points": 15, "effective_points": 0, "correlated": true, "...": "..."}
+    ],
+    "reputation": {"provider": "mock_bureau", "is_mock": true, "signal": "not_found"},
+    "latency_ms": 55
+  }
+}
+```
+
+## Como rodar e testar
+
+```bash
+docker compose up -d --build --wait
+```
+
+Sobem os serviços da fase 1 e a `antifraud-api`, na porta **3020** (`ANTIFRAUD_API_PORT` no `.env` muda isso). Um Pix:
+
+```bash
+curl -s -X POST http://localhost:3020/pix/transaction \
+  -H "INTERNAL-TOKEN: default_token" -H "Content-Type: application/json" \
+  -d '{"id":"pix-000123","amount":150000,"transaction_date":"2026-10-17T22:15:00-03:00",
+       "source_account":{"branch":"0001","account_number":"88213","opening_date":"2025-03-02T10:00:00-03:00","owner":{"document_number":"123.456.789-09"}},
+       "destination_account":{"participant":"60701190","branch":"3675","account_number":"10442","opening_date":"2026-10-10T09:00:00-03:00","owner":{"document_number":"987.654.321-00"}},
+       "source":{"device_id":"dvc-9f2c71a8","channel":"app","ip":"198.51.100.23","geolocation":{"latitude":-23.56,"longitude":-46.65}}}'
+curl -s http://localhost:3020/pix/transaction/pix-000123 -H "INTERNAL-TOKEN: default_token"
+```
+
+Os testes (black box, só por HTTP, sem importar nada de `src/`):
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/antifraud_api -v
+```
+
+A massa de cenários por mutação, que imprime a tabela da próxima seção:
+
+```bash
+python tools/cenarios_antifraude.py
+```
+
+> **Mudou o `database/antifraud.sql`?** O banco nasce de uma imagem que *copia* o arquivo. Recriar só o volume não basta: `docker compose down -v && docker compose up -d --build --wait`. Sem o `--build`, o banco sobe com a política antiga.
+
+## Resultado na massa sintética
+
+A ferramenta cria pessoas fictícias com histórico gerado pela própria API (até 5 meses) e aplica uma mutação por cenário. **É massa sintética:** os números verificam que o motor faz o que este README descreve, não medem eficácia contra fraude real.
+
+**Tráfego legítimo**
+
+| Cenario | Esperado | Obtido | Score | Cenario deduzido | Regras que pesaram | Ok |
+|---|---|---|---:|---|---|:-:|
+| compra do dia a dia | approved | approved | 0 | sem_alerta_relevante |  | sim |
+| aluguel recorrente (5 meses) | approved | approved | 0 | pagamento_recorrente |  | sim |
+| fornecedor de sempre (R$ 42 mil) | approved | approved | 0 | sem_alerta_relevante |  | sim |
+| transferencia para a propria conta | approved ou facial | facial | 40 | risco_contextual | PERFIL +50, MESMA_TITULARIDADE -10 | sim |
+| empresa pela api, sem GPS | approved | approved | 0 | sem_alerta_relevante |  | sim |
+| cliente novo, R$ 100 | approved | approved | 0 | sem_alerta_relevante |  | sim |
+| loja que recebe de 10 clientes por hora | approved | approved | 0 | sem_alerta_relevante |  | sim |
+| primeiro aluguel (R$ 2.500) | approved ou facial ou facial_document | facial_document | 65 | primeiro_pagamento | PERFIL +50, CONTRAPARTE_INEDITA +15 | sim |
+| payload do documento oficial | facial | facial | 45 | primeiro_pagamento | NOTURNO +25, DESTINO_NOVO +20 | sim |
+
+**Tráfego fraudulento**
+
+| Cenario | Esperado | Obtido | Score | Cenario deduzido | Regras que pesaram | Ok |
+|---|---|---|---:|---|---|:-:|
+| acima do teto operacional | rejected | rejected | 35 | restricao_por_limite | LIMITE_POR_PIX (bloqueio), PERFIL_SEM_HISTORICO +20, CONTRAPARTE_INEDITA +15 | sim |
+| acima do limite do cliente | rejected | rejected | 15 | restricao_por_limite | LIMITE_DO_CLIENTE (bloqueio), CONTRAPARTE_INEDITA +15 | sim |
+| recebedor com marcacao critica (mock) | rejected | rejected | 0 | risco_critico_do_recebedor | REPUTACAO_EXTERNA (bloqueio) | sim |
+| noite, R$ 25 mil, sem GPS | rejected | rejected | 100 | coacao_noturna | LIMITE_POR_PIX +40, NOTURNO +25, GEO_AUSENTE +20, CONTRAPARTE_INEDITA +15 | sim |
+| conta tomada (aparelho novo, Recife em 15 min) | facial_document ou rejected | rejected | 100 | conta_tomada | PERFIL +50, VIAGEM_IMPOSSIVEL +40, MONTANTE_DIARIO_ATIPICO +30, DESTINO_NOVO +20 | sim |
+| rajada de 10 Pix em 5 min | facial_document | facial_document | 60 | esvaziamento_fatiado | VELOCITY +60 | sim |
+| sondagem: R$ 30 mil, 25 mil, 19 mil | facial_document ou rejected | facial_document | 85 | sondagem_de_limite | SONDAGEM_DE_LIMITE +50, PERFIL_SEM_HISTORICO +20, CONTRAPARTE_INEDITA +15 | sim |
+| conta laranja: 10 pagadores, conta nova | facial_document ou rejected | facial_document | 80 | conta_laranja | CONTA_LARANJA +60, DESTINO_NOVO +20 | sim |
+| repasse rapido para conta de 3 horas | facial_document ou rejected | facial_document | 90 | conta_laranja | REPASSE_RAPIDO +60, DESTINO_NOVO +30 | sim |
+| coordenacao: 3 titulares, 1 aparelho | facial ou facial_document ou rejected | facial_document | 60 | coordenacao_entre_contas | COORDENACAO_ENTRE_CONTAS +40, DESTINO_NOVO +20 | sim |
+| fatiamento: 4 x R$ 2.900 em 30 min | facial ou facial_document | facial | 40 | esvaziamento_fatiado | FATIAMENTO +40 | sim |
+| aparelho na lista interna | facial ou facial_document ou rejected | facial | 40 | risco_contextual | REPUTACAO_INTERNA +40 | sim |
+
+**Resumo**
+
+- Legitimos aprovados sem friccao: 6 de 9
+- Fraudes retidas (2FA ou rejeicao): 12 de 12
+- Cenarios no resultado esperado: 21 de 21
+- Latencia do motor em 60 analises: p50 59 ms, p95 69 ms
+
+Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
+
+## O que o motor não resolve
+
+- **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas.
+- **Reputação e localização de IP são mocks.** O mock de reputação segue o formato do `destination_statistics` da QI, e as faixas de IP são faixas de documentação com lugares fictícios. Em produção, a mesma tabela `ip_range_location` receberia uma base real (por exemplo a DB-IP City Lite, CC BY 4.0), sem mudar o motor.
+- **A verificação é pedida, não executada.** O motor diz `facial` ou `facial_document`; o app executa e devolve o resultado pelo `PATCH`.
+- **O calendário é enxuto:** dia do mês com tolerância, sem dia útil nem feriado.
+- **Os parâmetros são escolhas do time**, calibradas na massa sintética. Precisariam de dados reais rotulados para virar política de produção.
+
+## Alternativas descartadas
+
+- **Distância de Mahalanobis e modelos treinados** (Isolation Forest, árvores): descartados porque precisam de muito mais histórico por cliente do que um hackathon tem, e porque "distância 4,2" não explica nada ao cliente nem à banca. Ganhariam com dados reais rotulados e um time de dados para calibrar. O `PERFIL` por mediana e MAD entrega a parte útil (o limite individual) com explicação.
+- **Score sem eixos (só a soma):** descartado porque um sinal forte isolado reprovaria cliente legítimo. Ganharia se os sinais fossem independentes de verdade, o que não são.
+- **Grafo offline num worker:** descartado porque conta laranja se monta e se esvazia em minutos, e um grafo recalculado a cada hora veria a rede depois de o dinheiro sair. As relações de até dois saltos saem por SQL, na hora. Ganharia com relações de três saltos ou mais.
+- **Geolocalização obrigatória no schema:** descartada porque o contrato a marca como opcional e a banca pode mandar Pix sem ela; recusar com `400` um pedido válido quebraria o contrato. A ausência pesa como sinal.
+- **Alimentar a lista interna com as rejeições do motor:** descartado porque transforma um falso positivo em vários.
+- **`SELECT ... FOR UPDATE` nas contas:** descartado porque a chave estrangeira da análise pega `KEY SHARE` na conta do outro lado, e dois Pix cruzados fechariam um deadlock (a lição de 07/10 da fase 1). As travas consultivas não tocam em linha nenhuma.
+- **Análise manual (`in_manual_analysis`, que a API da QI tem):** descartada porque o desafio diz que no Pix não cabe análise manual, e o contrato só tem três status.
+
+---
+
+# Fase 1: o banco digital
 
 Um **banco digital operado só por API REST, sem tela**. Em **Python +
 FastAPI**, com **PostgreSQL**, tudo rodando em **Docker**.
