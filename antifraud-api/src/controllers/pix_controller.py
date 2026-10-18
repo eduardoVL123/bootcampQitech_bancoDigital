@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 
+from connectors.dict_connector import DictConnector
 from constants import OWN_PARTICIPANT, TIME_SKEW_SECONDS
 from controllers.base_controller import BaseController
 from controllers.engine.context import NOT_TRIGGERED, PixContext, Location
@@ -42,6 +43,9 @@ class PixController(BaseController):
     1. O replay e respondido antes de tudo: o mesmo id e o mesmo Pix, e
        repetir nao analisa de novo nem conta como tentativa.
     2. As datas impossiveis sao recusadas antes de gravar qualquer coisa.
+       O DICT e consultado logo depois, ainda sem nada gravado e sem trava
+       nenhuma: e a unica chamada para fora, e pode levar ate o tempo limite
+       do connector.
     3. As contas sao criadas (ou lidas) e conferidas: a conta ja conhecida
        precisa ter o mesmo titular e a mesma abertura, ou o pedido volta 409
        sem gravar nada. So entao as travas sao pedidas.
@@ -62,6 +66,7 @@ class PixController(BaseController):
         self.challenge_repo = ChallengeRepository(self.context)
         self.reputation_repo = ReputationRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
+        self.dict_connector = DictConnector()
 
     def get(self, pix_id: str) -> PixAnalysis:
         analysis = self.pix_repo.get_by_pix_id(pix_id)
@@ -94,6 +99,9 @@ class PixController(BaseController):
         destino = payload["destination_account"]
         source_document = normalize_document(origem["owner"]["document_number"])
         destination_document = normalize_document(destino["owner"]["document_number"])
+        # Antes das contas: o INSERT de uma conta nova ja seguraria a chave
+        # dela durante a espera, e as travas consultivas, a fila do pagador.
+        external_evidence = self.dict_connector.fraud_evidence(destination_document)
         # As contas sao criadas em ordem fixa (a da chave unica), e nao
         # "origem, depois destino". O INSERT de uma conta nova segura a chave
         # dela ate o commit: com A -> B e B -> A chegando juntos, as duas
@@ -145,6 +153,7 @@ class PixController(BaseController):
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
             ip_location=ip_location, history=self.history_repo,
             reputation=self.reputation_repo, watchlist=self.watchlist_repo,
+            external_evidence=external_evidence,
         )
         ctx.cache["params"] = params
 

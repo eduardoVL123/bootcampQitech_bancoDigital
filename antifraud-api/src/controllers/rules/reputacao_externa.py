@@ -27,7 +27,7 @@ class ReputacaoExterna(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        registros = ctx.reputation.fixtures(ctx.destination_document)
+        registros = ctx.reputation.fixtures(ctx.destination_document, ctx.external_evidence)
         if not registros:
             return self.not_triggered(reputation={**MOCK, "signal": "not_found"})
         vigentes = [r for r in registros if r.available_from <= ctx.moment < r.expires_at]

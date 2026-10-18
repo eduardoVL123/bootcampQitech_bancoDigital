@@ -12,9 +12,15 @@ Se o DICT nao responder a tempo, o Pix segue sem ele (falha aberta): a
 marcacao e uma evidencia a mais, e o Pix nao pode esperar por ela. Depois de 3
 falhas seguidas o circuito abre por 30 s, para o tempo limite nao somar em todo
 Pix. Cada resposta fica 60 s em cache, por processo.
+
+Quem chama e o controller, antes de gravar qualquer coisa e de pedir as
+travas: com a trava do pagador na mao, os 0,3 s de espera pelo DICT seriam
+0,3 s de fila para todo outro Pix dele (tests/antifraud_api/test_dict.py).
 """
 import threading
 import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import requests
 
@@ -25,6 +31,7 @@ CACHE_SEGUNDOS = 60
 CACHE_MAXIMO = 10000
 FALHAS_PARA_ABRIR = 3
 CIRCUITO_ABERTO_SEGUNDOS = 30
+SINAIS = ("mule_accounts", "scammer_accounts", "application_frauds")
 
 
 class DictConnector:
@@ -32,6 +39,33 @@ class DictConnector:
     _falhas = 0
     _aberto_ate = 0.0
     _trava = threading.Lock()
+
+    def fraud_evidence(self, document: str):
+        """A marcacao do DICT no formato de uma linha do reputation_fixture, ou None.
+
+        None tambem quando o DICT respondeu sem sinal nenhum: a ausencia de
+        marcacao e o caso normal, e o DICT nao certifica conta boa. A marcacao
+        vale sempre (o DICT ja a devolve vigente), e quem decide o que ela
+        significa e a regra (controllers/rules/reputacao_externa.py).
+        """
+        resposta = self.security_information(document)
+        if not resposta:
+            return None
+        estatisticas = resposta["statistics"]
+        com_sinal = int(estatisticas.get("open_reports", 0)) > 0 or any(
+            int(v) for campo in SINAIS for v in (estatisticas.get(campo) or {}).values())
+        if not com_sinal:
+            return None
+        golpista = any(int(v) for campo in ("mule_accounts", "scammer_accounts")
+                       for v in (estatisticas.get(campo) or {}).values()) or int(estatisticas.get("open_reports", 0)) > 0
+        return SimpleNamespace(
+            document=document, scope="person", statistics=estatisticas,
+            entity_role="suspected_perpetrator" if golpista else "none",
+            evidence_id=resposta.get("evidence_id") or f"dict-{document[-4:]}",
+            available_from=datetime(1970, 1, 1, tzinfo=timezone.utc),
+            expires_at=datetime(9999, 1, 1, tzinfo=timezone.utc),
+            fixture_version="dict", provider="dict",
+        )
 
     def security_information(self, document: str):
         """As estatisticas do documento, no formato do reputation_fixture, ou None (sem DICT ou fora do ar)."""

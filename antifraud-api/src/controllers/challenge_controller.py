@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from psycopg2 import errorcodes
 from sqlalchemy.exc import IntegrityError
 
+from connectors.dict_connector import DictConnector
 from constants import TIME_SKEW_SECONDS
 from controllers.base_controller import BaseController
 from errors import (
@@ -33,7 +34,9 @@ class ChallengeController(BaseController):
 
     A ordem:
     1. A data precisa existir (30 de fevereiro e 400), inclusive na repeticao.
-    2. A analise precisa existir e ter pedido o desafio.
+    2. A analise precisa existir e ter pedido o desafio. No "nao fui eu", o
+       DICT e consultado aqui, antes das travas, como no POST: e a unica
+       chamada para fora, e a espera nao pode virar fila de quem paga.
     3. As travas sao as da propria analise (analysis_lock_keys, com os dados
        gravados), as mesmas do POST: a resposta espera o Pix da mesma conta
        que esta sendo analisado, e duas respostas do mesmo desafio (clique
@@ -56,6 +59,7 @@ class ChallengeController(BaseController):
         self.watchlist_repo = WatchlistRepository(self.context)
         self.policy_repo = PolicyRepository(self.context)
         self.reputation_repo = ReputationRepository(self.context)
+        self.dict_connector = DictConnector()
 
     def answer(self, pix_id: str, payload: dict):
         resultado = payload["challenge_result"]
@@ -65,6 +69,9 @@ class ChallengeController(BaseController):
             raise NotFoundPixAnalysis(pix_id)
         if analysis.status.enumerator != PixStatus.TWO_FACTOR_REQUIRED:
             raise ChallengeNotRequired(pix_id, analysis.status.enumerator.lower())
+        externa = None
+        if resultado == "reproved_by_client":
+            externa = self.dict_connector.fraud_evidence(analysis.destination_document)
 
         self.history_repo.lock_analysis(analysis.source_document, analysis.destination_document,
                                         analysis.source_account_id, analysis.destination_account_id,
@@ -87,7 +94,7 @@ class ChallengeController(BaseController):
             return analysis, self._replay(pix_id, self.challenge_repo.get(analysis.id), resultado)
 
         if resultado == "reproved_by_client":
-            self._nao_fui_eu(analysis, momento)
+            self._nao_fui_eu(analysis, momento, externa)
         self.session.commit()
         return analysis, registro
 
@@ -102,7 +109,7 @@ class ChallengeController(BaseController):
         if momento > datetime.now(timezone.utc) + timedelta(seconds=TIME_SKEW_SECONDS):
             raise TransactionDateInTheFuture(event_date, TIME_SKEW_SECONDS)
 
-    def _nao_fui_eu(self, analysis, momento) -> None:
+    def _nao_fui_eu(self, analysis, momento, externa) -> None:
         """O aparelho entra na lista, e o documento destino entra em cautelar.
 
         A cautelar e a palavra de um titular so: +40 por 24 horas, sem bloquear
@@ -111,8 +118,8 @@ class ChallengeController(BaseController):
         ancora da rede) quando chega uma segunda fonte independente:
         - outro titular, distinto, diz "nao fui eu" para o mesmo documento nos
           30 dias seguintes. O mesmo titular reclamando duas vezes conta uma;
-        - a reputacao externa (DICT ou mock) ja tinha denuncia ou marcacao de
-          golpe contra ele.
+        - a reputacao externa (o DICT, em `externa`, ou o mock) ja tinha
+          denuncia ou marcacao de golpe contra ele.
 
         As entradas valem a partir da event_date validada, que nunca e
         anterior ao Pix contestado (a cronologia ja recusou isso). Uma analise
@@ -127,5 +134,5 @@ class ChallengeController(BaseController):
                                               hours=p["cautelar_hours"], reporter=analysis.source_document)
 
         denunciantes = self.watchlist_repo.reporters_of(destino, momento, p["reports_window_days"])
-        if len(denunciantes) >= p["min_reporters"] or self.reputation_repo.suspected(destino, momento):
+        if len(denunciantes) >= p["min_reporters"] or self.reputation_repo.suspected(destino, momento, externa):
             self.watchlist_repo.confirm(destino, f"confirmed-{chave}", momento, p["confirmed_days"])
