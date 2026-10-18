@@ -33,7 +33,7 @@ def _distance(dia: int, centro: int) -> int:
 def calendar_for(ctx, params) -> Calendar:
     if "calendar" in ctx.cache:
         return ctx.cache["calendar"]
-    p = params["PADRAO_MENSAL"]
+    p = params["CALENDARIO"]
     fuso = ctx.local_moment.tzinfo
     linhas = ctx.history.approved_amounts_of_payer(ctx.source_account.id, day_start(ctx), HISTORY_DAYS)
     por_mes = {}

@@ -47,7 +47,6 @@ CANDIDATES = [
     ("conta_laranja", lambda ctx, d: _any(ctx, "CONTA_LARANJA", "REPASSE_RAPIDO")),
     ("conta_tomada", _conta_tomada),
     ("sondagem_de_limite", lambda ctx, d: ctx.triggered("SONDAGEM_DE_LIMITE")),
-    ("quebra_de_padrao_mensal", lambda ctx, d: ctx.triggered("PADRAO_MENSAL")),
     ("data_fora_de_ordem", lambda ctx, d: ctx.triggered("DATA_RETROATIVA")),
     ("esvaziamento_fatiado", lambda ctx, d: _any(ctx, "VELOCITY", "FATIAMENTO", "MONTANTE_24H")),
     ("coacao_noturna", _coacao),

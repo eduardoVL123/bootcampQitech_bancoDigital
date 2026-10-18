@@ -5,7 +5,7 @@ Ordem das referencias, sem somar avaliacoes:
    em 365 dias): o aluguel compara com os alugueis, o fornecedor com o
    fornecedor. A janela do par e maior que a das outras de proposito: um
    pagamento mensal nunca juntaria 5 ocorrencias em 90 dias;
-2. a fase do calendario do PADRAO_MENSAL, quando ele identificou uma;
+2. a fase do mes no calendario do cliente (controllers/engine/calendar.py), quando ha um;
 3. as saidas gerais do pagador (10 pagamentos em 3 dias).
 
 As outras usam os aprovados dos 90 dias ate o inicio de hoje (Sao Paulo):

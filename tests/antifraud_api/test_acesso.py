@@ -1,4 +1,4 @@
-"""Acesso e localizacao: aparelho e rede novos, viagem impossivel por GPS
+"""Acesso e localizacao: aparelho novo, viagem impossivel por GPS
 ou IP, GPS longe do IP, ambiente fora do Brasil, infraestrutura
 compartilhada e a ruptura de contexto."""
 import random
@@ -33,15 +33,16 @@ def test_primeiro_pix_da_vida_nao_e_aparelho_novo():
     assert not disparou(corpo, "APARELHO_NOVO")
 
 
-def test_rede_nova_e_aparelho_novo_contam_uma_vez():
+def test_aparelho_novo_numa_rede_desconhecida_soma_so_os_20_do_aparelho():
+    # A rede nova nao pesa mais sozinha (a REDE_NOVA saiu): rede de celular
+    # muda o tempo todo, e quem conta a troca de acesso e o aparelho.
     pagador, hoje = Pagador(), nova_base()
     _com_historico(pagador, hoje)
 
     corpo = analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat(), aparelho="dvc-x-" + pagador.conta,
                         ip=f"{_rede_desconhecida()}.9"))
 
-    assert disparou(corpo, "REDE_NOVA")
-    assert regra(corpo, "REDE_NOVA")["correlated"] is True
+    assert pontos(corpo, "APARELHO_NOVO") == 20
     assert corpo["metadata"]["risk_axes"]["acesso"] == 20
 
 

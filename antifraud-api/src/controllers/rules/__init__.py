@@ -8,7 +8,6 @@ from controllers.rules.perfil_sem_historico import PerfilSemHistorico
 from controllers.rules.limite_por_pix import LimitePorPix
 from controllers.rules.montante_diario_atipico import MontanteDiarioAtipico
 from controllers.rules.noturno import Noturno
-from controllers.rules.padrao_mensal import PadraoMensal
 from controllers.rules.geo_ausente import GeoAusente
 from controllers.rules.mesma_titularidade import MesmaTitularidade
 from controllers.rules.origem_nova import OrigemNova
@@ -20,7 +19,6 @@ from controllers.rules.ticket_do_recebedor import TicketDoRecebedor
 from controllers.rules.destino_confiavel import DestinoConfiavel
 from controllers.rules.aparelho_novo import AparelhoNovo
 from controllers.rules.aparelho_nao_cadastrado import AparelhoNaoCadastrado
-from controllers.rules.rede_nova import RedeNova
 from controllers.rules.viagem_impossivel import ViagemImpossivel
 from controllers.rules.geo_ip_divergente import GeoIpDivergente
 from controllers.rules.ambiente_incoerente import AmbienteIncoerente
@@ -57,14 +55,12 @@ RULES = [
     Noturno(),
     AparelhoNovo(),
     AparelhoNaoCadastrado(),
-    RedeNova(),
     ViagemImpossivel(),
     GeoIpDivergente(),
     AmbienteIncoerente(),
     GeoAusente(),
     AparelhoCompartilhado(),
     IpCompartilhado(),
-    PadraoMensal(),
     DestinoNovo(),
     TetoDestinoNovo(),
     ContraparteInedita(),
