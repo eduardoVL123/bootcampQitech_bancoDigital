@@ -76,6 +76,34 @@ class ChallengeNotRequired(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class AccountIdentityMismatch(QIException):
+    """A conta ja conhecida chegou com outro titular ou com outra data de abertura.
+
+    A conta (participant, branch, account_number) e uma so. Aceitar o
+    documento novo trocaria referencias e limites entre um pedido e outro
+    (CPF num, CNPJ no outro); aceitar a abertura nova faria a validacao
+    conferir uma data e as regras usarem outra. 409 e nao `rejected`: e
+    dado de entrada contraditorio, nao decisao de fraude, e nada e gravado.
+    Mascara, letra minuscula no CNPJ e outro fuso para o mesmo instante nao
+    sao divergencia.
+    """
+
+    code = "QIT006007"
+
+    CAMPOS = {
+        "owner": ("owner document", "outro titular"),
+        "opening_date": ("opening_date", "outra data de abertura"),
+    }
+
+    def __init__(self, side, field) -> None:
+        campo, traducao = self.CAMPOS[field]
+        title = "Account identity mismatch"
+        http_status = 409
+        description = f"The {side} is already known with another {campo}."
+        translation = f"Esta conta já é conhecida com {traducao}."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class ChallengeAlreadyAnswered(QIException):
     code = "QIT006006"
 

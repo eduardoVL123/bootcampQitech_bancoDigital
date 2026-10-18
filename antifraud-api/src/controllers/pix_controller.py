@@ -15,7 +15,8 @@ from controllers.engine.decision import decide
 from controllers.engine.scenario import scenario
 from controllers.rules import RULES
 from errors import (
-    InvalidSchema, NotFoundPixAnalysis, PixIdReused, TransactionBeforeAccountOpening, TransactionDateInTheFuture,
+    AccountIdentityMismatch, InvalidSchema, NotFoundPixAnalysis, PixIdReused, TransactionBeforeAccountOpening,
+    TransactionDateInTheFuture,
 )
 from models import PixAnalysis
 from repositories import (
@@ -40,7 +41,9 @@ class PixController(BaseController):
     1. O replay e respondido antes de tudo: o mesmo id e o mesmo Pix, e
        repetir nao analisa de novo nem conta como tentativa.
     2. As datas impossiveis sao recusadas antes de gravar qualquer coisa.
-    3. As contas sao criadas, e so entao as travas sao pedidas.
+    3. As contas sao criadas (ou lidas) e conferidas: a conta ja conhecida
+       precisa ter o mesmo titular e a mesma abertura, ou o pedido volta 409
+       sem gravar nada. So entao as travas sao pedidas.
     4. Com as travas na mao, o replay e conferido de novo (outro pedido com
        o mesmo id pode ter terminado enquanto este esperava), e o historico
        e lido: ele ja contem o Pix que segurava a trava.
@@ -105,19 +108,21 @@ class PixController(BaseController):
         contas = {}
         for lado, argumentos in sorted(pedidos.items(), key=lambda item: item[1][:3]):
             contas[lado] = self.account_repo.get_or_create(*argumentos)
+        divergencia = self._identity_mismatch(pedidos, contas, moment)
+        if divergencia is not None:
+            # Nada deste pedido fica gravado, nem a outra conta, se ele a
+            # criou. E o mesmo id com outro conteudo continua sendo o 409 do
+            # replay, mesmo que o outro pedido tenha terminado agora.
+            self.session.rollback()
+            existente = self.pix_repo.get_by_pix_id(payload["id"])
+            if existente is not None:
+                return self._replay(existente, request_hash), True
+            raise divergencia
         source_account, destination_account = contas["source"], contas["destination"]
 
         device_id = payload["source"]["device_id"]
-        # O IP fica de fora das travas de proposito: atras de um CGNAT de
-        # operadora, milhares de clientes dividem o mesmo IP, e travar por ele
-        # enfileirava todos. A unica regra que conta por IP (IP_COMPARTILHADO,
-        # +15) aceita errar por um num pico simultaneo.
-        self.history_repo.lock([
-            f"payer:{source_document}",
-            f"payee:{destination_document}",
-            f"account:{destination_account.id}",
-            f"device:{device_id}",
-        ])
+        self.history_repo.lock_analysis(source_document, destination_document, source_account.id,
+                                        destination_account.id, device_id)
 
         existente = self.pix_repo.get_by_pix_id(payload["id"])
         if existente is not None:
@@ -200,6 +205,25 @@ class PixController(BaseController):
         for lado in ("source_account", "destination_account"):
             if parse_moment(payload[lado]["opening_date"]) > moment:
                 raise TransactionBeforeAccountOpening(lado)
+
+    def _identity_mismatch(self, pedidos: dict, contas: dict, moment: datetime):
+        """O erro, se a conta gravada nao e a que o pedido descreve.
+
+        A conta gravada e a que as regras usam (o get_or_create guarda a
+        primeira versao, inclusive quando outro pedido venceu o INSERT).
+        Documento normalizado igual e o mesmo titular; abertura igual e o
+        mesmo instante, em qualquer fuso. A data do Pix e conferida contra
+        a abertura gravada, que e a que conta a idade da conta.
+        """
+        for lado, (_participante, _agencia, _numero, abertura, documento) in pedidos.items():
+            conta, campo = contas[lado], f"{lado}_account"
+            if conta.owner_document != documento:
+                return AccountIdentityMismatch(campo, "owner")
+            if conta.opening_date != abertura:
+                return AccountIdentityMismatch(campo, "opening_date")
+            if conta.opening_date > moment:
+                return TransactionBeforeAccountOpening(campo)
+        return None
 
     def _check_ip(self, ip: str) -> str:
         try:

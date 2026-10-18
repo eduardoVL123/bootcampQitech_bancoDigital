@@ -26,6 +26,26 @@ RESTRICTIVE = (
 )
 
 
+def analysis_lock_keys(source_document: str, destination_document: str, source_account_id: int,
+                       destination_account_id: int, device_id: str) -> list:
+    """As chaves das travas de uma analise. O POST e o PATCH usam esta funcao, e so ela.
+
+    A conta entra pelo id, com o mesmo prefixo nos dois papeis: a conta que
+    recebe aqui e a mesma que paga ali, e quem a usa como origem espera
+    quem a usa como destino. O IP fica de fora de proposito: atras de um
+    CGNAT de operadora, milhares de clientes dividem o mesmo IP, e travar
+    por ele enfileirava todos. A unica regra que conta por IP
+    (IP_COMPARTILHADO, +15) aceita errar por um num pico simultaneo.
+    """
+    return [
+        f"payer:{source_document}",
+        f"payee:{destination_document}",
+        f"account:{source_account_id}",
+        f"account:{destination_account_id}",
+        f"device:{device_id}",
+    ]
+
+
 class HistoryRepository:
     def __init__(self, context: Context) -> None:
         self.session = context.db_session
@@ -47,12 +67,13 @@ class HistoryRepository:
     # ------------------------------------------------------------------
 
     def lock(self, keys: list) -> None:
-        """Trava, ate o commit, o pagador, o recebedor e o aparelho (o IP nao: ver o controller).
+        """Trava, ate o commit, as chaves pedidas (as de uma analise: ver analysis_lock_keys).
 
         Sao travas consultivas (pg_advisory_xact_lock): nao prendem linha
         nenhuma, so serializam quem pede a mesma chave. Dois Pix do mesmo
-        pagador, ou para o mesmo recebedor, ou do mesmo aparelho, esperam um
-        o outro, e cada um ve o historico que o anterior gravou. Sem isso,
+        pagador, ou para o mesmo recebedor, ou da mesma conta, ou do mesmo
+        aparelho, esperam um o outro, e cada um ve o historico que o
+        anterior gravou. Sem isso,
         oito Pix simultaneos veriam todos "zero tentativas" e a velocity nao
         dispararia em nenhum.
 
@@ -64,6 +85,11 @@ class HistoryRepository:
         """
         for chave in sorted(set(keys)):
             self.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": chave})
+
+    def lock_analysis(self, source_document: str, destination_document: str, source_account_id: int,
+                      destination_account_id: int, device_id: str) -> None:
+        self.lock(analysis_lock_keys(source_document, destination_document, source_account_id,
+                                     destination_account_id, device_id))
 
     # ------------------------------------------------------------------
     # Ritmo e montante da conta pagadora

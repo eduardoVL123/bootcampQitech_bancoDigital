@@ -12,8 +12,9 @@ class AccountRepository:
         """A conta, criada na primeira vez que o motor a ve.
 
         O INSERT ... ON CONFLICT DO NOTHING nao devolve a linha que ja existia
-        (armadilha 11 do CLAUDE.md), por isso o SELECT logo depois. Se o
-        opening_date chegar diferente mais tarde, vale o primeiro.
+        (armadilha 11 do CLAUDE.md), por isso o SELECT logo depois. A linha
+        devolvida e a primeira versao da conta, e nunca e atualizada: quem
+        confere se o pedido bate com ela e o controller (409 se nao bater).
         """
         comando = insert(PixAccount).values(
             participant=participant, branch=branch, account_number=account_number,
