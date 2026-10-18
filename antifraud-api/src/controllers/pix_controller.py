@@ -13,6 +13,7 @@ from controllers.base_controller import BaseController
 from controllers.engine.context import NOT_TRIGGERED, PixContext, Location
 from controllers.engine.decision import decide
 from controllers.engine.scenario import scenario
+from controllers.engine.warning import payer_warning
 from controllers.rules import RULES
 from errors import (
     AccountIdentityMismatch, InvalidSchema, NotFoundPixAnalysis, PixIdReused, TransactionBeforeAccountOpening,
@@ -277,6 +278,14 @@ class PixController(BaseController):
             regras.append(item)
 
         reputacao = ctx.result("REPUTACAO_EXTERNA")
+        autenticacao = {
+            "level": decisao.level,
+            "required_checks": AUTHENTICATION[decisao.level],
+            "execution": "required_not_executed" if decisao.level != "none" else "not_required",
+        }
+        aviso = payer_warning(ctx, decisao, policy.parameters)
+        if aviso is not None:
+            autenticacao["payer_warning"] = aviso
         return {
             "policy_version": policy.version,
             "risk_score": decisao.score,
@@ -284,11 +293,7 @@ class PixController(BaseController):
             "rejection_axis": decisao.rejection_axis,
             "reason": decisao.reason,
             "reason_description": decisao.reason_description,
-            "authentication": {
-                "level": decisao.level,
-                "required_checks": AUTHENTICATION[decisao.level],
-                "execution": "required_not_executed" if decisao.level != "none" else "not_required",
-            },
+            "authentication": autenticacao,
             "scenario": cenario,
             "scenario_candidates": candidatos,
             "rules": regras,

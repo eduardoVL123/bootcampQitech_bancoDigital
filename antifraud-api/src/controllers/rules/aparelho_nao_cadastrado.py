@@ -1,5 +1,6 @@
 from controllers.engine.context import ACESSO, FACIAL
 from controllers.engine.rule import Rule
+from utils.document_number import is_legal_person
 from utils.money import brl
 
 
@@ -16,8 +17,11 @@ class AparelhoNaoCadastrado(Rule):
     - fora disso, passar de R$ 200 no Pix ou de R$ 1.000 no dia, nesse
       aparelho, pede a facial: a verificacao e o cadastro.
 
-    Nao soma pontos (o APARELHO_NOVO ja pontua a troca). So pelo app e pela
-    web: pela api o "aparelho" e o sistema da empresa.
+    Nao soma pontos (o APARELHO_NOVO ja pontua a troca). Vale pelo app e pela
+    web (`channels`). Pela api, so para pessoa fisica
+    (`natural_person_channels`): ali o "aparelho" da empresa e o sistema dela,
+    mas a pessoa fisica que aparece pela api e a credencial dela num
+    iniciador de pagamento, que e onde a credencial roubada costuma ir.
     """
 
     code = "APARELHO_NAO_CADASTRADO"
@@ -26,7 +30,8 @@ class AparelhoNaoCadastrado(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        if ctx.channel not in p["channels"]:
+        pessoa_fisica = not is_legal_person(ctx.source_document)
+        if ctx.channel not in p["channels"] and not (pessoa_fisica and ctx.channel in p.get("natural_person_channels", [])):
             return self.not_triggered()
         if ctx.history.prior_attempts_of_document(ctx.source_document, ctx.moment) == 0:
             return self.not_triggered("Primeiro Pix do titular: e o aparelho do cadastro.")

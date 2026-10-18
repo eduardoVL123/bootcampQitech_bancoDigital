@@ -133,6 +133,44 @@ class HistoryRepository:
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
         ))
 
+    def attempts_of_document(self, document: str, moment, minutes: int) -> int:
+        """Tentativas do titular na janela, somando todas as contas dele."""
+        return self._remember(("doc_attempts_window", document, moment, minutes), lambda: self._scalar(
+            "SELECT count(*) FROM pix_analysis a WHERE a.source_document = :doc "
+            "AND a.transaction_date > :inicio AND a.transaction_date <= :fim",
+            doc=document, inicio=moment - timedelta(minutes=minutes), fim=moment,
+        ))
+
+    def attempts_count_and_amount(self, account_id: int, moment, minutes: int) -> tuple:
+        """(tentativas, soma dos valores) da conta na janela, de qualquer status."""
+        def consulta():
+            linha = self.session.execute(text(
+                "SELECT count(*), coalesce(sum(a.amount), 0) FROM pix_analysis a WHERE a.source_account_id = :conta "
+                "AND a.transaction_date > :inicio AND a.transaction_date <= :fim"
+            ), {"conta": account_id, "inicio": moment - timedelta(minutes=minutes), "fim": moment}).first()
+            return int(linha[0]), int(linha[1])
+        return self._remember(("attempts_amount", account_id, moment, minutes), consulta)
+
+    def new_destinations(self, document: str, moment, hours: int, min_amount: int) -> set:
+        """Os titulares que este pagador tentou pagar na janela e nunca tinha pago antes dela.
+
+        "Nunca pago" e nao ter Pix aprovado (ate o instante) para aquele
+        documento antes do inicio da janela. Conta qualquer status na janela:
+        a tentativa barrada tambem mostra para onde o dinheiro ia.
+        """
+        inicio = moment - timedelta(hours=hours)
+        return self._remember(("new_destinations", document, moment, hours, min_amount), lambda: {
+            linha[0] for linha in self._all(
+                "SELECT DISTINCT a.destination_document FROM pix_analysis a WHERE a.source_document = :doc "
+                "AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND a.amount >= :minimo "
+                "AND a.destination_document <> :doc "
+                "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = :doc "
+                "AND b.destination_document = a.destination_document AND b.transaction_date <= :inicio "
+                f"AND {approved_as_of('b', 'fim')})",
+                doc=document, inicio=inicio, fim=moment, minimo=min_amount,
+            )
+        })
+
     def approved_sum_and_count(self, account_id: int, moment, minutes: int) -> tuple:
         def consulta():
             linha = self.session.execute(text(

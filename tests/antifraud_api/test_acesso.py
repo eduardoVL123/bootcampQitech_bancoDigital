@@ -189,11 +189,37 @@ def test_aparelho_sem_cadastro_acima_de_200_pede_facial():
     assert corpo["status"] == "two_factor_required"
 
 
-def test_aparelho_sem_cadastro_ate_200_passa_mas_o_dia_soma_ate_1000():
+def test_pessoa_fisica_pela_api_com_aparelho_sem_cadastro_pede_facial():
+    # Pela api, o aparelho da empresa e o sistema dela. A pessoa fisica que
+    # sempre usou o app e aparece pela api e a credencial dela num iniciador
+    # de pagamento: a regra do aparelho vale para ela.
     hoje, pagador = nova_base(), Pagador()
     _com_historico(pagador, hoje)
+
+    corpo = analisa(pix(pagador, Recebedor(), 65000, hoje.isoformat(), aparelho=f"dvc-{random.randint(0, 10**9)}",
+                        canal="api", gps=None))
+
+    assert disparou(corpo, "APARELHO_NAO_CADASTRADO")
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_empresa_pela_api_com_aparelho_novo_nao_cai_na_regra_do_aparelho():
+    hoje, empresa = nova_base(), Pagador(pj=True)
+    _com_historico(empresa, hoje)
+
+    corpo = analisa(pix(empresa, Recebedor(pj=True), 65000, hoje.isoformat(),
+                        aparelho=f"dvc-{random.randint(0, 10**9)}", canal="api", gps=None))
+
+    assert not disparou(corpo, "APARELHO_NAO_CADASTRADO")
+
+
+def test_aparelho_sem_cadastro_ate_200_passa_mas_o_dia_soma_ate_1000():
+    # Um destino so: seis destinos novos no dia ja pediriam a verificacao pela
+    # DISPERSAO_DE_SAIDA, antes de o dia somar R$ 1.000 no aparelho.
+    hoje, pagador, recebedor = nova_base(), Pagador(), Recebedor()
+    _com_historico(pagador, hoje)
     novo = f"dvc-{random.randint(0, 10**9)}"
-    corpos = [analisa(pix(pagador, Recebedor(), 19000, (hoje + timedelta(minutes=20 * i)).isoformat(), aparelho=novo))
+    corpos = [analisa(pix(pagador, recebedor, 19000, (hoje + timedelta(minutes=20 * i)).isoformat(), aparelho=novo))
               for i in range(6)]
 
     assert not disparou(corpos[0], "APARELHO_NAO_CADASTRADO")

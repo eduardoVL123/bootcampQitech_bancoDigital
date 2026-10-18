@@ -7,6 +7,7 @@ from controllers.rules.perfil import Perfil
 from controllers.rules.perfil_sem_historico import PerfilSemHistorico
 from controllers.rules.limite_por_pix import LimitePorPix
 from controllers.rules.montante_diario_atipico import MontanteDiarioAtipico
+from controllers.rules.dispersao_de_saida import DispersaoDeSaida
 from controllers.rules.noturno import Noturno
 from controllers.rules.geo_ausente import GeoAusente
 from controllers.rules.mesma_titularidade import MesmaTitularidade
@@ -45,6 +46,7 @@ RULES = [
     Montante24h(),
     Fatiamento(),
     MontanteDiarioAtipico(),
+    DispersaoDeSaida(),
     SondagemDeLimite(),
     OrigemNova(),
     ContaReativada(),

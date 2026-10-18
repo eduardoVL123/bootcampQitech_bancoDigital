@@ -64,6 +64,22 @@ def test_noturno_para_cnpj_com_conta_nova_soma_25():
     assert pontos(corpo, "NOTURNO") == 25
 
 
+def test_noturno_para_cnpj_que_esperou_o_31o_dia_ainda_soma_25():
+    # O MEI de fachada que espera a conta passar de 30 dias continua novo:
+    # o corte da PJ e de 90 dias.
+    noite = _dia(23, 10)
+    corpo = analisa(pix(Pagador(), Recebedor(pj=True, aberta_em=noite - timedelta(days=31)), 150000, noite.isoformat()))
+
+    assert pontos(corpo, "NOTURNO") == 25
+
+
+def test_noturno_para_cnpj_com_mais_de_90_dias_nao_dispara():
+    noite = _dia(23, 10)
+    corpo = analisa(pix(Pagador(), Recebedor(pj=True, aberta_em=noite - timedelta(days=91)), 150000, noite.isoformat()))
+
+    assert not disparou(corpo, "NOTURNO")
+
+
 def test_noturno_com_valor_pequeno_nao_dispara():
     corpo = analisa(pix(Pagador(), Recebedor(), 5000, _dia(23).isoformat()))
 

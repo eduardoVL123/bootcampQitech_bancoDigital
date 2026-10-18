@@ -80,6 +80,34 @@ def test_conta_parada_ha_90_dias_que_volta_com_rajada_soma_30():
     assert pontos(corpos[2], "CONTA_REATIVADA") == 30
 
 
+def test_conta_parada_que_volta_devagar_pede_facial_no_dia_da_volta():
+    # Dois Pix por hora ficam abaixo da rajada de 3 em 1 h. A volta e o dia
+    # inteiro: o terceiro do dia ja pede a facial.
+    hoje = nova_base().replace(hour=9, minute=0, second=0)
+    pagador, recebedor = Pagador(aberta_em=hoje - timedelta(days=400)), Recebedor()
+    analisa(pix(pagador, Recebedor(), 5000, (hoje - timedelta(days=90)).isoformat()))
+
+    corpos = [analisa(pix(pagador, recebedor, 5000, (hoje + timedelta(minutes=31 * i)).isoformat()))
+              for i in range(3)]
+
+    assert not disparou(corpos[1], "CONTA_REATIVADA")
+    assert pontos(corpos[2], "CONTA_REATIVADA") == 30
+    assert corpos[2]["status"] == "two_factor_required"
+
+
+def test_conta_parada_que_volta_com_mais_de_2_mil_no_dia_pede_facial():
+    hoje = nova_base().replace(hour=9, minute=0, second=0)
+    pagador, recebedor = Pagador(aberta_em=hoje - timedelta(days=400)), Recebedor()
+    analisa(pix(pagador, Recebedor(), 5000, (hoje - timedelta(days=90)).isoformat()))
+
+    primeiro = analisa(pix(pagador, recebedor, 120000, hoje.isoformat()))
+    segundo = analisa(pix(pagador, recebedor, 90000, (hoje + timedelta(hours=3)).isoformat()))
+
+    assert not disparou(primeiro, "CONTA_REATIVADA")
+    assert disparou(segundo, "CONTA_REATIVADA")
+    assert segundo["status"] == "two_factor_required"
+
+
 def test_primeiro_contato_com_o_motor_nao_e_reativacao():
     hoje = nova_base()
     pagador = Pagador(aberta_em=hoje - timedelta(days=400))

@@ -5,10 +5,15 @@ from utils.document_number import is_legal_person
 
 
 class Velocity(Rule):
-    """Tentativas de saida da conta em 5 e 30 minutos, contando esta.
+    """Tentativas de saida do titular em 5 e 30 minutos, contando esta.
 
     Os tres status contam: quem leva 2FA ou recusa e insiste e exatamente o
     sinal. Replay nao conta (o mesmo id nem chega aqui).
+
+    Conta por titular, somando todas as contas dele, e nao por conta: nove
+    Pix em quatro minutos divididos em tres contas do mesmo CPF sao a mesma
+    rajada que nove numa conta so. A regua do cliente continua sendo a da
+    conta de origem.
 
     Com referencia (7 dias ativos e 20 tentativas nos 30 dias anteriores), o
     corte e o do proprio cliente: quem faz 40 Pix por hora no trabalho nao
@@ -29,7 +34,7 @@ class Velocity(Rule):
         tipo = "PJ" if is_legal_person(ctx.source_document) else "PF"
         cortes = p[tipo.lower()]
         contagens = {
-            minutos: ctx.history.attempts(ctx.source_account.id, ctx.moment, minutos) + 1
+            minutos: ctx.history.attempts_of_document(ctx.source_document, ctx.moment, minutos) + 1
             for minutos in p["windows_minutes"]
         }
 
@@ -56,8 +61,8 @@ class Velocity(Rule):
         for faixa in cortes["fallback"]:
             if contagem >= faixa["count"]:
                 return self.triggered(
-                    faixa["points"], f"{contagem} tentativas de saida em {janela} min, sem referencia do cliente "
-                    f"(corte de {tipo}).", floor=faixa["floor"] if faixa["floor"] != NONE else NONE,
+                    faixa["points"], f"{contagem} tentativas de saida do titular em {janela} min, sem referencia "
+                    f"do cliente (corte de {tipo}).", floor=faixa["floor"] if faixa["floor"] != NONE else NONE,
                     data_origin="history", reference="fallback", payer_type=tipo,
                 )
         return self.not_triggered(reference="fallback", payer_type=tipo)
