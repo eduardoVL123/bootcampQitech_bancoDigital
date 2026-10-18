@@ -167,6 +167,16 @@ A massa de cenários por mutação, que imprime a tabela da próxima seção:
 python tools/cenarios_antifraude.py
 ```
 
+A medição de escala: o banco com até 3 milhões de Pix, a loja e o pagador com milhares de Pix, a rede desconhecida e a concorrência. O resultado e a leitura dele estão em [`docs/testes/antifraude-escala.md`](docs/testes/antifraude-escala.md):
+
+```bash
+docker compose -f docker-compose.yml -f tools/escala/compose.escala.yml up -d --build --wait db antifraud-api
+```
+
+```bash
+python tools/escala_antifraude.py
+```
+
 > **Mudou o `database/antifraud.sql`?** O banco nasce de uma imagem que *copia* o arquivo. Recriar só o volume não basta: `docker compose down -v && docker compose up -d --build --wait`. Sem o `--build`, o banco sobe com a política antiga.
 
 ## Resultado na massa sintética
@@ -215,7 +225,7 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 - Legitimos aprovados sem friccao: 9 de 12
 - Fraudes retidas (2FA ou rejeicao): 15 de 15
 - Cenarios no resultado esperado: 27 de 27
-- Latencia do motor em 78 analises: p50 20 ms, p95 26 ms (medida fora do Docker: rodar a ferramenta de novo no ambiente da entrega e colar os números)
+- Latencia do motor em 77 analises: p50 64 ms, p95 78 ms (contra a API no Docker, em 18/10/2026)
 
 Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
 
