@@ -95,9 +95,42 @@ Mesma ferramenta, mesmo computador, banco zerado e enchido de novo até 1 milhã
 
 A loja com 10 mil recebimentos ficou 47 vezes mais rápida. A rede desconhecida com 10 mil pontos de GPS voltou ao custo de um Pix comum: o banco passou de 21 ms para 5 ms por Pix, e o tempo não cresce mais com a rede (65 ms com mil, cinco mil ou dez mil pontos). O pagador com 10 mil Pix caiu à metade, e o que sobrou é banco: 84 ms por Pix, das consultas que leem os 186 dias de histórico dele. A linha da análise cresceu de 1,7 KB para 2,2 KB porque passou a levar os códigos das regras que não dispararam; ainda assim, cada Pix grava um quarto do que gravava.
 
+## Mais de um processo
+
+A vazão de um processo para em uns 17 Pix por segundo: o Python faz uma conta de cada vez por processo, e cada Pix gasta uns 60 ms de regras. Para saber quanto ganha subindo mais processos, a medição roda a API com 4 (`uvicorn --workers 4`):
+
+```bash
+docker compose -f docker-compose.yml -f tools/escala/compose.escala.yml -f tools/escala/compose.processos.yml up -d --build --wait db antifraud-api
+```
+
+```bash
+python tools/escala_antifraude.py --tamanhos 0 --secoes concorrencia --chamadores 1,4,8,16,32
+```
+
+**O compose da entrega continua com um processo só**, como o Base Service. A sobreposição `tools/escala/compose.processos.yml` vale só para esta medição: o uvicorn não junta `--reload` com `--workers`, e o `--reload` (a API recarregar quando um arquivo muda) é o jeito de desenvolver herdado do Base Service.
+
+Mesmo banco e mesmo notebook (Intel i7-1165G7, 4 núcleos físicos e 8 threads), 15 Pix por chamador:
+
+| chamadores | destinos diferentes, 1 processo | destinos diferentes, 4 processos | mesma loja, 1 processo | mesma loja, 4 processos |
+|---:|---:|---:|---:|---:|
+| 1 | 8,6 Pix/s (p50 109 ms) | 8,2 Pix/s (p50 107 ms) | 9,3 Pix/s | 8,0 Pix/s |
+| 4 | 18,0 Pix/s (p50 211 ms) | 25,5 Pix/s (p50 145 ms) | 12,4 Pix/s | 17,1 Pix/s |
+| 8 | 16,9 Pix/s (p50 467 ms) | **31,2 Pix/s** (p50 222 ms) | 13,1 Pix/s | 15,6 Pix/s |
+| 16 | 17,4 Pix/s (p50 919 ms) | 25,9 Pix/s (p50 443 ms) | 13,0 Pix/s | 15,0 Pix/s |
+| 32 | 17,6 Pix/s (p50 1.829 ms) | 29,5 Pix/s (p50 867 ms) | 12,9 Pix/s | 14,7 Pix/s |
+
+**O que os números dizem:**
+
+- **Com 4 processos, a vazão quase dobra** (de uns 17 para até 31 Pix por segundo), e a latência sob carga cai à metade (8 chamadores: de 467 para 222 ms).
+- **A contagem continua certa.** A suíte inteira da `antifraud-api` (199 testes, com os de concorrência e o de escala) passou contra os 4 processos. A API não guarda estado na memória entre requisições, e as travas consultivas moram no Postgres, então valem entre processos.
+- **Não chega a 4 vezes porque, neste notebook, a CPU acaba.** Com 8 chamadores, a máquina ficou só 18% ociosa: a API usou 3 núcleos, o Postgres 2,3, e o gerador de carga roda na mesma máquina. Num servidor, a API e o banco ficariam em máquinas separadas.
+- **O banco gasta mais CPU do que o `pg_stat_statements` mostra.** O "no banco" das outras tabelas soma só a execução das consultas (uns 7 ms por Pix). Com 31 Pix por segundo, o Postgres ocupou 2,3 núcleos: a conta inclui planejar cada uma das cerca de 40 consultas de cada Pix, que vão sem preparo, e gravar o commit. É a próxima alavanca: menos idas ao banco por Pix.
+- **A mesma loja não escala com processos.** Pix simultâneos para o mesmo recebedor fazem fila na trava dele, e ficam em uns 13 a 17 por segundo com 1 ou com 4 processos; ali a máquina ficou com metade da CPU parada. É o preço da contagem de pagadores da loja nunca errar.
+
 ## O que continua em aberto
 
-- **Mais processos.** A vazão de um processo para em uns 15 Pix por segundo. Escalar é subir `--workers` ou réplicas atrás de um balanceador; o pool de conexões (`pool_size=5`) acompanha.
+- **Mais processos em produção.** Medido acima: 4 processos quase dobram a vazão neste notebook. Em produção, seriam processos ou réplicas atrás de um balanceador, com o banco em outra máquina. Cada processo abre o próprio pool (até 15 conexões com `pool_size=5`), e o Postgres aceita 100 por padrão.
+- **Menos idas ao banco por Pix.** São cerca de 40 consultas por Pix, cada uma planejada de novo. Juntar as consultas do mesmo pagador, ou prepará-las, diminui a CPU do Postgres, que é o que aparece quando há mais processos.
 - **Pagador muito ativo.** Com 10 mil Pix no histórico, o banco gasta uns 80 ms por Pix. As consultas que mais pesam leem o histórico inteiro de 186 dias do pagador, e uma delas (`count(*)` por documento) não tem limite de tempo, só para saber se há pelo menos 3 tentativas.
 - **O `analysis_key`** é `CHAR(36)` com índice único de 222 MB em 3 milhões de linhas, e nenhuma consulta busca por ele.
 - **O `metadata`** é a maior parte da linha que sobrou.
