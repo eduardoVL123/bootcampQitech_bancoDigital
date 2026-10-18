@@ -17,8 +17,6 @@ Os Pix da mesma sequencia que ainda estao dentro do habito sao legitimos
 comuns: proteger cedo demais e so atrito.
 """
 
-from datetime import timedelta
-
 from laboratorio.catalogo import perfil
 
 FONTE_JOGO = "https://igamingbusiness.com/br/jogo-sustentavel/jogo-responsavel/sistema-brasileiro-de-autoexclusao-sera-lancado-ate-o-final-de-2025/"
@@ -27,9 +25,9 @@ FONTE_JOGO = "https://igamingbusiness.com/br/jogo-sustentavel/jogo-responsavel/s
 @perfil(nome="apostas_compulsivas", tipo="autoprotecao", contido_por="facial",
         descricao="O cliente aposta, perde e manda valores cada vez maiores para a casa de apostas, muitas vezes de madrugada",
         botoes={"apostas": [8, 4, 12], "crescimento": [1.5, 1.2, 2.0], "hora": ["23:30", "02:00", "15:00"],
-                "pede_aumento": [False, True], "valor_inicial": [1, 3]},
+                "valor_inicial": [1, 3]},
         sinais=("varios Pix seguidos para o mesmo recebedor", "valores crescendo a cada Pix",
-                "soma da noite varias vezes acima do habito", "pedido de aumento de limite no meio da sequencia"),
+                "soma da noite varias vezes acima do habito"),
         defesa="Jogo responsavel (Lei 14.790/2023, Portaria SPA 1.231/2024) pede limite, pausa e alerta quando o padrao "
                "foge do habito. Do lado do banco: uma pausa com confirmacao quando a soma da sequencia passa varias vezes "
                "o habito, e carencia de verdade para aumento de limite pedido no meio dela.",
@@ -39,54 +37,18 @@ FONTE_JOGO = "https://igamingbusiness.com/br/jogo-sustentavel/jogo-responsavel/s
 def apostas_compulsivas(ep, b):
     cliente = ep.cliente_comum("apostador", faixa=(3000, 15000))
     casa = ep.pessoa("casa-de-apostas", pj=True, idade_conta_dias=900)
-    limite = cliente.mediana() * 20
-    ep.limite(cliente, limite, ep.momento(60, "10:00"))
+    # O limite que o cliente escolhe e do BAS, que barra antes de o Pix chegar
+    # ao antifraude: aqui so conta a pausa quando a sequencia foge do habito.
     alerta = cliente.mediana() * 5
     valor, gasto = cliente.mediana() * b["valor_inicial"], 0
     momentos = ep.sequencia(ep.momento(0, b["hora"], 20), b["apostas"], 4, 15)
-    for i, quando in enumerate(momentos):
-        if b["pede_aumento"] and i == len(momentos) // 2:
-            # O aumento so vale depois da carencia: ate la, o limite antigo continua.
-            ep.limite(cliente, limite * 5, quando - timedelta(minutes=2))
+    for quando in momentos:
         gasto += valor
-        if valor > limite:
-            ep.pix(cliente, casa, valor, quando, rotulo="autoprotecao", papel="alvo",
-                   contido_por="rejected", aceitavel_ate="rejected")
-        elif gasto > alerta:
+        if gasto > alerta:
             ep.pix(cliente, casa, valor, quando, rotulo="autoprotecao", papel="alvo")
         else:
             ep.pix(cliente, casa, valor, quando, rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
         valor *= b["crescimento"]
-
-
-@perfil(nome="limite_autoimposto_furado", tipo="autoprotecao", contido_por="facial",
-        descricao="O cliente pos um limite baixo para se controlar e, de madrugada, tenta passar por cima dele",
-        botoes={"tentativa": ["acima_do_limite", "fatiar_abaixo"], "pede_aumento": [True, False], "fatias": [6, 3, 10],
-                "hora": ["02:30", "21:00"]},
-        sinais=("Pix acima do limite que o proprio cliente escolheu", "pedido de aumento na hora da vontade",
-                "varios Pix logo abaixo do limite, em sequencia, para o mesmo recebedor"),
-        defesa="O limite escolhido pelo cliente so pode subir depois da carencia, e fatiar logo abaixo dele em "
-               "sequencia e o mesmo que passar por cima: a soma da sequencia precisa contar.",
-        ausente_no_contrato=("o motivo do limite (controle de gastos, jogo)",),
-        fonte=FONTE_JOGO)
-def limite_autoimposto_furado(ep, b):
-    cliente = ep.cliente_comum("cliente", faixa=(5000, 20000))
-    limite = cliente.mediana() * 3
-    ep.limite(cliente, limite, ep.momento(20, "10:00"))
-    destino = ep.pessoa("casa-de-apostas", pj=True, idade_conta_dias=900)
-    inicio = ep.momento(0, b["hora"], 15)
-    if b["pede_aumento"]:
-        ep.limite(cliente, limite * 20, inicio - timedelta(minutes=3))
-    if b["tentativa"] == "acima_do_limite":
-        for quando in ep.sequencia(inicio, 2, 5, 12):
-            ep.pix(cliente, destino, limite * 4, quando, rotulo="autoprotecao", papel="alvo",
-                   contido_por="rejected", aceitavel_ate="rejected")
-        return
-    for i, quando in enumerate(ep.sequencia(inicio, b["fatias"], 2, 6)):
-        if i < 2:
-            ep.pix(cliente, destino, limite * 0.95, quando, rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
-        else:
-            ep.pix(cliente, destino, limite * 0.95, quando, rotulo="autoprotecao", papel="alvo")
 
 
 @perfil(nome="esvaziar_reserva_por_impulso", tipo="autoprotecao", contido_por="facial",

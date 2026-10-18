@@ -35,6 +35,28 @@ def test_get_devolve_a_analise_gravada():
     assert resposta.json() == criado
 
 
+def test_metadata_registra_as_regras_avaliadas_que_nao_dispararam():
+    # O motor nao grava mais uma linha por regra (eram 37 por Pix). O que
+    # nao disparou fica so pelo codigo, no metadata: da para saber o que
+    # foi avaliado, sem pagar a frase de cada regra em disco.
+    payload = pix_normal()
+    corpo = AntifraudApi.post(payload).json()
+
+    nao_dispararam = corpo["metadata"]["rules_not_triggered"]
+    disparadas = {regra["rule"] for regra in corpo["metadata"]["rules"]}
+    assert "LIMITE_POR_PIX" in nao_dispararam
+    assert not disparadas & set(nao_dispararam)
+    assert AntifraudApi.get(payload["id"]).json()["metadata"]["rules_not_triggered"] == nao_dispararam
+
+
+def test_limite_do_cliente_nao_e_mais_do_antifraude():
+    # O limite que o titular escolhe e do BAS, que o aplica antes de o Pix
+    # chegar aqui. A rota saiu junto com LIMITE_DO_CLIENTE e AUMENTO_PENDENTE.
+    resposta = AntifraudApi.envia("PUT", "/pix/account_limit", json={})
+
+    assert resposta.status_code == 404
+
+
 def test_get_de_pix_inexistente_da_404():
     resposta = AntifraudApi.get("pix-que-nao-existe")
 

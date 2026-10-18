@@ -4,7 +4,6 @@ from models.pix_status import PixStatus
 from models.fraud_policy import FraudPolicy
 from models.pix_account import PixAccount
 from models.pix_analysis import PixAnalysis
-from models.pix_rule_result import PixRuleResult
 from models.reputation_fixture import ReputationFixture
 from models.watchlist import Watchlist
 from models.ip_range_location import IpRangeLocation

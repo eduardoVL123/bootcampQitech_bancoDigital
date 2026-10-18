@@ -752,11 +752,11 @@
     }
   },
   {
-    "id": "pix-bt-0117",
+    "id": "pix-bt-0113",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0117",
+      "id": "pix-bt-0113",
       "amount": 250000,
       "transaction_date": "2026-09-22T14:00:00-03:00",
       "source_account": {
@@ -964,11 +964,11 @@
     }
   },
   {
-    "id": "pix-bt-0130",
+    "id": "pix-bt-0126",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0130",
+      "id": "pix-bt-0126",
       "amount": 3000,
       "transaction_date": "2026-09-25T12:00:00-03:00",
       "source_account": {
@@ -1968,11 +1968,11 @@
     }
   },
   {
-    "id": "pix-bt-0131",
+    "id": "pix-bt-0127",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0131",
+      "id": "pix-bt-0127",
       "amount": 4500,
       "transaction_date": "2026-10-03T12:00:00-03:00",
       "source_account": {
@@ -2900,11 +2900,11 @@
     }
   },
   {
-    "id": "pix-bt-0132",
+    "id": "pix-bt-0128",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0132",
+      "id": "pix-bt-0128",
       "amount": 6000,
       "transaction_date": "2026-10-10T12:00:00-03:00",
       "source_account": {
@@ -3508,11 +3508,11 @@
     }
   },
   {
-    "id": "pix-bt-0140",
+    "id": "pix-bt-0136",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0140",
+      "id": "pix-bt-0136",
       "amount": 100000,
       "transaction_date": "2026-10-16T10:00:00-03:00",
       "source_account": {
@@ -3544,11 +3544,11 @@
     }
   },
   {
-    "id": "pix-bt-0141",
+    "id": "pix-bt-0137",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0141",
+      "id": "pix-bt-0137",
       "amount": 90000,
       "transaction_date": "2026-10-16T11:00:00-03:00",
       "source_account": {
@@ -4008,41 +4008,11 @@
     }
   },
   {
-    "id": "limite-bt-0109",
-    "method": "PUT",
-    "path": "/pix/account_limit",
-    "body": {
-      "branch": "0001",
-      "account_number": "100072",
-      "opening_date": "2021-03-10T09:00:00-03:00",
-      "owner": {
-        "document_number": "12401903879"
-      },
-      "amount": 200000,
-      "requested_at": "2026-10-17T12:00:00-03:00"
-    }
-  },
-  {
-    "id": "limite-bt-0110",
-    "method": "PUT",
-    "path": "/pix/account_limit",
-    "body": {
-      "branch": "0001",
-      "account_number": "100072",
-      "opening_date": "2021-03-10T09:00:00-03:00",
-      "owner": {
-        "document_number": "12401903879"
-      },
-      "amount": 2000000,
-      "requested_at": "2026-10-17T12:05:00-03:00"
-    }
-  },
-  {
-    "id": "pix-bt-0143",
+    "id": "pix-bt-0139",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0143",
+      "id": "pix-bt-0139",
       "amount": 2000,
       "transaction_date": "2026-10-17T12:30:00-03:00",
       "source_account": {
@@ -4066,78 +4036,6 @@
         "device_id": "device-edee21c25ede5ba3",
         "channel": "app",
         "ip": "198.51.100.53",
-        "geolocation": {
-          "latitude": -23.56,
-          "longitude": -46.65
-        }
-      }
-    }
-  },
-  {
-    "id": "pix-bt-0111",
-    "method": "POST",
-    "path": "/pix/transaction",
-    "body": {
-      "id": "pix-bt-0111",
-      "amount": 150000,
-      "transaction_date": "2026-10-17T13:05:00-03:00",
-      "source_account": {
-        "branch": "0001",
-        "account_number": "100072",
-        "opening_date": "2021-03-10T09:00:00-03:00",
-        "owner": {
-          "document_number": "12401903879"
-        }
-      },
-      "destination_account": {
-        "participant": "99999999",
-        "branch": "0001",
-        "account_number": "100074",
-        "opening_date": "2021-03-10T09:00:00-03:00",
-        "owner": {
-          "document_number": "12403487627"
-        }
-      },
-      "source": {
-        "device_id": "device-959b01c668db5cfe",
-        "channel": "app",
-        "ip": "198.51.100.38",
-        "geolocation": {
-          "latitude": -23.56,
-          "longitude": -46.65
-        }
-      }
-    }
-  },
-  {
-    "id": "pix-bt-0112",
-    "method": "POST",
-    "path": "/pix/transaction",
-    "body": {
-      "id": "pix-bt-0112",
-      "amount": 500000,
-      "transaction_date": "2026-10-17T13:10:00-03:00",
-      "source_account": {
-        "branch": "0001",
-        "account_number": "100072",
-        "opening_date": "2021-03-10T09:00:00-03:00",
-        "owner": {
-          "document_number": "12401903879"
-        }
-      },
-      "destination_account": {
-        "participant": "99999999",
-        "branch": "0001",
-        "account_number": "100074",
-        "opening_date": "2021-03-10T09:00:00-03:00",
-        "owner": {
-          "document_number": "12403487627"
-        }
-      },
-      "source": {
-        "device_id": "device-959b01c668db5cfe",
-        "channel": "app",
-        "ip": "198.51.100.38",
         "geolocation": {
           "latitude": -23.56,
           "longitude": -46.65
@@ -4214,11 +4112,11 @@
     }
   },
   {
-    "id": "pix-bt-0114",
+    "id": "pix-bt-0110",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0114",
+      "id": "pix-bt-0110",
       "amount": 5000,
       "transaction_date": "2026-10-17T15:00:00-03:00",
       "source_account": {
@@ -4250,11 +4148,11 @@
     }
   },
   {
-    "id": "pix-bt-0118",
+    "id": "pix-bt-0114",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0118",
+      "id": "pix-bt-0114",
       "amount": 4000,
       "transaction_date": "2026-10-17T16:00:00-03:00",
       "source_account": {
@@ -4286,11 +4184,11 @@
     }
   },
   {
-    "id": "pix-bt-0144",
+    "id": "pix-bt-0140",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0144",
+      "id": "pix-bt-0140",
       "amount": 15000000,
       "transaction_date": "2026-10-17T16:00:00-03:00",
       "source_account": {
@@ -4318,11 +4216,11 @@
     }
   },
   {
-    "id": "pix-bt-0119",
+    "id": "pix-bt-0115",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0119",
+      "id": "pix-bt-0115",
       "amount": 300000,
       "transaction_date": "2026-10-17T16:15:00-03:00",
       "source_account": {
@@ -4354,11 +4252,11 @@
     }
   },
   {
-    "id": "pix-bt-0115",
+    "id": "pix-bt-0111",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0115",
+      "id": "pix-bt-0111",
       "amount": 5000,
       "transaction_date": "2026-10-17T17:00:00-03:00",
       "source_account": {
@@ -4390,11 +4288,11 @@
     }
   },
   {
-    "id": "pix-bt-0116",
+    "id": "pix-bt-0112",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0116",
+      "id": "pix-bt-0112",
       "amount": 5000,
       "transaction_date": "2026-10-17T17:15:00-03:00",
       "source_account": {
@@ -4422,11 +4320,11 @@
     }
   },
   {
-    "id": "pix-bt-0142",
+    "id": "pix-bt-0138",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0142",
+      "id": "pix-bt-0138",
       "amount": 20000,
       "transaction_date": "2026-10-17T18:00:00-03:00",
       "source_account": {
@@ -4458,11 +4356,11 @@
     }
   },
   {
-    "id": "pix-bt-0120",
+    "id": "pix-bt-0116",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0120",
+      "id": "pix-bt-0116",
       "amount": 35000,
       "transaction_date": "2026-10-17T19:00:00-03:00",
       "source_account": {
@@ -4494,11 +4392,11 @@
     }
   },
   {
-    "id": "pix-bt-0121",
+    "id": "pix-bt-0117",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0121",
+      "id": "pix-bt-0117",
       "amount": 40000,
       "transaction_date": "2026-10-17T19:06:00-03:00",
       "source_account": {
@@ -4530,11 +4428,11 @@
     }
   },
   {
-    "id": "pix-bt-0122",
+    "id": "pix-bt-0118",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0122",
+      "id": "pix-bt-0118",
       "amount": 45000,
       "transaction_date": "2026-10-17T19:12:00-03:00",
       "source_account": {
@@ -4566,11 +4464,11 @@
     }
   },
   {
-    "id": "pix-bt-0123",
+    "id": "pix-bt-0119",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0123",
+      "id": "pix-bt-0119",
       "amount": 50000,
       "transaction_date": "2026-10-17T19:18:00-03:00",
       "source_account": {
@@ -4602,11 +4500,11 @@
     }
   },
   {
-    "id": "pix-bt-0124",
+    "id": "pix-bt-0120",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0124",
+      "id": "pix-bt-0120",
       "amount": 55000,
       "transaction_date": "2026-10-17T19:24:00-03:00",
       "source_account": {
@@ -4638,11 +4536,11 @@
     }
   },
   {
-    "id": "pix-bt-0125",
+    "id": "pix-bt-0121",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0125",
+      "id": "pix-bt-0121",
       "amount": 60000,
       "transaction_date": "2026-10-17T19:30:00-03:00",
       "source_account": {
@@ -4674,11 +4572,11 @@
     }
   },
   {
-    "id": "pix-bt-0126",
+    "id": "pix-bt-0122",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0126",
+      "id": "pix-bt-0122",
       "amount": 65000,
       "transaction_date": "2026-10-17T19:36:00-03:00",
       "source_account": {
@@ -4710,11 +4608,11 @@
     }
   },
   {
-    "id": "pix-bt-0127",
+    "id": "pix-bt-0123",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0127",
+      "id": "pix-bt-0123",
       "amount": 70000,
       "transaction_date": "2026-10-17T19:42:00-03:00",
       "source_account": {
@@ -4746,11 +4644,11 @@
     }
   },
   {
-    "id": "pix-bt-0128",
+    "id": "pix-bt-0124",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0128",
+      "id": "pix-bt-0124",
       "amount": 75000,
       "transaction_date": "2026-10-17T19:48:00-03:00",
       "source_account": {
@@ -4782,11 +4680,11 @@
     }
   },
   {
-    "id": "pix-bt-0129",
+    "id": "pix-bt-0125",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0129",
+      "id": "pix-bt-0125",
       "amount": 80000,
       "transaction_date": "2026-10-17T19:54:00-03:00",
       "source_account": {
@@ -4818,11 +4716,11 @@
     }
   },
   {
-    "id": "pix-bt-0133",
+    "id": "pix-bt-0129",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0133",
+      "id": "pix-bt-0129",
       "amount": 100000,
       "transaction_date": "2026-10-17T20:00:00-03:00",
       "source_account": {
@@ -4854,11 +4752,11 @@
     }
   },
   {
-    "id": "pix-bt-0134",
+    "id": "pix-bt-0130",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0134",
+      "id": "pix-bt-0130",
       "amount": 100000,
       "transaction_date": "2026-10-17T20:12:00-03:00",
       "source_account": {
@@ -4890,11 +4788,11 @@
     }
   },
   {
-    "id": "pix-bt-0135",
+    "id": "pix-bt-0131",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0135",
+      "id": "pix-bt-0131",
       "amount": 100000,
       "transaction_date": "2026-10-17T20:25:00-03:00",
       "source_account": {
@@ -4926,11 +4824,11 @@
     }
   },
   {
-    "id": "pix-bt-0136",
+    "id": "pix-bt-0132",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0136",
+      "id": "pix-bt-0132",
       "amount": 270000,
       "transaction_date": "2026-10-17T20:30:00-03:00",
       "source_account": {
@@ -4962,11 +4860,11 @@
     }
   },
   {
-    "id": "pix-bt-0137",
+    "id": "pix-bt-0133",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0137",
+      "id": "pix-bt-0133",
       "amount": 40000,
       "transaction_date": "2026-10-17T21:00:00-03:00",
       "source_account": {
@@ -4998,11 +4896,11 @@
     }
   },
   {
-    "id": "pix-bt-0138",
+    "id": "pix-bt-0134",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0138",
+      "id": "pix-bt-0134",
       "amount": 40000,
       "transaction_date": "2026-10-17T21:04:00-03:00",
       "source_account": {
@@ -5034,11 +4932,11 @@
     }
   },
   {
-    "id": "pix-bt-0139",
+    "id": "pix-bt-0135",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0139",
+      "id": "pix-bt-0135",
       "amount": 40000,
       "transaction_date": "2026-10-17T21:08:00-03:00",
       "source_account": {
@@ -5106,11 +5004,11 @@
     }
   },
   {
-    "id": "pix-bt-0113",
+    "id": "pix-bt-0109",
     "method": "POST",
     "path": "/pix/transaction",
     "body": {
-      "id": "pix-bt-0113",
+      "id": "pix-bt-0109",
       "amount": 2500000,
       "transaction_date": "2026-10-17T23:00:00-03:00",
       "source_account": {

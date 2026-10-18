@@ -85,7 +85,7 @@ Os relatórios e o histórico ficam em `tools/resultados/` (fora do Git). O corp
 
 ## O que cada rodada cobre
 
-**Golpes (16):** conta tomada, mão fantasma, falsa central, falso parente, QR Code adulterado, sequestro relâmpago, conta laranja, repasse em cascata, sondagem de limite, aumento de limite e saque, dreno lento e gradual, fazenda de aparelhos, rede suspeita, recebedor ou aparelho marcado, conta dormente, golpe escalonado (falso investimento ou golpe do amor).
+**Golpes (15):** conta tomada, mão fantasma, falsa central, falso parente, QR Code adulterado, sequestro relâmpago, conta laranja, repasse em cascata, sondagem de limite, dreno lento e gradual, fazenda de aparelhos, rede suspeita, recebedor ou aparelho marcado, conta dormente, golpe escalonado (falso investimento ou golpe do amor).
 
 **Legítimos difíceis (16):** rotina, pagamento recorrente, PJ e fornecedor, troca de celular, viajante, compra grande planejada, autônomo que recebe de muitos, racha da conta no bar, família à noite, dia do pagamento, aparelho da família, cliente sem permissão de GPS, e quatro situações de emergência e de vida real:
 
@@ -96,7 +96,7 @@ Os relatórios e o histórico ficam em `tools/resultados/` (fora do Git). O corp
 
 O Pix não atravessa fronteira. Mandar dinheiro para fora é um Pix em reais para uma empresa de remessa aqui, ou para a conta brasileira de quem está lá, e é assim que o laboratório simula. A localização de Sydney fica de propósito fora do seed (IPv6 de documentação): a API só descobre onde ela fica pelo GPS dos Pix anteriores.
 
-**Proteção do cliente (3):** apostas compulsivas, limite autoimposto furado (pedir aumento na hora da vontade ou fatiar logo abaixo do limite) e esvaziar a reserva por impulso.
+**Proteção do cliente (2):** apostas compulsivas e esvaziar a reserva por impulso. O limite autoimposto furado e o aumento de limite e saque saíram junto com o limite do cliente, que é do BAS (18/10/2026).
 
 Cada tipologia tem botões com as adaptações que o golpista faz quando a versão ingênua é barrada: aquecer o aparelho novo com Pix pequenos, usar conta laranja antiga em vez de nova, falsificar GPS e usar VPN na cidade da vítima, fatiar abaixo do limite, esperar a carência do aumento de limite, rotacionar o `device_id`. A lista completa sai em `catalogo`.
 

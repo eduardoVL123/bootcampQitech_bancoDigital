@@ -205,27 +205,12 @@ CREATE TRIGGER pix_analysis_is_append_only
     BEFORE UPDATE OR DELETE ON pix_analysis
     FOR EACH ROW EXECUTE FUNCTION refuse_change();
 
--- Uma linha por regra avaliada, inclusive as que nao dispararam: e a
--- fotografia de como a decisao foi tomada.
-CREATE TABLE pix_rule_result(
-    id BIGSERIAL PRIMARY KEY,
-    analysis_id BIGINT NOT NULL REFERENCES pix_analysis(id),
-    rule VARCHAR(40) NOT NULL,
-    evaluation VARCHAR(15) NOT NULL CHECK (evaluation IN ('triggered', 'not_triggered', 'not_evaluable')),
-    axis VARCHAR(15),
-    family VARCHAR(30),
-    raw_points SMALLINT NOT NULL,
-    effective_points SMALLINT NOT NULL,
-    hard_block BOOLEAN NOT NULL,
-    authentication_floor VARCHAR(20) NOT NULL,
-    detail TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT pix_rule_result_unique UNIQUE (analysis_id, rule)
-);
-
-CREATE TRIGGER pix_rule_result_is_append_only
-    BEFORE UPDATE OR DELETE ON pix_rule_result
-    FOR EACH ROW EXECUTE FUNCTION refuse_change();
+-- O resultado das regras mora no metadata da analise: as que dispararam ou
+-- nao puderam ser avaliadas, com pontos, eixo e motivo (`rules`), e o
+-- codigo das que nao dispararam (`rules_not_triggered`). Ja houve uma
+-- tabela com uma linha por regra (37 por Pix); ela ocupava 4 vezes a
+-- propria analise em disco e repetia o metadata, e saiu em 18/10/2026
+-- (docs/testes/antifraude-escala.md).
 
 -- ------------------------------------------------------------
 -- 5. REPUTACAO: O MOCK EXTERNO E A LISTA INTERNA

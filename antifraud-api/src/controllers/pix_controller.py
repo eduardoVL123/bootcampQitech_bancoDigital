@@ -167,7 +167,7 @@ class PixController(BaseController):
             policy_id=policy.id, metadata_=metadata,
         )
         try:
-            self.pix_repo.create(analysis, [self._rule_row(r) for r in resultados])
+            self.pix_repo.create(analysis)
         except IntegrityError:
             # Outro pedido com o mesmo id gravou primeiro. A analise dele e a
             # resposta, como num replay.
@@ -217,18 +217,14 @@ class PixController(BaseController):
             return Location(latitude, longitude, "learned", "BR" if in_brazil(latitude, longitude) else None)
         return None
 
-    def _rule_row(self, resultado) -> dict:
-        return {
-            "rule": resultado.rule, "evaluation": resultado.evaluation, "axis": resultado.axis,
-            "family": resultado.family, "raw_points": resultado.raw_points,
-            "effective_points": resultado.effective_points, "hard_block": resultado.hard_block,
-            "authentication_floor": resultado.floor, "detail": resultado.detail,
-        }
-
     def _metadata(self, ctx, policy, decisao, cenario, candidatos, resultados, inicio) -> dict:
-        regras = []
+        # As regras que nao dispararam ficam so pelo codigo: era a frase de
+        # cada uma, numa linha por regra (37 por Pix), que fazia a gravacao
+        # pesar 4 vezes a analise (docs/testes/antifraude-escala.md).
+        regras, nao_dispararam = [], []
         for resultado in resultados:
             if resultado.evaluation == NOT_TRIGGERED:
+                nao_dispararam.append(resultado.rule)
                 continue
             item = {
                 "rule": resultado.rule, "evaluation": resultado.evaluation, "axis": resultado.axis,
@@ -256,6 +252,7 @@ class PixController(BaseController):
             "scenario": cenario,
             "scenario_candidates": candidatos,
             "rules": regras,
+            "rules_not_triggered": nao_dispararam,
             "signals": self._signals(ctx),
             "reputation": (reputacao.extra.get("reputation") if reputacao else None)
             or {"provider": "mock_bureau", "is_mock": True, "signal": "not_evaluated"},

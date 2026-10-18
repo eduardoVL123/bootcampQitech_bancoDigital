@@ -145,20 +145,17 @@ def qr_code_adulterado(ep, b):
 
 @perfil(nome="sequestro_relampago", tipo="fraude", contido_por="rejected",
         descricao="Vitima rendida faz Pix em sequencia de noite, do proprio celular, longe de casa",
-        botoes={"pix": [4, 2, 1], "valor_cada": [200000, 100000, 90000], "pede_aumento": [True, False],
+        botoes={"pix": [4, 2, 1], "valor_cada": [200000, 100000, 90000],
                 "local": ["bairro_distante", "casa"], "hora": ["23:30", "21:10", "03:00"]},
-        sinais=("noite", "varios Pix para recebedores ineditos", "pedido de aumento de limite na hora",
-                "GPS longe dos lugares habituais"),
-        defesa="Limite noturno de R$ 1.000 entre pessoas fisicas (IN BCB 512/2024, na redacao da IN BCB 669/2025) e carencia "
-               "para aumento de limite pedido pelo app. O golpe adaptado faz Pix abaixo do teto para varias contas.",
+        sinais=("noite", "varios Pix para recebedores ineditos", "GPS longe dos lugares habituais"),
+        defesa="Limite noturno de R$ 1.000 entre pessoas fisicas (IN BCB 512/2024, na redacao da IN BCB 669/2025), "
+               "aplicado pelo BAS. O golpe adaptado faz Pix abaixo do teto para varias contas.",
         ausente_no_contrato=("tempo de sessao e hesitacao na tela",),
         fonte=FONTE_BCB_NOITE)
 def sequestro_relampago(ep, b):
     vitima = ep.cliente_comum("vitima")
     gps = ep.gps_em(vitima.casa, 0.15) if b["local"] == "bairro_distante" else None
     inicio = ep.momento(0, b["hora"], 15)
-    if b["pede_aumento"]:
-        ep.limite(vitima, 2000000, inicio - timedelta(minutes=5))
     for quando in ep.sequencia(inicio, b["pix"], 4, 8):
         ep.pix(vitima, _mula(ep, "conta_nova"), b["valor_cada"], quando, gps=gps, rotulo="fraude", papel="alvo")
 
@@ -238,29 +235,6 @@ def sondagem_de_limite(ep, b):
         ep.pix(vitima, mula, valor, quando, aparelho=aparelho, rotulo="fraude", papel="alvo",
                contido_por="facial" if novo else "rejected")
         valor *= b["fator"]
-
-
-@perfil(nome="aumento_limite_e_saque", tipo="fraude", contido_por="facial",
-        descricao="Golpista pede aumento de limite e espera a carencia passar antes de sacar",
-        botoes={"espera_horas": [1, 25, 6], "saque": ["acima_do_limite_antigo", "no_limite_antigo"],
-                "aparelho": ["novo", "habitual"]},
-        sinais=("pedido de aumento de limite recente", "Pix logo acima do limite antigo", "destino inedito"),
-        defesa="A carencia de 24h para aumento so funciona se o Pix depois dela ainda for olhado com o contexto "
-               "do pedido. Quem espera 25h nao deveria passar limpo.",
-        fonte=FONTE_BCB_NOITE)
-def aumento_limite_e_saque(ep, b):
-    vitima = ep.cliente_comum("vitima")
-    limite_antigo = vitima.mediana() * 10
-    ep.limite(vitima, limite_antigo, ep.momento(35, "10:00"))
-    pedido = ep.momento(0, "08:00") - timedelta(hours=b["espera_horas"])
-    ep.limite(vitima, limite_antigo * 10, pedido)
-    novo = b["aparelho"] == "novo"
-    aparelho = ep.mundo.novo_aparelho() if novo else None
-    valor = limite_antigo * (1.5 if b["saque"] == "acima_do_limite_antigo" else 0.95)
-    mula = _mula(ep, "conta_nova")
-    for quando in ep.sequencia(ep.momento(0, "08:00", 30), 2, 3, 10):
-        ep.pix(vitima, mula, valor, quando, aparelho=aparelho, rotulo="fraude", papel="alvo",
-               contido_por="facial" if novo else "rejected")
 
 
 @perfil(nome="lento_e_gradual", tipo="fraude", contido_por="facial",

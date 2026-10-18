@@ -168,19 +168,6 @@ class Bancada:
                        cenario, categoria, status, nivel, cenario_api, regras, porque)
         return pix_id
 
-    def limite(self, pessoa: dict, valor: int, em: datetime, *, cenario: str, porque: str) -> str:
-        assert isinstance(valor, int), "limite sempre em centavos inteiros"
-        pedido_id = self._novo_id().replace("pix-", "limite-")
-        corpo = {
-            **pessoa["account"],
-            "owner": {"document_number": pessoa["document_number"]},
-            "amount": valor,
-            "requested_at": em.isoformat(),
-        }
-        self._adiciona(em, pedido_id, "PUT", "/pix/account_limit", corpo,
-                       cenario, "setup", None, None, None, None, porque)
-        return pedido_id
-
     def _adiciona(self, em, item_id, metodo, caminho, corpo, cenario, categoria,
                   status, nivel, cenario_api, regras, porque):
         if categoria == "warmup":
@@ -282,7 +269,9 @@ def monta_bancada() -> Bancada:
     persona_d, conhecido_d = b.cliente_com_historico("persona-d", (100000, 200000))
     persona_e, _ = b.cliente_com_historico("persona-e", (250000, 320000))
     persona_f, _ = b.cliente_com_historico("persona-f", (80000, 150000))
-    persona_g, conhecido_g = b.cliente_com_historico("persona-g", (80000, 150000))
+    # A persona-g era a do limite do cliente, que saiu do motor (vai para o BAS). Ela continua sendo
+    # criada para o sorteio das personas seguintes nao mudar.
+    b.cliente_com_historico("persona-g", (80000, 150000))
     persona_h, conhecido_h = b.cliente_com_historico("persona-h", (3000, 9000))
     persona_i, conhecido_i = b.cliente_com_historico("persona-i", (3000, 9000))
     persona_j, conhecido_j = b.cliente_com_historico("persona-j", (3000, 9000))
@@ -373,19 +362,6 @@ def monta_bancada() -> Bancada:
           regras=["SONDAGEM_DE_LIMITE"],
           porque="valores caindo em sequencia para o mesmo destino em 12 min: SONDAGEM_DE_LIMITE +50")
 
-    b.limite(persona_g, 200000, quando(HOJE, "12:00"), cenario="burla_aumento_limite_pendente.define",
-             porque="limite do cliente em R$ 2.000")
-    b.limite(persona_g, 2000000, quando(HOJE, "12:05"), cenario="burla_aumento_limite_pendente.pede_aumento",
-             porque="pedido de aumento para R$ 20.000, ainda em carencia")
-    b.pix(persona_g, conhecido_g, 150000, quando(HOJE, "13:05"),
-          cenario="burla_aumento_limite_pendente", categoria="evasion",
-          status="two_factor_required", regras=["AUMENTO_PENDENTE"],
-          porque="R$ 1.500 cabe no limite atual, mas veio 1h depois de um pedido de aumento: AUMENTO_PENDENTE")
-    b.pix(persona_g, conhecido_g, 500000, quando(HOJE, "13:10"),
-          cenario="burla_aumento_limite_pendente.acima_do_limite", categoria="evasion",
-          status="rejected", regras=["LIMITE_DO_CLIENTE"],
-          porque="R$ 5.000 passa do limite vigente de R$ 2.000; o aumento pendente nao vale ainda")
-
     b.pix(persona_h, conhecido_h, 2500000, quando(HOJE, "23:00"), gps=SEM_GPS,
           cenario="burla_gps_desligado_noturno_alto", categoria="evasion",
           status="rejected", regras=["NOTURNO", "GEO_AUSENTE"],
@@ -410,7 +386,7 @@ def monta_bancada() -> Bancada:
           status=["two_factor_required", "rejected"], cenario_api="primeiro_pagamento",
           regras=["APARELHO_NOVO", "CONTRAPARTE_INEDITA"],
           porque="valor de aluguel no dia 22, de aparelho novo para quem nunca recebeu: retido pelo aparelho e pelo "
-                 "recebedor. O PADRAO_MENSAL nao avalia (um pagamento grande por mes nao forma padrao; ver o README)")
+                 "recebedor (o PADRAO_MENSAL, que olhava a janela do mes, saiu do motor)")
 
     # Fase 4: fraudes nitidas -----------------------------------------------
 

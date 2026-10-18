@@ -310,7 +310,7 @@ class AntifraudDb:
         try:
             with engine.connect() as conexao:
                 conexao.exec_driver_sql(
-                    "TRUNCATE pix_challenge_result, pix_rule_result, pix_analysis, pix_account "
+                    "TRUNCATE pix_challenge_result, pix_analysis, pix_account "
                     "RESTART IDENTITY CASCADE"
                 )
         finally:

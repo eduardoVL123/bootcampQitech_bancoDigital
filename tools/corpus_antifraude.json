@@ -1797,64 +1797,6 @@
     ]
   },
   {
-    "chave": "aumento_limite_e_saque|aparelho=habitual,espera_horas=25,saque=acima_do_limite_antigo",
-    "perfil": "aumento_limite_e_saque",
-    "tipo": "fraude",
-    "botoes": {
-      "espera_horas": 25,
-      "saque": "acima_do_limite_antigo",
-      "aparelho": "habitual"
-    },
-    "semente": 7,
-    "origem": "cacador",
-    "nota": "repetiu em 2 de 2 sementes novas",
-    "achado_em": "2026-10-17T18:06:08",
-    "situacao": "aberta",
-    "regras_acionadas": [
-      "DESTINO_CONFIAVEL",
-      "DESTINO_NOVO",
-      "MONTANTE_DIARIO_ATIPICO",
-      "PERFIL"
-    ],
-    "verificacoes": [
-      {
-        "em": "2026-10-17T18:06:08",
-        "tag": "d20f49",
-        "falha": 0.5,
-        "decisoes": "facial_document 1, rejected 1"
-      }
-    ]
-  },
-  {
-    "chave": "aumento_limite_e_saque|aparelho=habitual,espera_horas=25,saque=no_limite_antigo",
-    "perfil": "aumento_limite_e_saque",
-    "tipo": "fraude",
-    "botoes": {
-      "espera_horas": 25,
-      "saque": "no_limite_antigo",
-      "aparelho": "habitual"
-    },
-    "semente": 7,
-    "origem": "cacador",
-    "nota": "repetiu em 2 de 2 sementes novas",
-    "achado_em": "2026-10-17T18:06:12",
-    "situacao": "aberta",
-    "regras_acionadas": [
-      "DESTINO_CONFIAVEL",
-      "DESTINO_NOVO",
-      "MONTANTE_DIARIO_ATIPICO",
-      "PERFIL"
-    ],
-    "verificacoes": [
-      {
-        "em": "2026-10-17T18:06:12",
-        "tag": "d20f49",
-        "falha": 0.5,
-        "decisoes": "facial_document 1, rejected 1"
-      }
-    ]
-  },
-  {
     "chave": "rede_suspeita|multiplo=1,saltos=1",
     "perfil": "rede_suspeita",
     "tipo": "fraude",
@@ -2049,34 +1991,6 @@
         "tag": "73a916",
         "falha": 1.0,
         "decisoes": "rejected 1"
-      }
-    ]
-  },
-  {
-    "chave": "limite_autoimposto_furado|fatias=6,hora=02:30,pede_aumento=False,tentativa=fatiar_abaixo",
-    "perfil": "limite_autoimposto_furado",
-    "tipo": "autoprotecao",
-    "botoes": {
-      "tentativa": "fatiar_abaixo",
-      "pede_aumento": false,
-      "fatias": 6,
-      "hora": "02:30"
-    },
-    "semente": 990053,
-    "origem": "rodada",
-    "nota": "",
-    "achado_em": "2026-10-17T18:21:04",
-    "situacao": "aberta",
-    "regras_acionadas": [
-      "DESTINO_CONFIAVEL",
-      "MONTANTE_DIARIO_ATIPICO"
-    ],
-    "verificacoes": [
-      {
-        "em": "2026-10-17T18:21:04",
-        "tag": "73a916",
-        "falha": 1.0,
-        "decisoes": "approved 6"
       }
     ]
   }

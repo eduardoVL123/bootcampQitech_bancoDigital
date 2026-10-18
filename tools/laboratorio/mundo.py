@@ -267,13 +267,6 @@ class Episodio:
             origem.aparelhos.add(aparelho)
         return pix_id
 
-    def limite(self, pessoa: Pessoa, valor: int, quando: datetime) -> str:
-        pedido_id = self.mundo.novo_id("limite")
-        corpo = {**pessoa.como_origem(), "amount": int(valor), "requested_at": quando.isoformat()}
-        self.eventos.append(Evento(pedido_id, quando, "PUT", "/pix/account_limit", corpo, "neutro", "preparo",
-                                   self.perfil.nome, self.id))
-        return pedido_id
-
     def _regulatorio(self, origem, destino, valor, quando, aparelho, canal):
         motivos = []
         noite = _janela_noturna(quando)

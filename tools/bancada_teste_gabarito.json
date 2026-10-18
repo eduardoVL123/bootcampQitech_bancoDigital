@@ -273,7 +273,7 @@
     "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
   },
   {
-    "id": "pix-bt-0117",
+    "id": "pix-bt-0113",
     "scenario_name": "burla_falso_aluguel_fora_da_janela",
     "category": "evasion",
     "expected_status": [
@@ -286,7 +286,7 @@
       "APARELHO_NOVO",
       "CONTRAPARTE_INEDITA"
     ],
-    "rationale": "valor de aluguel no dia 22, de aparelho novo para quem nunca recebeu: retido pelo aparelho e pelo recebedor. O PADRAO_MENSAL nao avalia (um pagamento grande por mes nao forma padrao; ver o README)"
+    "rationale": "valor de aluguel no dia 22, de aparelho novo para quem nunca recebeu: retido pelo aparelho e pelo recebedor (o PADRAO_MENSAL, que olhava a janela do mes, saiu do motor)"
   },
   {
     "id": "pix-bt-0031",
@@ -354,7 +354,7 @@
     "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
   },
   {
-    "id": "pix-bt-0130",
+    "id": "pix-bt-0126",
     "scenario_name": "aquecimento_repassador",
     "category": "warmup",
     "expected_status": [
@@ -718,7 +718,7 @@
     "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
   },
   {
-    "id": "pix-bt-0131",
+    "id": "pix-bt-0127",
     "scenario_name": "aquecimento_repassador",
     "category": "warmup",
     "expected_status": [
@@ -1056,7 +1056,7 @@
     "rationale": "historico de base para os cenarios desta persona"
   },
   {
-    "id": "pix-bt-0132",
+    "id": "pix-bt-0128",
     "scenario_name": "aquecimento_repassador",
     "category": "warmup",
     "expected_status": [
@@ -1277,7 +1277,7 @@
     "rationale": "rotina de compras da persona A"
   },
   {
-    "id": "pix-bt-0140",
+    "id": "pix-bt-0136",
     "scenario_name": "rede_suspeita_dois_saltos.salto_1",
     "category": "setup",
     "expected_status": null,
@@ -1287,7 +1287,7 @@
     "rationale": "aresta DOC_FRAUDE_ATIVA para o salto 1"
   },
   {
-    "id": "pix-bt-0141",
+    "id": "pix-bt-0137",
     "scenario_name": "rede_suspeita_dois_saltos.salto_2",
     "category": "setup",
     "expected_status": null,
@@ -1429,27 +1429,7 @@
     "rationale": "R$ 1.500 para conta do mesmo CPF, muito acima dos picos do titular: decisao do time, conta do mesmo dono tambem pode ser tomada, e MESMA_TITULARIDADE so desconta 10"
   },
   {
-    "id": "limite-bt-0109",
-    "scenario_name": "burla_aumento_limite_pendente.define",
-    "category": "setup",
-    "expected_status": null,
-    "expected_auth_level": null,
-    "expected_scenario": null,
-    "expected_rules": [],
-    "rationale": "limite do cliente em R$ 2.000"
-  },
-  {
-    "id": "limite-bt-0110",
-    "scenario_name": "burla_aumento_limite_pendente.pede_aumento",
-    "category": "setup",
-    "expected_status": null,
-    "expected_auth_level": null,
-    "expected_scenario": null,
-    "expected_rules": [],
-    "rationale": "pedido de aumento para R$ 20.000, ainda em carencia"
-  },
-  {
-    "id": "pix-bt-0143",
+    "id": "pix-bt-0139",
     "scenario_name": "bloqueio_reputacao_externa",
     "category": "fraud_clear",
     "expected_status": "rejected",
@@ -1457,30 +1437,6 @@
     "expected_scenario": "risco_critico_do_recebedor",
     "expected_rules": [],
     "rationale": "recebedor com fraude ativa: rejeita qualquer valor, ate R$ 20"
-  },
-  {
-    "id": "pix-bt-0111",
-    "scenario_name": "burla_aumento_limite_pendente",
-    "category": "evasion",
-    "expected_status": "two_factor_required",
-    "expected_auth_level": null,
-    "expected_scenario": null,
-    "expected_rules": [
-      "AUMENTO_PENDENTE"
-    ],
-    "rationale": "R$ 1.500 cabe no limite atual, mas veio 1h depois de um pedido de aumento: AUMENTO_PENDENTE"
-  },
-  {
-    "id": "pix-bt-0112",
-    "scenario_name": "burla_aumento_limite_pendente.acima_do_limite",
-    "category": "evasion",
-    "expected_status": "rejected",
-    "expected_auth_level": null,
-    "expected_scenario": null,
-    "expected_rules": [
-      "LIMITE_DO_CLIENTE"
-    ],
-    "rationale": "R$ 5.000 passa do limite vigente de R$ 2.000; o aumento pendente nao vale ainda"
   },
   {
     "id": "pix-bt-0098",
@@ -1509,7 +1465,7 @@
     "rationale": "integracao por API nao tem GPS; a ausencia so pesa no canal app"
   },
   {
-    "id": "pix-bt-0114",
+    "id": "pix-bt-0110",
     "scenario_name": "burla_spoofing_geo_ip_divergente",
     "category": "evasion",
     "expected_status": null,
@@ -1521,7 +1477,7 @@
     "rationale": "GPS diz Sao Paulo e o IP diz Recife: GEO_IP_DIVERGENTE +30"
   },
   {
-    "id": "pix-bt-0118",
+    "id": "pix-bt-0114",
     "scenario_name": "conta_tomada_ruptura_contexto.referencia_sp",
     "category": "setup",
     "expected_status": null,
@@ -1531,7 +1487,7 @@
     "rationale": "ultimo Pix legitimo da persona A, em Sao Paulo"
   },
   {
-    "id": "pix-bt-0144",
+    "id": "pix-bt-0140",
     "scenario_name": "acima_teto_operacional",
     "category": "fraud_clear",
     "expected_status": "rejected",
@@ -1543,7 +1499,7 @@
     "rationale": "R$ 150 mil passa do teto operacional por Pix, mesmo para o fornecedor habitual"
   },
   {
-    "id": "pix-bt-0119",
+    "id": "pix-bt-0115",
     "scenario_name": "conta_tomada_ruptura_contexto",
     "category": "fraud_clear",
     "expected_status": "rejected",
@@ -1558,7 +1514,7 @@
     "rationale": "aparelho novo, Recife 15 min depois de SP, 60x a mediana, conta destino aberta hoje"
   },
   {
-    "id": "pix-bt-0115",
+    "id": "pix-bt-0111",
     "scenario_name": "burla_viagem_impossivel_fallback_ip.referencia_sp",
     "category": "setup",
     "expected_status": null,
@@ -1568,7 +1524,7 @@
     "rationale": "Pix de referencia em Sao Paulo"
   },
   {
-    "id": "pix-bt-0116",
+    "id": "pix-bt-0112",
     "scenario_name": "burla_viagem_impossivel_fallback_ip",
     "category": "evasion",
     "expected_status": null,
@@ -1581,7 +1537,7 @@
     "rationale": "sem GPS a API cai no IP: Recife 15 min depois de SP e VIAGEM_IMPOSSIVEL +40, e GEO_AUSENTE +20"
   },
   {
-    "id": "pix-bt-0142",
+    "id": "pix-bt-0138",
     "scenario_name": "rede_suspeita_dois_saltos",
     "category": "fraud_clear",
     "expected_status": null,
@@ -1593,7 +1549,7 @@
     "rationale": "o destino esta a 2 saltos de uma fraude ativa: REDE_SUSPEITA +30"
   },
   {
-    "id": "pix-bt-0120",
+    "id": "pix-bt-0116",
     "scenario_name": "conta_laranja_fan_in.pagador_01",
     "category": "setup",
     "expected_status": null,
@@ -1603,7 +1559,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0121",
+    "id": "pix-bt-0117",
     "scenario_name": "conta_laranja_fan_in.pagador_02",
     "category": "setup",
     "expected_status": null,
@@ -1613,7 +1569,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0122",
+    "id": "pix-bt-0118",
     "scenario_name": "conta_laranja_fan_in.pagador_03",
     "category": "setup",
     "expected_status": null,
@@ -1623,7 +1579,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0123",
+    "id": "pix-bt-0119",
     "scenario_name": "conta_laranja_fan_in.pagador_04",
     "category": "setup",
     "expected_status": null,
@@ -1633,7 +1589,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0124",
+    "id": "pix-bt-0120",
     "scenario_name": "conta_laranja_fan_in.pagador_05",
     "category": "setup",
     "expected_status": null,
@@ -1643,7 +1599,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0125",
+    "id": "pix-bt-0121",
     "scenario_name": "conta_laranja_fan_in.pagador_06",
     "category": "setup",
     "expected_status": null,
@@ -1653,7 +1609,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0126",
+    "id": "pix-bt-0122",
     "scenario_name": "conta_laranja_fan_in.pagador_07",
     "category": "setup",
     "expected_status": null,
@@ -1663,7 +1619,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0127",
+    "id": "pix-bt-0123",
     "scenario_name": "conta_laranja_fan_in.pagador_08",
     "category": "setup",
     "expected_status": null,
@@ -1673,7 +1629,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0128",
+    "id": "pix-bt-0124",
     "scenario_name": "conta_laranja_fan_in.pagador_09",
     "category": "setup",
     "expected_status": null,
@@ -1683,7 +1639,7 @@
     "rationale": "pagador que alimenta o fan-in"
   },
   {
-    "id": "pix-bt-0129",
+    "id": "pix-bt-0125",
     "scenario_name": "conta_laranja_fan_in",
     "category": "fraud_clear",
     "expected_status": [
@@ -1699,7 +1655,7 @@
     "rationale": "10o pagador distinto em 54 min para conta de 2 dias: CONTA_LARANJA +60, DESTINO_NOVO +20"
   },
   {
-    "id": "pix-bt-0133",
+    "id": "pix-bt-0129",
     "scenario_name": "repasse_rapido_cascata.entrada_1",
     "category": "setup",
     "expected_status": null,
@@ -1709,7 +1665,7 @@
     "rationale": "entrada que soma R$ 3.000 em 25 min"
   },
   {
-    "id": "pix-bt-0134",
+    "id": "pix-bt-0130",
     "scenario_name": "repasse_rapido_cascata.entrada_2",
     "category": "setup",
     "expected_status": null,
@@ -1719,7 +1675,7 @@
     "rationale": "entrada que soma R$ 3.000 em 25 min"
   },
   {
-    "id": "pix-bt-0135",
+    "id": "pix-bt-0131",
     "scenario_name": "repasse_rapido_cascata.entrada_3",
     "category": "setup",
     "expected_status": null,
@@ -1729,7 +1685,7 @@
     "rationale": "entrada que soma R$ 3.000 em 25 min"
   },
   {
-    "id": "pix-bt-0136",
+    "id": "pix-bt-0132",
     "scenario_name": "repasse_rapido_cascata",
     "category": "fraud_clear",
     "expected_status": "rejected",
@@ -1742,7 +1698,7 @@
     "rationale": "90% do que entrou sai 5 min depois para um 4o titular, de aparelho novo"
   },
   {
-    "id": "pix-bt-0137",
+    "id": "pix-bt-0133",
     "scenario_name": "coordenacao_entre_contas.titular_1",
     "category": "setup",
     "expected_status": null,
@@ -1752,7 +1708,7 @@
     "rationale": "titular que compartilha o aparelho"
   },
   {
-    "id": "pix-bt-0138",
+    "id": "pix-bt-0134",
     "scenario_name": "coordenacao_entre_contas.titular_2",
     "category": "setup",
     "expected_status": null,
@@ -1762,7 +1718,7 @@
     "rationale": "titular que compartilha o aparelho"
   },
   {
-    "id": "pix-bt-0139",
+    "id": "pix-bt-0135",
     "scenario_name": "coordenacao_entre_contas",
     "category": "fraud_clear",
     "expected_status": "two_factor_required",
@@ -1791,7 +1747,7 @@
     "rationale": "45 pts: NOTURNO 25 + DESTINO_NOVO 20 (conta aberta ha 7 dias); valor dentro do perfil da persona D"
   },
   {
-    "id": "pix-bt-0113",
+    "id": "pix-bt-0109",
     "scenario_name": "burla_gps_desligado_noturno_alto",
     "category": "evasion",
     "expected_status": "rejected",
