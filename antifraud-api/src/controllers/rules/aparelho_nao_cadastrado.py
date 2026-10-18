@@ -6,7 +6,7 @@ from utils.money import brl
 class AparelhoNaoCadastrado(Rule):
     """A regra do Banco Central para aparelho que o titular nunca cadastrou.
 
-    Desde 1/11/2024 (Res. BCB 402/2024), Pix iniciado por um aparelho nunca
+    Desde 1/11/2024 (Res. BCB 403/2024), Pix iniciado por um aparelho nunca
     usado pelo cliente fica em R$ 200 por transacao e R$ 1.000 por dia; acima
     disso, o aparelho precisa ser cadastrado antes. O contrato nao traz
     "cadastro de aparelho", entao o motor aproxima assim:
@@ -37,11 +37,11 @@ class AparelhoNaoCadastrado(Rule):
             return self.not_triggered("Aparelho cadastrado (o do primeiro Pix, ou ja confirmado numa verificacao).")
         if ctx.amount > p["per_pix"]:
             return self.triggered(0, f"{brl(ctx.amount)} num aparelho sem cadastro: acima de {brl(p['per_pix'])} por "
-                                  "Pix, o aparelho precisa ser cadastrado (Res. BCB 402/2024).", floor=FACIAL,
+                                  "Pix, o aparelho precisa ser cadastrado (Res. BCB 403/2024).", floor=FACIAL,
                                   data_origin="history")
         if hoje + ctx.amount > p["per_day"]:
             return self.triggered(0, f"{brl(hoje + ctx.amount)} hoje num aparelho sem cadastro: acima de "
                                   f"{brl(p['per_day'])} por dia, o aparelho precisa ser cadastrado (Res. BCB "
-                                  "402/2024).", floor=FACIAL, data_origin="history")
+                                  "403/2024).", floor=FACIAL, data_origin="history")
         return self.not_triggered(f"Aparelho sem cadastro, dentro de {brl(p['per_pix'])} por Pix e "
                                   f"{brl(p['per_day'])} por dia.")

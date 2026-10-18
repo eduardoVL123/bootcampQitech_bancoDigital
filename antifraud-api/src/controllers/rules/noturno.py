@@ -9,7 +9,8 @@ class Noturno(Rule):
 
     A hora e a de Sao Paulo, convertida do instante: o mesmo instante escrito
     com outro fuso da o mesmo resultado. O Banco Central limita a R$ 1.000 o
-    Pix noturno entre pessoas fisicas; aqui isso e uma heuristica de risco,
+    Pix noturno para pessoa fisica (IN BCB 512/2024, na redacao da IN BCB 669/2025);
+    aqui isso e uma heuristica de risco,
     nao a reproducao da regra regulatoria.
     """
 

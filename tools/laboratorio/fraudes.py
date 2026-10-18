@@ -18,7 +18,7 @@ from laboratorio.catalogo import perfil
 from laboratorio.mundo import pix_utils
 
 FONTE_BCB_APARELHO = "https://bpmoney.com.br/negocios/pix-tera-novas-regras-de-seguranca-a-partir-de-1o-de-novembro-confira"
-FONTE_BCB_NOITE = "https://tecnoblog.net/497467/limite-de-r-1-000-no-pix-ja-tem-data-para-entrar-em-vigor-diz-bc/"
+FONTE_BCB_NOITE = "https://www.legisweb.com.br/legislacao/?id=484165"
 FONTE_LARANJA = "https://www.serasaexperian.com.br/conteudos/prevencao-a-fraude/entenda-como-o-pix-impulsiona-a-abertura-de-contas-laranjas"
 FONTE_MED = "https://dock.tech/fluid/blog/banking/med-2-0/"
 
@@ -149,8 +149,8 @@ def qr_code_adulterado(ep, b):
                 "local": ["bairro_distante", "casa"], "hora": ["23:30", "21:10", "03:00"]},
         sinais=("noite", "varios Pix para recebedores ineditos", "pedido de aumento de limite na hora",
                 "GPS longe dos lugares habituais"),
-        defesa="Limite noturno de R$ 1.000 entre pessoas fisicas (Res. BCB 142/2021) e carencia para aumento de "
-               "limite pedido pelo app. O golpe adaptado faz Pix abaixo do teto para varias contas.",
+        defesa="Limite noturno de R$ 1.000 entre pessoas fisicas (IN BCB 512/2024, na redacao da IN BCB 669/2025) e carencia "
+               "para aumento de limite pedido pelo app. O golpe adaptado faz Pix abaixo do teto para varias contas.",
         ausente_no_contrato=("tempo de sessao e hesitacao na tela",),
         fonte=FONTE_BCB_NOITE)
 def sequestro_relampago(ep, b):

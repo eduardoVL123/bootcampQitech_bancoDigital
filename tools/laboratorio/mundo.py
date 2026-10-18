@@ -34,7 +34,7 @@ ORDEM = {"approved": 0, "facial": 1, "facial_document": 2, "rejected": 3}
 
 # Referencias regulatorias usadas so para apontar descumprimento. Confira a
 # vigencia no site do Banco Central antes de tratar como regra do projeto.
-LIMITE_NOTURNO_PF = 100000  # R$ 1.000 entre 20h e 6h, Pix entre pessoas fisicas (Res. BCB 142/2021)
+LIMITE_NOTURNO_PF = 100000  # R$ 1.000 entre 20h e 6h, Pix entre pessoas fisicas (IN BCB 512/2024, na redacao da IN BCB 669/2025)
 LIMITE_APARELHO_NOVO = 20000  # R$ 200 por Pix em aparelho nunca usado (Res. BCB 403/2024)
 LIMITE_DIARIO_APARELHO_NOVO = 100000  # R$ 1.000 por dia nesse aparelho
 

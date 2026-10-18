@@ -177,7 +177,7 @@ def test_cinco_titulares_no_mesmo_ip_soma_15():
 
 
 def test_aparelho_sem_cadastro_acima_de_200_pede_facial():
-    # Res. BCB 402/2024: aparelho nunca usado pelo cliente fica em R$ 200 por
+    # Res. BCB 403/2024: aparelho nunca usado pelo cliente fica em R$ 200 por
     # Pix; acima disso, precisa de cadastro (a verificacao).
     hoje, pagador = nova_base(), Pagador()
     _com_historico(pagador, hoje)
