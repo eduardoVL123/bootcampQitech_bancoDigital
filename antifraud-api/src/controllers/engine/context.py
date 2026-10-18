@@ -72,6 +72,9 @@ class PixContext:
     history: object
     reputation: object = None
     watchlist: object = None
+    # A marcacao do DICT sobre o recebedor, ja consultada pelo controller
+    # antes das travas (connectors/dict_connector.py), ou None.
+    external_evidence: object = None
     results: dict = field(default_factory=dict)
     cache: dict = field(default_factory=dict)
 
