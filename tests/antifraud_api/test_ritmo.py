@@ -180,6 +180,17 @@ def test_reducao_depois_de_15_minutos_nao_e_sondagem():
     assert not disparou(corpos[1], "SONDAGEM_DE_LIMITE")
 
 
+def test_duas_reducoes_espacadas_de_40_min_pedem_facial_document():
+    # Quem espera 40 min entre uma tentativa e outra continua sondando: na
+    # janela longa, so a faixa de duas reducoes vale.
+    corpos = _sequencia(Pagador(), [2500000, 1900000, 1400000], timedelta(minutes=40))
+
+    assert not disparou(corpos[1], "SONDAGEM_DE_LIMITE")
+    sondagem = regra(corpos[2], "SONDAGEM_DE_LIMITE")
+    assert sondagem["raw_points"] == 50
+    assert sondagem["authentication_floor"] == "facial_document"
+
+
 def test_datas_recuando_nao_escondem_a_rajada():
     # Seis Pix mandados agora, com as datas recuando uma hora cada: cada um
     # "acontece" antes dos anteriores, e nenhuma janela via os outros.

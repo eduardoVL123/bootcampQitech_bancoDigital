@@ -7,13 +7,17 @@ from utils.money import brl
 
 
 class RepasseRapido(Rule):
-    """A conta recebeu de varios titulares na ultima hora e repassa quase tudo (dispersao).
+    """A conta recebeu de varios titulares e repassa quase tudo (dispersao), na ultima hora ou no ultimo dia.
 
     E o lado de saida da conta laranja. Repassar para o fornecedor de
     sempre, com o perfil e o ritmo normais, nao e o mesmo que repassar para
     alguem novo: so pontua cheio com destino sem familiaridade ou desvio do
     padrao. So e visivel quando o dinheiro passou pelo motor: a conta foi
     destino de outros Pix e agora e a origem.
+
+    Duas janelas (`windows` na politica): a de 1 h, e a de 24 h, que pede
+    mais pagadores e pega a laranja que espera horas antes de repassar.
+    Vale a primeira em que o repasse aparece.
     """
 
     code = "REPASSE_RAPIDO"
@@ -22,16 +26,18 @@ class RepasseRapido(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        recebido, pagadores = ctx.history.received_by_account(ctx.source_account.id, ctx.moment, p["window_minutes"])
-        if len(pagadores) < p["min_payers"] or recebido == 0:
+        for janela in p["windows"]:
+            recebido, pagadores = ctx.history.received_by_account(ctx.source_account.id, ctx.moment, janela["minutes"])
+            if len(pagadores) >= janela["min_payers"] and recebido and ctx.amount / recebido >= p["share"]:
+                break
+        else:
             return self.not_triggered()
         if ctx.destination_document in pagadores or ctx.destination_document == ctx.source_document:
             return self.not_triggered("O dinheiro volta para quem pagou.")
         fatia = ctx.amount / recebido
-        if fatia < p["share"]:
-            return self.not_triggered()
+        quando = "na ultima hora" if janela["minutes"] <= 60 else f"nas ultimas {janela['minutes'] // 60} h"
 
-        detalhe = (f"Recebeu {brl(recebido)} de {len(pagadores)} titulares na ultima hora e repassa "
+        detalhe = (f"Recebeu {brl(recebido)} de {len(pagadores)} titulares {quando} e repassa "
                    f"{brl(ctx.amount)} ({fatia:.0%}).")
         familiar = self._familiar(ctx, params)
         perfil = profile_for(ctx, params)

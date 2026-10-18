@@ -92,7 +92,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "ORIGEM_NOVA": {"max_age_hours": 48, "min_amount": 100000, "points": 25},
     "CONTA_REATIVADA": {"min_account_age_days": 30, "idle_days": 60, "burst_minutes": 60, "burst_count": 3, "min_amount": 500000, "points": 30},
     "AUMENTO_PENDENTE": {"delay_hours": 24, "ratio": 0.5, "points": 40},
-    "SONDAGEM_DE_LIMITE": {"window_minutes": 15, "one": 30, "two": 50, "other_destination_min_ratio": 0.3},
+    "SONDAGEM_DE_LIMITE": {"window_minutes": 15, "long_window_minutes": 120, "one": 30, "two": 50, "other_destination_min_ratio": 0.3},
     "NOTURNO": {"start_hour": 20, "end_hour": 6, "min_amount": 100000, "points": 25, "new_legal_person_days": 30},
     "CALENDARIO": {"months": 3, "min_amount": 100000, "tolerance_days": 2, "share": 0.6, "min_per_month": 2},
     "APARELHO_NOVO": {"min_prior_attempts": 3, "points": 20},
@@ -114,13 +114,21 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
                  "points": {"moderate": 20, "high": 40}}
     },
     "CONTA_LARANJA": {
-        "window_minutes": 60, "new_destination_days": 30,
-        "fallback_new": [{"count": 10, "points": 60}, {"count": 5, "points": 40}],
-        "fallback_old": [{"count": 10, "points": 30}, {"count": 5, "points": 20}],
-        "moderate": {"minimum": 5, "multiple": 2, "k": 3, "points": 40},
-        "high": {"minimum": 10, "multiple": 3, "k": 6, "points": 60}
+        "new_destination_days": 30,
+        "windows": [
+            {"minutes": 60,
+             "fallback_new": [{"count": 10, "points": 60}, {"count": 5, "points": 40}],
+             "fallback_old": [{"count": 10, "points": 30}, {"count": 5, "points": 20}],
+             "moderate": {"minimum": 5, "multiple": 2, "k": 3, "points": 40},
+             "high": {"minimum": 10, "multiple": 3, "k": 6, "points": 60}},
+            {"minutes": 1440,
+             "fallback_new": [{"count": 20, "points": 60}, {"count": 10, "points": 40}],
+             "fallback_old": [{"count": 20, "points": 30}, {"count": 10, "points": 20}],
+             "moderate": {"minimum": 10, "multiple": 2, "k": 3, "points": 40},
+             "high": {"minimum": 20, "multiple": 3, "k": 6, "points": 60}}
+        ]
     },
-    "REPASSE_RAPIDO": {"window_minutes": 60, "min_payers": 3, "share": 0.8, "points": 60, "inconclusive_points": 20},
+    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}], "share": 0.8, "points": 60, "inconclusive_points": 20},
     "COORDENACAO_ENTRE_CONTAS": {"window_minutes": 10, "min_documents": 3, "destination_max_days": 7, "points": 40},
     "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000},
     "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 1, "application_fraud_new_account_days": 90, "application_fraud_same_holder_days": 30},

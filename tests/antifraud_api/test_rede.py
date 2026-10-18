@@ -128,6 +128,16 @@ def test_pix_sem_concentracao_para_conta_nova_acima_do_teto_continua_aprovado():
     assert corpo["status"] == "approved"
 
 
+def test_dez_pagadores_espalhados_no_dia_para_conta_nova_somam_40():
+    # Um por hora: a janela de 1 h nunca ve mais de um, a de 24 h ve os dez.
+    hoje = nova_base()
+    recebedor = Recebedor(aberta_em=hoje - timedelta(days=10))
+    corpos = [analisa(pix(Pagador(), recebedor, 5000, (hoje + timedelta(hours=i)).isoformat())) for i in range(10)]
+
+    assert pontos(corpos[-1], "CONTA_LARANJA") == 40
+    assert regra(corpos[-1], "CONTA_LARANJA")["window_minutes"] == 1440
+
+
 def test_cinco_pagadores_para_conta_antiga_somam_20():
     corpos = _varios_pagam(Recebedor(), 5, nova_base())
 
@@ -157,6 +167,34 @@ def test_recebe_de_varios_e_esvazia_soma_60():
 
     assert pontos(corpo, "REPASSE_RAPIDO") == 60
     assert corpo["metadata"]["scenario"] == "conta_laranja"
+
+
+def _recebe_ao_longo_do_dia(hoje, quantos, valor=100000):
+    """Um pagador por hora: a janela de 1 h nunca ve mais de um."""
+    conta = Recebedor(participante=CASA)
+    for indice in range(quantos):
+        analisa(pix(Pagador(), conta, valor, (hoje + timedelta(hours=indice)).isoformat()))
+    return conta
+
+
+def test_recebe_de_cinco_ao_longo_do_dia_e_esvazia_soma_60():
+    # A laranja que espera horas para repassar: so a janela de 24 h ve.
+    hoje = nova_base()
+    conta = _recebe_ao_longo_do_dia(hoje, 5)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 450000, (hoje + timedelta(hours=5)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+
+
+def test_quatro_pagadores_ao_longo_do_dia_nao_bastam_para_o_repasse():
+    # Na janela de 24 h o corte e de 5 pagadores, e nao 3 como na de 1 h.
+    hoje = nova_base()
+    conta = _recebe_ao_longo_do_dia(hoje, 4)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 350000, (hoje + timedelta(hours=4)).isoformat()))
+
+    assert not disparou(corpo, "REPASSE_RAPIDO")
 
 
 def test_devolver_a_quem_pagou_nao_e_repasse():

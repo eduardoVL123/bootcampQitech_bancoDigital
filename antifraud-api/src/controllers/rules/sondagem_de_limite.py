@@ -16,6 +16,11 @@ class SondagemDeLimite(Rule):
     so conta se o valor ainda for uma fracao relevante do anterior
     (`other_destination_min_ratio`), que e o caso de quem troca de conta
     laranja e continua baixando.
+
+    Duas janelas: a de 15 min vale para as duas faixas, e a longa
+    (`long_window_minutes`) so para a de duas reducoes. Quem espera 40 min
+    entre uma tentativa e outra continua sondando; uma reducao so, horas
+    depois, e ajuste.
     """
 
     code = "SONDAGEM_DE_LIMITE"
@@ -24,13 +29,30 @@ class SondagemDeLimite(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        anteriores = ctx.history.restrictive_attempts(ctx.source_account.id, ctx.moment, p["window_minutes"])
+        curta, valores_curta = self._reducoes(ctx, p, p["window_minutes"])
+        if valores_curta is None:
+            return self.not_triggered("Valor bem menor e para outro destino: outro pagamento, nao a mesma "
+                                      "tentativa com valor reduzido.")
+        longa, valores_longa = self._reducoes(ctx, p, p["long_window_minutes"])
+        if max(curta, longa) >= 2:
+            reducoes, valores = (curta, valores_curta) if curta >= 2 else (longa, valores_longa)
+            sequencia = " -> ".join(brl(v) for v in valores[-(reducoes + 1):])
+            return self.triggered(p["two"], f"Valores baixando depois de decisoes restritivas: {sequencia}.",
+                                  floor=FACIAL_DOCUMENT, data_origin="history")
+        if curta == 1:
+            sequencia = " -> ".join(brl(v) for v in valores_curta[-2:])
+            return self.triggered(p["one"], f"Valor menor depois de uma decisao restritiva: {sequencia}.",
+                                  data_origin="history")
+        return self.not_triggered()
+
+    def _reducoes(self, ctx, p, minutos):
+        """(reducoes seguidas ate este Pix, valores) na janela; valores None quando e outro pagamento."""
+        anteriores = ctx.history.restrictive_attempts(ctx.source_account.id, ctx.moment, minutos)
         if anteriores:
             ultimo = anteriores[-1]
             outro_destino = ultimo.destination_document != ctx.destination_document
             if outro_destino and ctx.amount < p["other_destination_min_ratio"] * int(ultimo.amount):
-                return self.not_triggered("Valor bem menor e para outro destino: outro pagamento, nao a mesma "
-                                          "tentativa com valor reduzido.")
+                return 0, None
         valores = [int(linha.amount) for linha in anteriores] + [ctx.amount]
         reducoes = 0
         for indice in range(len(valores) - 1, 0, -1):
@@ -38,11 +60,4 @@ class SondagemDeLimite(Rule):
                 reducoes += 1
             else:
                 break
-        if reducoes == 0:
-            return self.not_triggered()
-        sequencia = " -> ".join(brl(v) for v in valores[-(reducoes + 1):])
-        if reducoes >= 2:
-            return self.triggered(p["two"], f"Valores baixando depois de decisoes restritivas: {sequencia}.",
-                                  floor=FACIAL_DOCUMENT, data_origin="history")
-        return self.triggered(p["one"], f"Valor menor depois de uma decisao restritiva: {sequencia}.",
-                              data_origin="history")
+        return reducoes, valores

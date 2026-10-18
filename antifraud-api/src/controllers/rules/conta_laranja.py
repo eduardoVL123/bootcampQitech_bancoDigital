@@ -5,13 +5,22 @@ from controllers.engine.reference import adaptive_level
 from controllers.engine.rule import Rule
 
 
+def _texto(minutos: int) -> str:
+    return f"{minutos // 60} h" if minutos >= 120 else f"{minutos} min"
+
+
 class ContaLaranja(Rule):
-    """Muitos titulares diferentes pagando a mesma conta na ultima hora (concentracao).
+    """Muitos titulares diferentes pagando a mesma conta (concentracao), na ultima hora ou no ultimo dia.
 
     Loja e vaquinha recebem de muita gente, entao nao ha bloqueio. Com
     referencia de entradas do recebedor, o corte e o dele: a loja que sempre
     recebe de 30 clientes por hora nao e laranja. Sem referencia, a idade do
     destino decide o peso, porque a conta laranja tipica e nova.
+
+    Duas janelas, cada uma com os seus cortes (`windows` na politica): a de 1 h
+    pega a rajada, e a de 24 h, com corte maior, pega a laranja que espalha as
+    vitimas ao longo do dia para nao juntar muitas na mesma hora. Vale a que
+    pontuar mais.
     """
 
     code = "CONTA_LARANJA"
@@ -20,24 +29,32 @@ class ContaLaranja(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
-        janela = p["window_minutes"]
-        pagadores = ctx.history.payers_to_account(ctx.destination_account.id, ctx.moment, janela) | {ctx.source_document}
+        nova = ctx.moment - ctx.destination_account.opening_date < timedelta(days=p["new_destination_days"])
+        achados = [achado for janela in p["windows"] if (achado := self._na_janela(ctx, params, janela, nova))]
+        if not achados:
+            return self.not_triggered()
+        pontos, detalhe, extra = max(achados, key=lambda achado: achado[0])
+        return self.triggered(pontos, detalhe, data_origin="history", **extra)
+
+    def _na_janela(self, ctx, params, janela, nova):
+        """(pontos, detalhe, extra) da janela, ou None se ela nao pontua."""
+        minutos = janela["minutes"]
+        pagadores = ctx.history.payers_to_account(ctx.destination_account.id, ctx.moment, minutos) | {ctx.source_document}
         contagem = len(pagadores)
 
-        nivel = adaptive_level(ctx, params, "payers", janela, contagem, p)
+        nivel = adaptive_level(ctx, params, "payers", minutos, contagem, janela)
         if nivel is not None:
             if not nivel.points:
-                return self.not_triggered(reference="adaptive", **nivel.describe())
-            return self.triggered(nivel.points, f"{contagem} pagadores distintos em {janela} min, acima do padrao do "
-                                  f"recebedor (limiares {nivel.moderate}/{nivel.high}).", data_origin="history",
-                                  reference="adaptive", **nivel.describe())
+                return None
+            return (nivel.points, f"{contagem} pagadores distintos em {_texto(minutos)}, acima do padrao do recebedor "
+                    f"(limiares {nivel.moderate}/{nivel.high}).",
+                    {"reference": "adaptive", "window_minutes": minutos, **nivel.describe()})
 
-        nova = ctx.moment - ctx.destination_account.opening_date < timedelta(days=p["new_destination_days"])
-        faixas = p["fallback_new"] if nova else p["fallback_old"]
+        faixas = janela["fallback_new"] if nova else janela["fallback_old"]
         for faixa in faixas:
             if contagem >= faixa["count"]:
                 idade = "nova" if nova else "antiga"
-                return self.triggered(faixa["points"], f"{contagem} pagadores distintos em {janela} min para uma conta "
-                                      f"{idade}, sem referencia do recebedor.", data_origin="history",
-                                      reference="fallback", payers=contagem)
-        return self.not_triggered(reference="fallback")
+                return (faixa["points"], f"{contagem} pagadores distintos em {_texto(minutos)} para uma conta {idade}, "
+                        "sem referencia do recebedor.",
+                        {"reference": "fallback", "window_minutes": minutos, "payers": contagem})
+        return None
