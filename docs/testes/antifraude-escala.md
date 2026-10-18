@@ -157,7 +157,7 @@ Mesmo notebook, banco zerado e enchido até 1 milhão de Pix, um processo, 30 Pi
 | cliente comum, tempo no banco por Pix | 6,6 ms | **3,3 ms** |
 | pagador com 10.000 Pix: motor p50 | 324 ms | **166 ms** |
 | loja com 1.000 recebimentos: motor p50 | 80 ms | **62 ms** |
-| loja com 10.000 recebimentos: motor p50 | 171 ms | 217 ms |
+| loja com 10.000 recebimentos: motor p50 (códigos diferentes, ver abaixo) | 171 ms | 217 ms |
 | rede /24 fora da tabela com 10.000 Pix com GPS: motor p50 | 65 ms | **45 ms** |
 | 1 chamador, 1 processo | 8,7 Pix/s | **11,8 Pix/s** |
 | 8 chamadores, 1 processo | 17,0 Pix/s | 17,9 Pix/s |
@@ -169,7 +169,15 @@ Na entrega, do zero: bancada 141 de 141, 199 testes da `antifraud-api` (em 2min3
 **O que muda na leitura:**
 
 - **Com 4 processos, o pool faz a diferença que faltava.** Sem ele, cada Pix abria 2 conexões, e o Postgres gastava CPU criando processos; com ele, 4 processos chegam a 40,8 Pix por segundo, 2,3 vezes um processo só, contra 1,8 vez antes.
-- **A loja com 10 mil recebimentos piorou nesta rodada** (171 para 217 ms, e p95 de 343 ms), e não tenho a explicação: o pool não muda a conta da régua, que é Python, e esse caso foi medido uma vez em cada montagem. Pode ser variação do histórico sorteado; só medindo de novo para saber. O item 3 da lista abaixo é o que ataca este caso de qualquer jeito.
+- **A loja com 10 mil recebimentos não piorou por causa do pool.** A linha da tabela compara códigos diferentes: os 171 ms são de antes de o `CONTA_LARANJA` ganhar a janela de 24 h (commit `f33ba60`), que calcula a régua de pagadores da loja uma segunda vez a cada Pix. Verificado com o mesmo código, motor p50, cada rodada com uma loja nova de 10 mil recebimentos:
+
+  | montagem | rodadas | motor p50 |
+  |---|---|---:|
+  | com pool, janelas de 1 h e 24 h (o que está publicado) | 3 | 188, 191, 193 ms |
+  | sem pool, janelas de 1 h e 24 h | 1 | 235 ms |
+  | com pool, só a janela de 1 h (política de teste, sem a de 24 h) | 2 | 145, 176 ms |
+
+  O pool tira uns 45 ms também neste caso. A janela de 24 h acrescenta uns 30 a 45 ms. E o mesmo caso oscila uns 30 ms entre rodadas: os 217 ms da tabela foram medidos com 1 milhão de Pix no banco, e os de cima com o banco quase vazio. O item 3 da lista abaixo, guardar a régua por conta e por dia, tira as duas contas do caminho de cada Pix.
 - **Pix para a mesma loja continuam limitados pela trava dela**, agora em uns 17 a 20 por segundo com 4 processos.
 
 ## O que continua em aberto
