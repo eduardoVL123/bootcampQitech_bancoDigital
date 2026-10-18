@@ -293,8 +293,9 @@ def monta_bancada() -> Bancada:
 
     b.pix(persona_a, loja_c, 4500, quando(HOJE, "11:00"),
           cenario="rotina_diaria", categoria="legit_clear",
-          status="approved", cenario_api="sem_alerta_relevante",
-          porque="valor na mediana, destino habitual, aparelho e GPS de sempre")
+          status="approved", cenario_api="pagamento_recorrente",
+          porque="valor na mediana, destino habitual, aparelho e GPS de sempre: o destino de sempre da o "
+                 "pagamento_recorrente, que vem antes de sem_alerta_relevante na ordem dos cenarios")
 
     b.pix(persona_a, persona_a, 150000, quando(HOJE, "11:30"),
           conta_destino=g.conta(aberta_em="2020-01-15"),
@@ -313,8 +314,9 @@ def monta_bancada() -> Bancada:
 
     b.pix(persona_b, fornecedor, 4200000, quando(HOJE, "10:00"),
           cenario="fornecedor_alto_valor_compativel", categoria="legit_hard",
-          status="approved", regras=["LIMITE_POR_PIX"],
-          porque="R$ 42 mil e alto, mas compativel com o fornecedor habitual; LIMITE_POR_PIX fica informativo com 0 pts")
+          status="approved", regras=["!LIMITE_POR_PIX"],
+          porque="R$ 42 mil e alto, mas compativel com o fornecedor habitual: o corte do LIMITE_POR_PIX nao dispara "
+                 "(a regra volta not_triggered, com o motivo no detail)")
 
     imobiliaria_nova = g.pessoa("imobiliaria-nova", pj=True, aberta_em="2016-04-11")
     b.pix(persona_a, imobiliaria_nova, 280000, quando(HOJE, "14:00"),
@@ -405,9 +407,10 @@ def monta_bancada() -> Bancada:
     imobiliaria_falsa = g.pessoa("imobiliaria-falsa", pj=True, aberta_em="2019-09-09")
     b.pix(persona_a, imobiliaria_falsa, 250000, quando("2026-09-22", "14:00"), device=g.aparelho("persona-a-novo-1"),
           cenario="burla_falso_aluguel_fora_da_janela", categoria="evasion",
-          status=["two_factor_required", "rejected"], cenario_api="quebra_de_padrao_mensal",
-          regras=["PADRAO_MENSAL", "APARELHO_NOVO", "CONTRAPARTE_INEDITA"],
-          porque="valor de aluguel no dia 22, longe da janela do dia 05, de aparelho novo para quem nunca recebeu")
+          status=["two_factor_required", "rejected"], cenario_api="primeiro_pagamento",
+          regras=["APARELHO_NOVO", "CONTRAPARTE_INEDITA"],
+          porque="valor de aluguel no dia 22, de aparelho novo para quem nunca recebeu: retido pelo aparelho e pelo "
+                 "recebedor. O PADRAO_MENSAL nao avalia (um pagamento grande por mes nao forma padrao; ver o README)")
 
     # Fase 4: fraudes nitidas -----------------------------------------------
 

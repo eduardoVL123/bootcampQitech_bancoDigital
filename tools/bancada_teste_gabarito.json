@@ -281,13 +281,12 @@
       "rejected"
     ],
     "expected_auth_level": null,
-    "expected_scenario": "quebra_de_padrao_mensal",
+    "expected_scenario": "primeiro_pagamento",
     "expected_rules": [
-      "PADRAO_MENSAL",
       "APARELHO_NOVO",
       "CONTRAPARTE_INEDITA"
     ],
-    "rationale": "valor de aluguel no dia 22, longe da janela do dia 05, de aparelho novo para quem nunca recebeu"
+    "rationale": "valor de aluguel no dia 22, de aparelho novo para quem nunca recebeu: retido pelo aparelho e pelo recebedor. O PADRAO_MENSAL nao avalia (um pagamento grande por mes nao forma padrao; ver o README)"
   },
   {
     "id": "pix-bt-0031",
@@ -1367,9 +1366,9 @@
     "expected_auth_level": "none",
     "expected_scenario": null,
     "expected_rules": [
-      "LIMITE_POR_PIX"
+      "!LIMITE_POR_PIX"
     ],
-    "rationale": "R$ 42 mil e alto, mas compativel com o fornecedor habitual; LIMITE_POR_PIX fica informativo com 0 pts"
+    "rationale": "R$ 42 mil e alto, mas compativel com o fornecedor habitual: o corte do LIMITE_POR_PIX nao dispara (a regra volta not_triggered, com o motivo no detail)"
   },
   {
     "id": "pix-bt-0106",
@@ -1412,9 +1411,9 @@
     "category": "legit_clear",
     "expected_status": "approved",
     "expected_auth_level": "none",
-    "expected_scenario": "sem_alerta_relevante",
+    "expected_scenario": "pagamento_recorrente",
     "expected_rules": [],
-    "rationale": "valor na mediana, destino habitual, aparelho e GPS de sempre"
+    "rationale": "valor na mediana, destino habitual, aparelho e GPS de sempre: o destino de sempre da o pagamento_recorrente, que vem antes de sem_alerta_relevante na ordem dos cenarios"
   },
   {
     "id": "pix-bt-0095",
