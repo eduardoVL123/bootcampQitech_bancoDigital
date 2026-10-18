@@ -212,7 +212,7 @@ Junto vão os testes que procuram falhas: invariantes da decisão, metamórficos
 RUN_ATAQUES=true pytest tests/antifraud_api/test_ataques.py -v
 ```
 
-A matemática da projeção do repasse (consumo dos lotes, ordem, fronteira do corte) tem testes de unidade, que importam `src` e rodam sem banco nem API. Ficam fora de `tests/`, que é caixa-preta, e o CI não os roda:
+A matemática da projeção do repasse (consumo dos lotes, ordem, fronteira do corte) tem testes de unidade, que importam `src` e rodam sem banco nem API. Ficam fora de `tests/`, que é caixa-preta. O `pytest` da raiz os recolhe junto com a suíte inteira (é o que o CI completo roda), e o CI curto os roda num passo próprio:
 
 ```bash
 pytest antifraud-api/tests
