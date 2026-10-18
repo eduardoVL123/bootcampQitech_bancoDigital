@@ -56,6 +56,14 @@ def test_noturno_para_cnpj_nao_dispara():
     assert not disparou(corpo, "NOTURNO")
 
 
+def test_noturno_para_cnpj_com_conta_nova_soma_25():
+    # A conta laranja aberta como MEI: e PJ, mas a conta tem 10 dias.
+    noite = _dia(22, 15)
+    corpo = analisa(pix(Pagador(), Recebedor(pj=True, aberta_em=noite - timedelta(days=10)), 150000, noite.isoformat()))
+
+    assert pontos(corpo, "NOTURNO") == 25
+
+
 def test_noturno_com_valor_pequeno_nao_dispara():
     corpo = analisa(pix(Pagador(), Recebedor(), 5000, _dia(23).isoformat()))
 
