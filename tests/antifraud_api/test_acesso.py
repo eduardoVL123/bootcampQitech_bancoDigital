@@ -2,11 +2,11 @@
 ou IP, GPS longe do IP, ambiente fora do Brasil, infraestrutura
 compartilhada e a ruptura de contexto."""
 import random
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from tests.utils.pix import (
-    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, Pagador, Recebedor, analisa, disparou, paga,
-    historico, nova_base, novo_ip, pix, pontos, regra,
+    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, AntifraudApi, Pagador, Recebedor, analisa,
+    disparou, paga, historico, nova_base, novo_ip, pix, pontos, regra,
 )
 
 
@@ -74,13 +74,86 @@ def test_voo_de_5_horas_nao_dispara():
     assert not disparou(corpo, "VIAGEM_IMPOSSIVEL")
 
 
-def test_dois_pix_no_mesmo_segundo_nao_dividem_por_zero():
+RIO_GPS = (-22.91, -43.17)  # a uns 360 km do GPS de Sao Paulo: acima do corte do GPS, abaixo do do IP
+
+
+def _no_mesmo_instante(gps_antes, gps_agora, data_agora=None, **over):
+    """Dois Pix do mesmo titular com a mesma transaction_date; devolve o corpo do segundo."""
+    pagador, hoje = Pagador(), nova_base()
+    analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat(), gps=gps_antes))
+    resposta = AntifraudApi.post(pix(pagador, Recebedor(), 5000, data_agora or hoje.isoformat(), gps=gps_agora, **over))
+    assert resposta.status_code == 201, resposta.text
+    assert "Infinity" not in resposta.text and "NaN" not in resposta.text
+    return resposta.json()
+
+
+def test_sao_paulo_e_recife_no_mesmo_instante_e_conflito_de_lugares():
+    # Intervalo zero nao pode apagar a contradicao: com 1 segundo de
+    # diferenca o motor pedia a facial, e no mesmo instante aprovava.
+    corpo = _no_mesmo_instante(SAO_PAULO_GPS, RECIFE_GPS)
+
+    viagem = regra(corpo, "VIAGEM_IMPOSSIVEL")
+    assert viagem["evaluation"] == "triggered" and viagem["raw_points"] == 40
+    assert viagem["simultaneous"] is True and viagem["kmh"] is None and viagem["km"] > 2000
+    assert corpo["status"] == "two_factor_required"
+    assert corpo["metadata"]["risk_score"] == 40
+    assert corpo["metadata"]["reason"] == "VIAGEM_IMPOSSIVEL"
+    assert "mesmo instante" in corpo["metadata"]["reason_description"]
+
+
+def test_sao_paulo_e_recife_com_1_segundo_continua_pedindo_facial():
     pagador, hoje = Pagador(), nova_base()
     analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat()))
 
-    corpo = analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat(), gps=RECIFE_GPS))
+    corpo = analisa(pix(pagador, Recebedor(), 5000, (hoje + timedelta(seconds=1)).isoformat(), gps=RECIFE_GPS))
 
-    assert regra(corpo, "VIAGEM_IMPOSSIVEL")["evaluation"] == "not_evaluable"
+    viagem = regra(corpo, "VIAGEM_IMPOSSIVEL")
+    assert viagem["simultaneous"] is False and viagem["kmh"] > 900
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_pontos_proximos_no_mesmo_instante_nao_disparam():
+    corpo = _no_mesmo_instante(SAO_PAULO_GPS, (-23.60, -46.70))
+
+    assert "VIAGEM_IMPOSSIVEL" in corpo["metadata"]["rules_not_triggered"]
+
+
+def test_no_mesmo_instante_o_corte_do_gps_e_do_ip_continuam_diferentes():
+    # 360 km: acima dos 100 km do GPS, abaixo dos 500 km do IP. Com o ponto
+    # anterior so pelo IP (sem GPS), o corte e o do IP.
+    so_gps = _no_mesmo_instante(SAO_PAULO_GPS, RIO_GPS)
+    ip_antes = _no_mesmo_instante(None, RIO_GPS)
+
+    assert disparou(so_gps, "VIAGEM_IMPOSSIVEL")
+    assert not disparou(ip_antes, "VIAGEM_IMPOSSIVEL")
+
+
+def test_o_mesmo_instante_escrito_em_outro_fuso_da_o_mesmo_conflito():
+    hoje = nova_base()
+    em_bogota = hoje.astimezone(timezone(timedelta(hours=-5))).isoformat()
+    pagador = Pagador()
+    analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 5000, em_bogota, gps=RECIFE_GPS))
+
+    assert regra(corpo, "VIAGEM_IMPOSSIVEL")["simultaneous"] is True
+
+
+def _conflito_no_mesmo_instante(aparelho_novo: bool):
+    pagador, hoje = Pagador(), nova_base()
+    _com_historico(pagador, hoje)
+    analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat()))
+    extra = {"aparelho": "dvc-ladrao-" + pagador.conta} if aparelho_novo else {}
+    return analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat(), gps=RECIFE_GPS, **extra))
+
+
+def test_conflito_no_mesmo_instante_com_aparelho_novo_pede_facial_document():
+    conhecido = _conflito_no_mesmo_instante(aparelho_novo=False)
+    novo = _conflito_no_mesmo_instante(aparelho_novo=True)
+
+    assert regra(conhecido, "VIAGEM_IMPOSSIVEL")["authentication_floor"] == "none"
+    assert regra(novo, "VIAGEM_IMPOSSIVEL")["authentication_floor"] == "facial_document"
+    assert novo["metadata"]["authentication"]["level"] == "facial_document"
 
 
 def test_sem_gps_a_viagem_impossivel_usa_o_ip():

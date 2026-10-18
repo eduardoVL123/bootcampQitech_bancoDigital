@@ -324,12 +324,17 @@ class HistoryRepository:
         )})
 
     def last_located(self, document: str, moment):
-        """O ultimo ponto conhecido do titular: o GPS, ou o lugar do IP sem GPS."""
-        return self._remember(("last_located", document), lambda: self.session.execute(text(
+        """O ultimo ponto conhecido do titular: o GPS, ou o lugar do IP sem GPS.
+
+        Inclui o Pix do mesmo instante (`<=`), e o empate de data se desfaz
+        pelo id, o gravado por ultimo: excluir o empate esconderia justamente
+        a contradicao de dois lugares ao mesmo tempo.
+        """
+        return self._remember(("last_located", document, moment), lambda: self.session.execute(text(
             "SELECT a.transaction_date, a.latitude, a.longitude, a.ip_latitude, a.ip_longitude "
             "FROM pix_analysis a WHERE a.source_document = :doc AND a.transaction_date <= :fim "
             "AND (a.latitude IS NOT NULL OR a.ip_latitude IS NOT NULL) "
-            "ORDER BY a.transaction_date DESC LIMIT 1"
+            "ORDER BY a.transaction_date DESC, a.id DESC LIMIT 1"
         ), {"doc": document, "fim": moment}).first())
 
     def approved_gps_points(self, document: str, moment, days: int) -> list:
