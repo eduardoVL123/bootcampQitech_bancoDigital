@@ -9,13 +9,12 @@ Uma API que recebe um Pix e decide, antes de o dinheiro sair, se ele **aprova**,
 | `POST /pix/transaction` | Analisa o Pix (contrato da seção 3.1 do desafio) e devolve `key`, `status` e `metadata`. `201` na primeira vez; `200` se o mesmo `id` chegar de novo com o mesmo conteúdo |
 | `GET /pix/transaction/{id}` | Devolve a análise gravada, pelo `id` do Pix |
 | `PATCH /pix/transaction/{id}` | O cliente informa o resultado da verificação pedida (`approved_by_client` ou `reproved_by_client`), como no fluxo de desafio da API Pix da QI. A análise original não muda |
-| `PUT /pix/account_limit` | O titular escolhe o próprio limite por Pix. Reduzir vale na hora; aumentar só vale 24 horas depois |
 
 Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositório.
 
 ## Como o motor de decisão funciona
 
-Cada Pix passa por **34 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
+Cada Pix passa por **33 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
 
 1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
 2. **Dado impossível não é risco, é erro.** Data que não existe (mês 13, 30 de fevereiro, fuso +25:00) volta `400`; data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422`. Nos dois casos, sem ser analisada.
@@ -47,7 +46,6 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 | `MONTANTE_DIARIO_ATIPICO` | acumulado aprovado de hoje + este contra a mediana dos totais diários, com pelo menos um aprovado antes hoje | > 3× a mediana e excesso ≥ R$ 1.000: +30. Mínimo de 7 dias com movimento em 30 | O dia como unidade de perfil. Compara o parcial de hoje com dias completos, conservador de propósito |
 | `ORIGEM_NOVA` | conta pagadora com menos de 48h | valor > R$ 1.000: +25 | Conta recém-aberta movimentando é o começo típico de conta laranja ou de cadastro com dado roubado |
 | `CONTA_REATIVADA` | atividade antiga observada, ≥ 60 dias parada, e agora ≥ 3 tentativas em 1h ou valor > R$ 5.000 | +30 | Conta comprada ou tomada fica parada e é usada de uma vez. O primeiro contato com o motor não é reativação |
-| `AUMENTO_PENDENTE` | pedido de aumento de limite há menos de 24h, ainda não vigente, e valor > 50% do limite atual | +40 | O roteiro da conta tomada: subir o limite e esvaziar. O aumento só vale em 24h (o Banco Central descreve 24 a 48h) |
 | `SONDAGEM_DE_LIMITE` | depois de um 2FA ou recusa nos últimos 15 min, tentar de novo com valor menor; nas últimas 2 h, só vale a sequência de duas reduções. Para outro destino, só conta se o valor ainda for ≥ 30% do anterior | 1 redução: +30 · 2 reduções seguidas: +50 e piso facial+documento | Ir baixando até achar o valor que passa. Uma redução pode ser ajuste legítimo. O almoço de R$ 30 dez minutos depois do 2FA do carro é outro pagamento, não sondagem |
 | `NOTURNO` | 20h às 6h em São Paulo, pessoa física para outra pessoa física, ou para PJ com conta de menos de 30 dias | valor > R$ 1.000: +25 | O Banco Central limita a R$ 1.000 o Pix noturno quando o recebedor é pessoa física diferente do pagador (IN BCB 512/2024, com as alterações da IN BCB 669/2025). Aqui é heurística de risco, não a regra regulatória. PJ estabelecida fica de fora (loja e delivery recebem de madrugada); a PJ nova entra, porque é o MEI de fachada da conta laranja |
 | `DATA_RETROATIVA` | a `transaction_date` é anterior, por mais de 5 min, ao Pix mais novo já analisado da conta | **0 pontos** e piso facial+documento | Toda janela é ancorada na data que o chamador informa: seis Pix mandados no mesmo minuto, com as datas recuando uma hora cada, escondiam a rajada de `VELOCITY`, `FATIAMENTO` e `SONDAGEM`. Até 5 min nada muda (a organização avisou que as datas chegam pouco fora de ordem), e o relógio do servidor não entra |
@@ -221,7 +219,7 @@ Dos três legítimos que não passaram direto, nenhum foi reprovado: a transfer�
 
 - **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas.
 - **Reputação, cadastro de CNPJ e localização de IP são mocks.** O mock de reputação segue o formato do `destination_statistics` da QI, e as faixas de IP são faixas de documentação com lugares fictícios. Em produção, a mesma tabela `ip_range_location` receberia uma base real (por exemplo a DB-IP City Lite, CC BY 4.0), sem mudar o motor. O CNAE do `TICKET_DO_RECEBEDOR` vem de um mock com dois CNPJs fictícios (uma doceria e uma concessionária); em produção, dos dados abertos do CNPJ da Receita, pelo documento que o DICT devolve, e os tetos de tíquete por atividade sairiam de dados reais de liquidação.
-- **O limite que o cliente escolhe é da plataforma (BaaS).** O motor não o aplica e não recusa Pix acima dele. Ele só guarda os pedidos (`PUT /pix/account_limit`: reduzir vale na hora, aumentar só depois de 24 h) para o `AUMENTO_PENDENTE`, que usa esse histórico como sinal de risco.
+- **O limite que o cliente escolhe é da plataforma (BaaS).** O motor não o aplica, não recusa Pix acima dele e não guarda os pedidos de mudança. O roteiro de pedir aumento e esvaziar a conta fica com quem aplica o limite e com as regras de ritmo e de acesso.
 - **A verificação é pedida, não executada.** O motor diz `facial` ou `facial_document`; o app executa e devolve o resultado pelo `PATCH`.
 - **O calendário é enxuto:** dia do mês com tolerância, sem dia útil nem feriado.
 - **A data é de quem chama.** Até 5 minutos fora de ordem o motor confia; além disso, a `DATA_RETROATIVA` pede a verificação reforçada, mas o motor não usa o relógio do servidor para datas no passado.

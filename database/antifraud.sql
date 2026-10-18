@@ -91,7 +91,6 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "MONTANTE_DIARIO_ATIPICO": {"days": 30, "min_days": 7, "multiple": 3, "min_excess": 100000, "points": 30},
     "ORIGEM_NOVA": {"max_age_hours": 48, "min_amount": 100000, "points": 25},
     "CONTA_REATIVADA": {"min_account_age_days": 30, "idle_days": 60, "burst_minutes": 60, "burst_count": 3, "min_amount": 500000, "points": 30},
-    "AUMENTO_PENDENTE": {"delay_hours": 24, "ratio": 0.5, "points": 40},
     "SONDAGEM_DE_LIMITE": {"window_minutes": 15, "long_window_minutes": 120, "one": 30, "two": 50, "other_destination_min_ratio": 0.3},
     "NOTURNO": {"start_hour": 20, "end_hour": 6, "min_amount": 100000, "points": 25, "new_legal_person_days": 30},
     "CALENDARIO": {"months": 3, "min_amount": 100000, "tolerance_days": 2, "share": 0.6, "min_per_month": 2},
@@ -229,31 +228,7 @@ CREATE TRIGGER pix_rule_result_is_append_only
     FOR EACH ROW EXECUTE FUNCTION refuse_change();
 
 -- ------------------------------------------------------------
--- 5. O LIMITE QUE O PROPRIO CLIENTE ESCOLHE
--- ------------------------------------------------------------
--- Reduzir vale na hora; aumentar so vale 24 horas depois do pedido. O
--- limite vigente num instante e a linha de effective_from mais recente
--- que ja comecou a valer.
-
-CREATE TABLE account_limit(
-    id BIGSERIAL PRIMARY KEY,
-    account_id BIGINT NOT NULL REFERENCES pix_account(id),
-    amount BIGINT NOT NULL CHECK (amount > 0),
-    change_type VARCHAR(10) NOT NULL CHECK (change_type IN ('initial', 'decrease', 'increase', 'same')),
-    requested_at TIMESTAMPTZ NOT NULL,
-    effective_from TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (effective_from >= requested_at)
-);
-
-CREATE INDEX account_limit_account ON account_limit (account_id, effective_from DESC);
-
-CREATE TRIGGER account_limit_is_append_only
-    BEFORE UPDATE OR DELETE ON account_limit
-    FOR EACH ROW EXECUTE FUNCTION refuse_change();
-
--- ------------------------------------------------------------
--- 6. REPUTACAO: O MOCK EXTERNO E A LISTA INTERNA
+-- 5. REPUTACAO: O MOCK EXTERNO E A LISTA INTERNA
 -- ------------------------------------------------------------
 -- O mock imita o formato do `destination_statistics` da API Pix da QI
 -- (contadores de fraude do DICT por janela: d90, m12, m60). E ficticio,
@@ -308,7 +283,7 @@ CREATE TRIGGER watchlist_is_append_only
     FOR EACH ROW EXECUTE FUNCTION refuse_change();
 
 -- ------------------------------------------------------------
--- 7. ONDE FICA CADA FAIXA DE IP
+-- 6. ONDE FICA CADA FAIXA DE IP
 -- ------------------------------------------------------------
 -- No hackathon, faixas de documentacao com lugares ficticios (mock). Em
 -- producao, a mesma tabela receberia uma base real de geolocalizacao de
@@ -327,7 +302,7 @@ CREATE TABLE ip_range_location(
 CREATE INDEX ip_range_location_network ON ip_range_location USING gist (network inet_ops);
 
 -- ------------------------------------------------------------
--- 8. O RESULTADO DO DESAFIO (2FA), QUANDO O CLIENTE INFORMA
+-- 7. O RESULTADO DO DESAFIO (2FA), QUANDO O CLIENTE INFORMA
 -- ------------------------------------------------------------
 
 CREATE TABLE pix_challenge_result(
@@ -343,7 +318,7 @@ CREATE TRIGGER pix_challenge_result_is_append_only
     FOR EACH ROW EXECUTE FUNCTION refuse_change();
 
 -- ------------------------------------------------------------
--- 9. SEEDS DE DEMONSTRACAO (TODOS FICTICIOS)
+-- 8. SEEDS DE DEMONSTRACAO (TODOS FICTICIOS)
 -- ------------------------------------------------------------
 
 INSERT INTO reputation_fixture (document, scope, statistics, entity_role, evidence_id, available_from, expires_at, fixture_version) VALUES

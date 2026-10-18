@@ -19,7 +19,7 @@ from errors import (
 )
 from models import PixAnalysis
 from repositories import (
-    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository,
+    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, PixRepository,
     PolicyRepository, ReputationRepository, WatchlistRepository,
 )
 from utils.document_number import has_valid_check_digits, is_legal_person, normalize_document
@@ -55,7 +55,6 @@ class PixController(BaseController):
         self.history_repo = HistoryRepository(self.context)
         self.ip_location_repo = IpLocationRepository(self.context)
         self.policy_repo = PolicyRepository(self.context)
-        self.limit_repo = LimitRepository(self.context)
         self.challenge_repo = ChallengeRepository(self.context)
         self.reputation_repo = ReputationRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
@@ -138,7 +137,7 @@ class PixController(BaseController):
             destination_account=destination_account, source_document=source_document,
             destination_document=destination_document, device_id=device_id,
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
-            ip_location=ip_location, history=self.history_repo, limits=self.limit_repo,
+            ip_location=ip_location, history=self.history_repo,
             reputation=self.reputation_repo, watchlist=self.watchlist_repo,
         )
         ctx.cache["params"] = params

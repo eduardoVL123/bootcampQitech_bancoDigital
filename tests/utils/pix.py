@@ -88,10 +88,6 @@ class AntifraudApi:
         return AntifraudApi.envia("GET", f"/pix/transaction/{pix_id}", token=token)
 
     @staticmethod
-    def put_limit(payload: dict) -> requests.Response:
-        return AntifraudApi.envia("PUT", "/pix/account_limit", json=payload)
-
-    @staticmethod
     def patch(pix_id: str, payload: dict) -> requests.Response:
         return AntifraudApi.envia("PATCH", f"/pix/transaction/{pix_id}", json=payload)
 
@@ -314,7 +310,7 @@ class AntifraudDb:
         try:
             with engine.connect() as conexao:
                 conexao.exec_driver_sql(
-                    "TRUNCATE pix_challenge_result, pix_rule_result, pix_analysis, account_limit, pix_account "
+                    "TRUNCATE pix_challenge_result, pix_rule_result, pix_analysis, pix_account "
                     "RESTART IDENTITY CASCADE"
                 )
         finally:
