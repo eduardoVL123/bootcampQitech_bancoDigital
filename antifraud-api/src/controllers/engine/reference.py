@@ -17,6 +17,7 @@ Tres cuidados, e o porque de cada um:
 - Sem 7 dias ativos e 20 eventos, nao ha regua: a regra usa a reserva.
 """
 import math
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from statistics import median
@@ -78,20 +79,42 @@ def _events(ctx, params, kind) -> list:
 
 
 def _peaks(ctx, events, kind, minutes) -> list:
-    """O pico da janela movel em cada dia com movimento."""
+    """O pico da janela movel em cada dia com movimento.
+
+    Os eventos chegam em ordem de data (as duas consultas tem ORDER BY), e a
+    janela desliza: cada evento entra uma vez e sai uma vez. Varrer de novo
+    todos os anteriores para cada evento dava o mesmo resultado com custo
+    quadratico: 10 mil eventos de uma loja levavam 11 s por Pix, contra
+    37 ms assim (docs/testes/antifraude-escala.md).
+    """
     janela = timedelta(minutes=minutes)
     fuso = ctx.local_moment.tzinfo
     por_dia = {}
-    for indice, (data, _valor, _extra) in enumerate(events):
-        dentro = [e for e in events[: indice + 1] if e[0] > data - janela]
+    esquerda = 0
+    soma = 0
+    documentos = Counter()
+    for indice, (data, valor, extra) in enumerate(events):
+        if kind == "approved_amount" and extra:
+            soma += valor
+        elif kind not in ("attempts", "approved_amount"):
+            documentos[extra] += 1
+        while events[esquerda][0] <= data - janela:
+            _saiu, valor_saiu, extra_saiu = events[esquerda]
+            if kind == "approved_amount" and extra_saiu:
+                soma -= valor_saiu
+            elif kind not in ("attempts", "approved_amount"):
+                documentos[extra_saiu] -= 1
+                if documentos[extra_saiu] == 0:
+                    del documentos[extra_saiu]
+            esquerda += 1
         if kind == "attempts":
-            valor = len(dentro)
+            atual = indice - esquerda + 1
         elif kind == "approved_amount":
-            valor = sum(e[1] for e in dentro if e[2])
+            atual = soma
         else:
-            valor = len({e[2] for e in dentro})
+            atual = len(documentos)
         dia = data.astimezone(fuso).date()
-        por_dia[dia] = max(por_dia.get(dia, 0), valor)
+        por_dia[dia] = max(por_dia.get(dia, 0), atual)
     return [pico for pico in por_dia.values() if pico > 0]
 
 

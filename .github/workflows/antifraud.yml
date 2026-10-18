@@ -43,6 +43,10 @@ jobs:
       # as duas, e nem a antifraud-api nem os testes dela usam. A data de
       # cada Pix vai no proprio payload.
       SERVER_LOCALHOST: "127.0.0.1"
+      # Liga o teste de escala (tests/antifraud_api/test_escala.py): ele monta
+      # 800 recebimentos pela API, perto de um minuto, e prova que o Pix para
+      # uma loja movimentada nao fica caro com o historico dela.
+      RUN_ESCALA: "true"
     steps:
       - uses: actions/checkout@v7
 
