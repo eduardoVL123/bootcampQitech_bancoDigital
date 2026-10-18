@@ -302,6 +302,12 @@ CREATE TABLE pix_challenge_result(
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- O fluxo do repasse (history_repository.flow_events) procura o Pix antigo
+-- confirmado dentro da janela pela data da confirmacao. Sem este indice,
+-- esse ramo varreria todo o historico da conta.
+CREATE INDEX pix_challenge_result_approved_event ON pix_challenge_result (event_date)
+    WHERE result = 'approved_by_client';
+
 CREATE TRIGGER pix_challenge_result_is_append_only
     BEFORE UPDATE OR DELETE ON pix_challenge_result
     FOR EACH ROW EXECUTE FUNCTION refuse_change();

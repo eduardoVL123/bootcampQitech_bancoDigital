@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from tests.utils.pix import (
     RECEBEDOR_ALERTA, RECEBEDOR_MARCACAO_CRITICA, AntifraudApi, Pagador, Recebedor, analisa, disparou, historico,
-    nova_base, pix, pontos, regra,
+    nova_base, paga, pix, pontos, regra,
 )
 
 CASA = "99999999"
@@ -197,17 +197,236 @@ def test_quatro_pagadores_ao_longo_do_dia_nao_bastam_para_o_repasse():
     assert not disparou(corpo, "REPASSE_RAPIDO")
 
 
-def test_devolver_a_quem_pagou_nao_e_repasse():
+def _vitimas_pagam(conta, hoje, quantas=3, valor=100000, primeiro_minuto=0):
+    """Titulares diferentes pagam a conta, um por minuto. O 2FA, se vier, e confirmado: o dinheiro entrou."""
+    pagadores = [Pagador() for _ in range(quantas)]
+    for indice, pagador in enumerate(pagadores):
+        paga(pix(pagador, conta, valor, (hoje + timedelta(minutes=primeiro_minuto + indice)).isoformat()))
+    return pagadores
+
+
+def _sai(pagador, recebedor, valor, data):
+    """Uma saida que virou dinheiro: aprovada, ou com o 2FA confirmado."""
+    corpo = paga(pix(pagador, recebedor, valor, data.isoformat()))
+    assert corpo["status"] != "rejected", corpo["metadata"]["reason"]
+    return corpo
+
+
+def _fluxo(corpo):
+    resultado = regra(corpo, "REPASSE_RAPIDO")
+    return {chave: resultado[chave] for chave in ("window_minutes", "incoming", "refunded", "outflow", "base",
+                                                  "current_refund", "current_outflow", "qualified_payers")}
+
+
+def test_tres_entradas_e_uma_saida_de_2700_soma_60():
+    # O replay de cada entrada nao conta o dinheiro duas vezes.
     hoje = nova_base()
     conta = Recebedor(participante=CASA)
-    pagadores = [Pagador() for _ in range(4)]
-    for indice, pagador in enumerate(pagadores):
-        analisa(pix(pagador, conta, 100000, (hoje + timedelta(minutes=indice)).isoformat()))
-    devolve_para = Recebedor(documento=pagadores[0].documento)
+    for indice in range(3):
+        entrada = pix(Pagador(), conta, 100000, (hoje + timedelta(minutes=indice)).isoformat())
+        paga(entrada)
+        analisa(entrada)
 
-    corpo = analisa(pix(conta.como_pagador(), devolve_para, 350000, (hoje + timedelta(minutes=10)).isoformat()))
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 270000, (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo) == {"window_minutes": 60, "incoming": 300000, "refunded": 0, "outflow": 270000,
+                             "base": 300000, "current_refund": 0, "current_outflow": 270000, "qualified_payers": 3}
+    assert regra(corpo, "REPASSE_RAPIDO")["attribution"] == "fifo_heuristic"
+
+
+def test_repasse_fatiado_em_tres_saidas_dispara_na_terceira():
+    # R$ 3.000 de tres titulares saem em tres Pix de R$ 1.000. Cada saida e
+    # um terco do que entrou; o acumulado e o repasse inteiro.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje)
+    laranja = conta.como_pagador()
+    anteriores = [_sai(laranja, Recebedor(), 100000, hoje + timedelta(minutes=10 + indice)) for indice in range(2)]
+
+    corpo = analisa(pix(laranja, Recebedor(), 100000, (hoje + timedelta(minutes=12)).isoformat()))
+
+    assert not any(disparou(anterior, "REPASSE_RAPIDO") for anterior in anteriores)
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo)["outflow"] == 300000
+    assert _fluxo(corpo)["current_outflow"] == 100000
+
+
+def test_centavo_do_destino_nao_transforma_o_repasse_em_devolucao():
+    # O destino final manda R$ 0,01 para a conta e depois recebe R$ 2.700: so
+    # o centavo e devolucao, o resto e o dinheiro das vitimas saindo.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje)
+    destino = Pagador()
+    paga(pix(destino, conta, 1, (hoje + timedelta(minutes=5)).isoformat()))
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(documento=destino.documento), 270000,
+                        (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo) == {"window_minutes": 60, "incoming": 300001, "refunded": 1, "outflow": 269999,
+                             "base": 300000, "current_refund": 1, "current_outflow": 269999, "qualified_payers": 3}
+
+
+def test_devolver_mais_que_o_credito_de_quem_pagou_e_repasse():
+    # Era o teste que aceitava a devolucao inteira so porque o destino estava
+    # entre os pagadores. Ele pagou R$ 1.000: o resto e dinheiro dos outros.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    pagadores = _vitimas_pagam(conta, hoje, 4)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(documento=pagadores[0].documento), 350000,
+                        (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo) == {"window_minutes": 60, "incoming": 400000, "refunded": 100000, "outflow": 250000,
+                             "base": 300000, "current_refund": 100000, "current_outflow": 250000,
+                             "qualified_payers": 3}
+
+
+def test_devolver_a_quem_pagou_ate_o_credito_nao_e_repasse():
+    # Cada um recebe de volta o que pagou: nada de terceiros sai da conta.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    pagadores = _vitimas_pagam(conta, hoje)
+    laranja = conta.como_pagador()
+
+    corpos = [_sai(laranja, Recebedor(documento=pagador.documento), 100000, hoje + timedelta(minutes=10 + indice))
+              for indice, pagador in enumerate(pagadores)]
+    depois = analisa(pix(laranja, Recebedor(), 100000, (hoje + timedelta(minutes=20)).isoformat()))
+
+    assert not any(disparou(corpo, "REPASSE_RAPIDO") for corpo in corpos)
+    assert not disparou(depois, "REPASSE_RAPIDO")
+
+
+def test_o_mesmo_credito_so_justifica_uma_devolucao():
+    # Quem pagou R$ 100 recebe R$ 100 de volta, e depois mais R$ 100. A
+    # segunda ja nao tem credito dele: escoa o dinheiro das vitimas e completa
+    # o repasse que a saida de R$ 2.300 tinha deixado abaixo do corte.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje)
+    amigo = Pagador()
+    paga(pix(amigo, conta, 10000, (hoje + timedelta(minutes=5)).isoformat()))
+    laranja, volta = conta.como_pagador(), Recebedor(documento=amigo.documento)
+    escoou = _sai(laranja, Recebedor(), 230000, hoje + timedelta(minutes=10))
+    devolveu = _sai(laranja, volta, 10000, hoje + timedelta(minutes=11))
+
+    corpo = analisa(pix(laranja, volta, 10000, (hoje + timedelta(minutes=12)).isoformat()))
+
+    assert not disparou(escoou, "REPASSE_RAPIDO")
+    assert not disparou(devolveu, "REPASSE_RAPIDO")
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo) == {"window_minutes": 60, "incoming": 310000, "refunded": 10000, "outflow": 240000,
+                             "base": 300000, "current_refund": 0, "current_outflow": 10000, "qualified_payers": 3}
+
+
+def test_saida_antes_das_entradas_nao_usa_credito_que_nao_existia():
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    laranja = conta.como_pagador()
+    _sai(laranja, Recebedor(), 270000, hoje)
+    _vitimas_pagam(conta, hoje, primeiro_minuto=1)
+
+    corpo = analisa(pix(laranja, Recebedor(), 50000, (hoje + timedelta(minutes=10)).isoformat()))
 
     assert not disparou(corpo, "REPASSE_RAPIDO")
+
+
+def test_credito_consumido_nao_volta_e_entrada_nova_cria_credito_novo():
+    # O primeiro lote escoou ate o credito do pagador 1. A saida para ele
+    # depois nao e devolucao: o credito dele ja saiu. Com o segundo lote, o
+    # acumulado chega a 80%.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    primeiros = _vitimas_pagam(conta, hoje)
+    laranja = conta.como_pagador()
+    _sai(laranja, Recebedor(), 200000, hoje + timedelta(minutes=5))
+    _vitimas_pagam(conta, hoje, primeiro_minuto=10)
+
+    corpo = analisa(pix(laranja, Recebedor(documento=primeiros[0].documento), 280000,
+                        (hoje + timedelta(minutes=15)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo) == {"window_minutes": 60, "incoming": 600000, "refunded": 0, "outflow": 480000,
+                             "base": 600000, "current_refund": 0, "current_outflow": 280000, "qualified_payers": 6}
+
+
+def _entrada_com_desafio(conta, hoje, resultado):
+    """R$ 25 mil de um terceiro 3 h antes (fora da janela de 1 h), com o desafio respondido em hoje + 5 min."""
+    entrada = pix(Pagador(), conta, 2500000, (hoje - timedelta(hours=3)).isoformat())
+    assert analisa(entrada)["status"] == "two_factor_required"
+    resposta = AntifraudApi.patch(entrada["id"], {"challenge_result": resultado,
+                                                  "event_date": (hoje + timedelta(minutes=5)).isoformat()})
+    assert resposta.status_code == 200, resposta.text
+
+
+def test_credito_confirmado_entra_no_fluxo_so_depois_da_confirmacao():
+    # O Pix e de 3 h antes, e a confirmacao, de dentro da janela de 1 h. Antes
+    # dela, o credito estava pendente e nao financia nada; depois, entra na
+    # janela pela confirmacao, e nao some pelo filtro da data do Pix.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _entrada_com_desafio(conta, hoje, "approved_by_client")
+    _vitimas_pagam(conta, hoje, 2)
+    laranja = conta.como_pagador()
+
+    antes = analisa(pix(laranja, Recebedor(), 2500000, (hoje + timedelta(minutes=3)).isoformat()))
+    depois = analisa(pix(laranja, Recebedor(), 2500000, (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert not disparou(antes, "REPASSE_RAPIDO")
+    assert pontos(depois, "REPASSE_RAPIDO") == 60
+    assert _fluxo(depois)["window_minutes"] == 60
+    assert _fluxo(depois)["incoming"] == 2700000
+
+
+def test_credito_com_desafio_recusado_nao_financia_o_repasse():
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _entrada_com_desafio(conta, hoje, "reproved_by_client")
+    _vitimas_pagam(conta, hoje, 2)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 2500000, (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert not disparou(corpo, "REPASSE_RAPIDO")
+
+
+def test_mandar_para_outra_conta_propria_nao_apaga_o_repasse():
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(documento=conta.documento), 270000,
+                        (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+
+
+def test_transferencia_entre_contas_proprias_sem_terceiros_nao_e_repasse():
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    for indice in range(3):
+        paga(pix(Pagador(documento=conta.documento), conta, 100000, (hoje + timedelta(minutes=indice)).isoformat()))
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(documento=conta.documento), 270000,
+                        (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert not disparou(corpo, "REPASSE_RAPIDO")
+
+
+def test_o_corte_de_80_por_cento_e_exato():
+    hoje = nova_base()
+    no_corte, abaixo = Recebedor(participante=CASA), Recebedor(participante=CASA)
+    _vitimas_pagam(no_corte, hoje)
+    _vitimas_pagam(abaixo, hoje)
+
+    exato = analisa(pix(no_corte.como_pagador(), Recebedor(), 240000, (hoje + timedelta(minutes=10)).isoformat()))
+    um_centavo_abaixo = analisa(pix(abaixo.como_pagador(), Recebedor(), 239999,
+                                    (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(exato, "REPASSE_RAPIDO") == 60
+    assert not disparou(um_centavo_abaixo, "REPASSE_RAPIDO")
 
 
 def test_saida_pequena_nao_e_repasse():

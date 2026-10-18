@@ -261,16 +261,46 @@ class HistoryRepository:
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
         )})
 
-    def received_by_account(self, account_id: int, moment, minutes: int) -> tuple:
-        """O que a conta recebeu (aprovado) na janela: total e quem pagou."""
-        def consulta():
-            linhas = self._all(
-                f"SELECT a.source_document, a.amount FROM pix_analysis a WHERE a.destination_account_id = :conta "
-                f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-                conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
-            )
-            return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
-        return self._remember(("received", account_id, minutes), consulta)
+    def flow_events(self, account_id: int, moment, minutes: int) -> list:
+        """As entradas e saidas da conta que viraram dinheiro, por disponibilidade, na janela.
+
+        E o insumo da projecao do repasse (controllers/engine/flow.py). Aqui
+        o relogio e o da disponibilidade, nao o da data do Pix: o aprovado
+        direto fica disponivel na transaction_date; o desafio confirmado, em
+        max(transaction_date, event_date), e so se a confirmacao ja tinha
+        acontecido no instante avaliado. Por isso o filtro nao pode ser so
+        `transaction_date > inicio`: um Pix antigo confirmado dentro da
+        janela entra nela, no instante da confirmacao.
+
+        Tres ramos por lado, cada um no indice que serve a ele: os dois
+        primeiros pela conta e data; o terceiro (Pix de antes da janela,
+        confirmado dentro dela) pelo indice parcial das confirmacoes. Os
+        ramos nao se sobrepoem: analise APPROVED nunca tem desafio. Devolve
+        (disponivel, id, lado, valor, documento e conta da outra ponta), em
+        ordem de (disponivel, id).
+        """
+        ramos = []
+        for lado, conta, documento, outra in (("in", "destination_account_id", "source_document", "source_account_id"),
+                                              ("out", "source_account_id", "destination_document",
+                                               "destination_account_id")):
+            colunas = f"'{lado}', a.amount, a.{documento}, a.{outra}"
+            ramos += [
+                f"SELECT a.transaction_date, a.id, {colunas} FROM pix_analysis a "
+                f"WHERE a.{conta} = :conta AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+                "AND a.status_id = (SELECT id FROM pix_status WHERE enumerator = 'APPROVED')",
+                f"SELECT greatest(a.transaction_date, c.event_date), a.id, {colunas} FROM pix_analysis a "
+                "JOIN pix_challenge_result c ON c.analysis_id = a.id AND c.result = 'approved_by_client' "
+                f"WHERE a.{conta} = :conta AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+                "AND c.event_date <= :fim",
+                f"SELECT c.event_date, a.id, {colunas} FROM pix_challenge_result c "
+                "JOIN pix_analysis a ON a.id = c.analysis_id "
+                "WHERE c.result = 'approved_by_client' AND c.event_date > :inicio AND c.event_date <= :fim "
+                f"AND a.{conta} = :conta AND a.transaction_date <= :inicio",
+            ]
+        return self._remember(("flow", account_id, moment, minutes), lambda: self._all(
+            " UNION ALL ".join(ramos) + " ORDER BY 1, 2",
+            conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
+        ))
 
     def approved_credits_from_others(self, account_id: int, payer_document: str, moment, days: int) -> list:
         """(valor, data, pagador) dos creditos aprovados na conta, de quem nao e o pagador de agora.
