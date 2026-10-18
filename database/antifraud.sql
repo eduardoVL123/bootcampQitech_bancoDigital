@@ -63,7 +63,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "PERFIL": {
         "window_days": 90, "min_difference": 50000,
         "references": {
-            "pair": {"min_payments": 5, "min_days": 3, "min_span_days": 14, "window_days": 365},
+            "pair": {"min_payments": 3, "min_days": 3, "min_span_days": 14, "window_days": 365},
             "calendar_phase": {"min_payments": 10, "min_days": 3},
             "payer": {"min_payments": 10, "min_days": 3}
         },
@@ -125,13 +125,18 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
              "fallback_old": [{"count": 20, "points": 30}, {"count": 10, "points": 20}],
              "moderate": {"minimum": 10, "multiple": 2, "k": 3, "points": 40},
              "high": {"minimum": 20, "multiple": 3, "k": 6, "points": 60}}
-        ]
+        ],
+        "long": {"windows_hours": [24, 168], "min_new_payers": 6, "min_amount": 300000, "min_average": 20000,
+                 "multiple": 3, "history_days": 30, "points_new": 60, "points_old": 25}
     },
-    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}], "share": 0.8, "points": 60, "inconclusive_points": 20},
+    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}],
+                       "share": 0.8, "points": 60, "inconclusive_points": 20, "cumulative": true,
+                       "hard_block": true, "hard_block_max_destination_days": 90},
     "COORDENACAO_ENTRE_CONTAS": {"window_minutes": 10, "min_documents": 3, "destination_max_days": 7, "points": 40},
-    "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000},
+    "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000, "points_by_hops": {"1": 60, "2": 30},
+                      "reverse": {"hours": 24, "min_payers": 2, "share": 0.5, "points": 60}},
     "REPUTACAO_EXTERNA": {"alert_points": 40, "min_reporters": 1, "application_fraud_new_account_days": 90, "application_fraud_same_holder_days": 30},
-    "REPUTACAO_INTERNA": {"points": 40},
+    "REPUTACAO_INTERNA": {"points": 40, "cautelar_hours": 24, "reports_window_days": 30, "min_reporters": 2, "confirmed_days": 30, "device_days": 30},
     "MESMA_TITULARIDADE": {"discount": 10},
     "DESTINO_CONFIAVEL": {"discount": 10, "min_payments": 3, "min_days": 3, "min_span_days": 7},
     "DATA_RETROATIVA": {"tolerance_seconds": 300},
@@ -252,12 +257,17 @@ CREATE TABLE cnpj_fixture(
 
 -- A lista interna: casos confirmados, semeados, ou o "nao fui eu" do
 -- titular depois de um desafio. Nunca a decisao do proprio motor.
+-- creator: 'external' e o caso confirmado fora daqui (semeado); 'client' e a
+-- cautelar de um "nao fui eu" so; 'confirmed' e o documento que duas fontes
+-- independentes apontaram (dois titulares, ou um titular e a reputacao
+-- externa). `reporter` e o documento de quem disse "nao fui eu".
 CREATE TABLE watchlist(
     id BIGSERIAL PRIMARY KEY,
     kind VARCHAR(10) NOT NULL CHECK (kind IN ('device', 'document')),
     value VARCHAR(64) NOT NULL,
     report_type VARCHAR(12) NOT NULL CHECK (report_type IN ('fraud', 'compliance')),
-    creator VARCHAR(10) NOT NULL CHECK (creator IN ('client', 'external')),
+    creator VARCHAR(10) NOT NULL CHECK (creator IN ('client', 'external', 'confirmed')),
+    reporter VARCHAR(14),
     evidence_id VARCHAR(80) NOT NULL UNIQUE,
     available_from TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,

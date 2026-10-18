@@ -304,6 +304,12 @@
         "tag": "8afbce",
         "falha": 1.0,
         "decisoes": "approved 3"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 3"
       }
     ]
   },
@@ -416,6 +422,12 @@
       {
         "em": "2026-10-17T17:53:24",
         "tag": "8afbce",
+        "falha": 1.0,
+        "decisoes": "approved 8"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
         "falha": 1.0,
         "decisoes": "approved 8"
       }
@@ -701,6 +713,12 @@
         "tag": "8afbce",
         "falha": 1.0,
         "decisoes": "rejected 1"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "rejected 1"
       }
     ]
   },
@@ -871,6 +889,12 @@
         "tag": "b765da",
         "falha": 1.0,
         "decisoes": "approved 12"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 12"
       }
     ]
   },
@@ -1018,6 +1042,12 @@
         "tag": "b765da",
         "falha": 1.0,
         "decisoes": "approved 11, facial 1, facial_document 2"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 9, facial 1, facial_document 4"
       }
     ]
   },
@@ -1820,6 +1850,12 @@
         "tag": "d20f49",
         "falha": 1.0,
         "decisoes": "approved 2"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 2"
       }
     ]
   },
@@ -1844,6 +1880,12 @@
       {
         "em": "2026-10-17T18:06:33",
         "tag": "d20f49",
+        "falha": 1.0,
+        "decisoes": "facial 1"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
         "falha": 1.0,
         "decisoes": "facial 1"
       }
@@ -1871,6 +1913,12 @@
       {
         "em": "2026-10-17T18:06:50",
         "tag": "d20f49",
+        "falha": 1.0,
+        "decisoes": "approved 1"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
         "falha": 1.0,
         "decisoes": "approved 1"
       }
@@ -1991,6 +2039,678 @@
         "tag": "73a916",
         "falha": 1.0,
         "decisoes": "rejected 1"
+      }
+    ]
+  },
+  {
+    "chave": "abuso_financeiro_de_idoso|fatia_pct=30,modo=de_uma_vez",
+    "perfil": "abuso_financeiro_de_idoso",
+    "tipo": "fraude",
+    "botoes": {
+      "modo": "de_uma_vez",
+      "fatia_pct": 30
+    },
+    "semente": 454076,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "CONTRAPARTE_INEDITA",
+      "DESTINO_CONFIAVEL",
+      "GEO_AUSENTE",
+      "NOTURNO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "facial_document 1"
+      }
+    ]
+  },
+  {
+    "chave": "conta_dormente|aparelho=novo,meses_parada=3,padrao=recebe_e_repassa",
+    "perfil": "conta_dormente",
+    "tipo": "fraude",
+    "botoes": {
+      "meses_parada": 3,
+      "aparelho": "novo",
+      "padrao": "recebe_e_repassa"
+    },
+    "semente": 234837,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "CONTRAPARTE_INEDITA",
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO",
+      "REPASSE_RAPIDO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 0.526,
+        "decisoes": "approved 4, rejected 1"
+      }
+    ]
+  },
+  {
+    "chave": "golpe_escalonado|crescimento=1.1,intervalo_dias=7,parcelas=8,valor_inicial=3",
+    "perfil": "golpe_escalonado",
+    "tipo": "fraude",
+    "botoes": {
+      "parcelas": 8,
+      "crescimento": 1.1,
+      "intervalo_dias": 7,
+      "valor_inicial": 3
+    },
+    "semente": 651247,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 8"
+      }
+    ]
+  },
+  {
+    "chave": "repasse_cascata|aparelho_mula=novo,atraso_min=5,camadas=2,divisao=3,fracao=95,idade_contas_dias=400",
+    "perfil": "repasse_cascata",
+    "tipo": "fraude",
+    "botoes": {
+      "fracao": 95,
+      "atraso_min": 5,
+      "camadas": 2,
+      "divisao": 3,
+      "idade_contas_dias": 400,
+      "aparelho_mula": "novo"
+    },
+    "semente": 656153,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "CONTRAPARTE_INEDITA",
+      "DESTINO_CONFIAVEL",
+      "VELOCITY"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 14, facial 1"
+      }
+    ]
+  },
+  {
+    "chave": "qr_code_adulterado|janela_horas=48,recebedor=pj_antiga,vitimas=20",
+    "perfil": "qr_code_adulterado",
+    "tipo": "fraude",
+    "botoes": {
+      "vitimas": 20,
+      "janela_horas": 48,
+      "recebedor": "pj_antiga"
+    },
+    "semente": 447412,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 20"
+      }
+    ]
+  },
+  {
+    "chave": "fraude_do_proprio_cliente|intervalo_dias=4,multiplo=3,pagamentos=3,repasse_do_comparsa=False",
+    "perfil": "fraude_do_proprio_cliente",
+    "tipo": "fraude",
+    "botoes": {
+      "pagamentos": 3,
+      "multiplo": 3,
+      "repasse_do_comparsa": false,
+      "intervalo_dias": 4
+    },
+    "semente": 160526,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 3"
+      }
+    ]
+  },
+  {
+    "chave": "mao_fantasma|destino=conta_antiga_alugada,destinos_distintos=True,hora=15:00,intervalo_min=40,pix=3,valor_total=20",
+    "perfil": "mao_fantasma",
+    "tipo": "fraude",
+    "botoes": {
+      "pix": 3,
+      "valor_total": 20,
+      "intervalo_min": 40,
+      "destino": "conta_antiga_alugada",
+      "destinos_distintos": true,
+      "hora": "15:00"
+    },
+    "semente": 534400,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "CONTRAPARTE_INEDITA",
+      "DESTINO_CONFIAVEL",
+      "MONTANTE_DIARIO_ATIPICO",
+      "PERFIL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "facial_document 3"
+      }
+    ]
+  },
+  {
+    "chave": "mao_fantasma|destino=conta_antiga_alugada,destinos_distintos=True,hora=21:40,intervalo_min=40,pix=3,valor_total=2",
+    "perfil": "mao_fantasma",
+    "tipo": "fraude",
+    "botoes": {
+      "pix": 3,
+      "valor_total": 2,
+      "intervalo_min": 40,
+      "destino": "conta_antiga_alugada",
+      "destinos_distintos": true,
+      "hora": "21:40"
+    },
+    "semente": 460999,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 3"
+      }
+    ]
+  },
+  {
+    "chave": "sondagem_de_limite|aparelho=habitual,degraus=5,fator=0.33,intervalo_min=2,primeiro=40",
+    "perfil": "sondagem_de_limite",
+    "tipo": "fraude",
+    "botoes": {
+      "degraus": 5,
+      "fator": 0.33,
+      "intervalo_min": 2,
+      "aparelho": "habitual",
+      "primeiro": 40
+    },
+    "semente": 45086,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO",
+      "MONTANTE_DIARIO_ATIPICO",
+      "PERFIL",
+      "SONDAGEM_DE_LIMITE"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 0.673,
+        "decisoes": "facial_document 1, rejected 4"
+      }
+    ]
+  },
+  {
+    "chave": "lento_e_gradual|dias_aquecendo=0,dias_drenando=10,multiplo_diario=1",
+    "perfil": "lento_e_gradual",
+    "tipo": "fraude",
+    "botoes": {
+      "dias_aquecendo": 0,
+      "dias_drenando": 10,
+      "multiplo_diario": 1
+    },
+    "semente": 368239,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 10"
+      }
+    ]
+  },
+  {
+    "chave": "fazenda_de_aparelhos|contas=6,janela_min=600,mesmo_destino=True,mesmo_ip=True,rotaciona_aparelho=True",
+    "perfil": "fazenda_de_aparelhos",
+    "tipo": "fraude",
+    "botoes": {
+      "contas": 6,
+      "rotaciona_aparelho": true,
+      "mesmo_destino": true,
+      "janela_min": 600,
+      "mesmo_ip": true
+    },
+    "semente": 657446,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "DESTINO_NOVO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "facial 6"
+      }
+    ]
+  },
+  {
+    "chave": "sequestro_relampago|hora=23:30,local=casa,pede_aumento=False,pix=2,valor_cada=100000",
+    "perfil": "sequestro_relampago",
+    "tipo": "fraude",
+    "botoes": {
+      "pix": 2,
+      "valor_cada": 100000,
+      "pede_aumento": false,
+      "local": "casa",
+      "hora": "23:30"
+    },
+    "semente": 577105,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO",
+      "MONTANTE_DIARIO_ATIPICO",
+      "PERFIL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 0.5,
+        "decisoes": "facial_document 1, rejected 1"
+      }
+    ]
+  },
+  {
+    "chave": "falsa_central|destino=pj_antiga,hora=14:00,parcelas=4,valor=4",
+    "perfil": "falsa_central",
+    "tipo": "fraude",
+    "botoes": {
+      "valor": 4,
+      "parcelas": 4,
+      "destino": "pj_antiga",
+      "hora": "14:00"
+    },
+    "semente": 994105,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 4"
+      }
+    ]
+  },
+  {
+    "chave": "recebedor_ou_aparelho_marcado|marca=doc_alerta_risco,multiplo=10",
+    "perfil": "recebedor_ou_aparelho_marcado",
+    "tipo": "fraude",
+    "botoes": {
+      "marca": "doc_alerta_risco",
+      "multiplo": 10
+    },
+    "semente": 608257,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "REPUTACAO_EXTERNA"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "facial 1"
+      }
+    ]
+  },
+  {
+    "chave": "repasse_cascata|aparelho_mula=habitual,atraso_min=5,camadas=3,divisao=1,fracao=95,idade_contas_dias=400",
+    "perfil": "repasse_cascata",
+    "tipo": "fraude",
+    "botoes": {
+      "fracao": 95,
+      "atraso_min": 5,
+      "camadas": 3,
+      "divisao": 1,
+      "idade_contas_dias": 400,
+      "aparelho_mula": "habitual"
+    },
+    "semente": 577929,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "CONTRAPARTE_INEDITA",
+      "DESTINO_CONFIAVEL",
+      "REPASSE_RAPIDO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 5, facial_document 1"
+      }
+    ]
+  },
+  {
+    "chave": "selfie_falsificada|destino=conta_antiga_alugada,fatias=6,localizacao=outra_cidade,valor=1",
+    "perfil": "selfie_falsificada",
+    "tipo": "fraude",
+    "botoes": {
+      "valor": 1,
+      "fatias": 6,
+      "localizacao": "outra_cidade",
+      "destino": "conta_antiga_alugada"
+    },
+    "semente": 240990,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "DESTINO_CONFIAVEL",
+      "MONTANTE_DIARIO_ATIPICO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 6"
+      },
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 6"
+      }
+    ]
+  },
+  {
+    "chave": "fraude_do_proprio_cliente|intervalo_dias=4,multiplo=3,pagamentos=5,repasse_do_comparsa=False",
+    "perfil": "fraude_do_proprio_cliente",
+    "tipo": "fraude",
+    "botoes": {
+      "pagamentos": 5,
+      "multiplo": 3,
+      "repasse_do_comparsa": false,
+      "intervalo_dias": 4
+    },
+    "semente": 310660,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 5"
+      }
+    ]
+  },
+  {
+    "chave": "falsa_central|destino=conta_antiga_alugada,hora=20:30,parcelas=4,valor=10",
+    "perfil": "falsa_central",
+    "tipo": "fraude",
+    "botoes": {
+      "valor": 10,
+      "parcelas": 4,
+      "destino": "conta_antiga_alugada",
+      "hora": "20:30"
+    },
+    "semente": 413660,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "MONTANTE_DIARIO_ATIPICO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 4"
+      }
+    ]
+  },
+  {
+    "chave": "golpe_escalonado|crescimento=1.5,intervalo_dias=1,parcelas=3,valor_inicial=3",
+    "perfil": "golpe_escalonado",
+    "tipo": "fraude",
+    "botoes": {
+      "parcelas": 3,
+      "crescimento": 1.5,
+      "intervalo_dias": 1,
+      "valor_inicial": 3
+    },
+    "semente": 633259,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 3"
+      }
+    ]
+  },
+  {
+    "chave": "fazenda_de_aparelhos|contas=6,janela_min=60,mesmo_destino=True,mesmo_ip=True,rotaciona_aparelho=False",
+    "perfil": "fazenda_de_aparelhos",
+    "tipo": "fraude",
+    "botoes": {
+      "contas": 6,
+      "rotaciona_aparelho": false,
+      "mesmo_destino": true,
+      "janela_min": 60,
+      "mesmo_ip": true
+    },
+    "semente": 858664,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_COMPARTILHADO",
+      "APARELHO_NOVO",
+      "CONTA_LARANJA",
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 0.778,
+        "decisoes": "facial 2, facial_document 2, rejected 2"
+      }
+    ]
+  },
+  {
+    "chave": "emprestimo_falso|destino=pf_nova,intervalo_horas=24,primeira_taxa=90000,taxas=3",
+    "perfil": "emprestimo_falso",
+    "tipo": "fraude",
+    "botoes": {
+      "taxas": 3,
+      "destino": "pf_nova",
+      "intervalo_horas": 24,
+      "primeira_taxa": 90000
+    },
+    "semente": 642621,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO",
+      "PERFIL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "facial_document 3"
+      }
+    ]
+  },
+  {
+    "chave": "lento_e_gradual|dias_aquecendo=10,dias_drenando=4,multiplo_diario=2",
+    "perfil": "lento_e_gradual",
+    "tipo": "fraude",
+    "botoes": {
+      "dias_aquecendo": 10,
+      "dias_drenando": 4,
+      "multiplo_diario": 2
+    },
+    "semente": 545198,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "APARELHO_NOVO",
+      "DESTINO_CONFIAVEL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 1.0,
+        "decisoes": "approved 4"
+      }
+    ]
+  },
+  {
+    "chave": "sequestro_relampago|hora=21:10,local=casa,pede_aumento=False,pix=2,valor_cada=90000",
+    "perfil": "sequestro_relampago",
+    "tipo": "fraude",
+    "botoes": {
+      "pix": 2,
+      "valor_cada": 90000,
+      "pede_aumento": false,
+      "local": "casa",
+      "hora": "21:10"
+    },
+    "semente": 676471,
+    "origem": "rodada",
+    "nota": "",
+    "achado_em": "2026-10-17T19:18:23",
+    "situacao": "aberta",
+    "regras_acionadas": [
+      "DESTINO_CONFIAVEL",
+      "DESTINO_NOVO",
+      "MONTANTE_DIARIO_ATIPICO",
+      "PERFIL"
+    ],
+    "verificacoes": [
+      {
+        "em": "2026-10-17T19:18:23",
+        "tag": "355d19",
+        "falha": 0.5,
+        "decisoes": "facial 1, rejected 1"
       }
     ]
   }

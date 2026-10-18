@@ -11,6 +11,7 @@ obrigue o bloqueio (o evento marca isso sozinho, em mundo.py).
 from datetime import timedelta
 
 from laboratorio.catalogo import perfil
+from laboratorio.mundo import pix_utils
 
 FAIXAS = {"baixa": (2000, 9000), "media": (10000, 50000), "alta": (50000, 300000)}
 HORAS = {"comercial": "14:00", "noite": "21:30", "madrugada": "02:40"}
@@ -270,3 +271,144 @@ def compra_de_carro_usado(ep, b):
     else:
         ep.pix(comprador, vendedor, b["valor"], ep.momento(0, "15:00", 60), rotulo="legitimo", papel="alvo",
                aceitavel_ate="facial_document")
+
+
+# ----------------------------------------------------------------------
+# Honestos com cara de golpe: muita gente pagando a mesma conta, uma conta
+# pagando muita gente, quem quase nunca usa o Pix e a noite de compras.
+# ----------------------------------------------------------------------
+
+@perfil(nome="vaquinha_solidaria", tipo="legitimo",
+        descricao="Uma vaquinha viraliza: dezenas de desconhecidos mandam pouco dinheiro para a mesma pessoa em poucas horas",
+        botoes={"doadores": [25, 12, 50], "janela_horas": [3, 1, 24], "idade_conta_dias": [1500, 40]})
+def vaquinha_solidaria(ep, b):
+    organizador = ep.pessoa("organizador", idade_conta_dias=b["idade_conta_dias"])
+    if b["idade_conta_dias"] > 60:
+        ep.historico(organizador, n=8, faixa=(3000, 15000))
+    fim = ep.momento(0, "22:00")
+    for i in range(b["doadores"]):
+        doador = ep.cliente_comum(f"doador-{i}", n=4)
+        quando = fim - timedelta(minutes=ep.acaso.randrange(b["janela_horas"] * 60))
+        ep.pix(doador, organizador, ep.valor(1000, 10000, 500), quando, rotulo="legitimo", papel="alvo",
+               aceitavel_ate="facial")
+
+
+@perfil(nome="folha_de_pagamento", tipo="legitimo",
+        descricao="Pequena empresa paga os funcionarios no mesmo dia: muitos Pix seguidos para muitas pessoas",
+        botoes={"funcionarios": [12, 6, 25], "meses_de_historico": [2, 0], "canal": ["api", "app"]})
+def folha_de_pagamento(ep, b):
+    empresa = ep.pessoa("empresa", pj=True, idade_conta_dias=2500, canal=b["canal"], usa_gps=b["canal"] == "app")
+    ep.historico(empresa, n=6, faixa=(50000, 300000))
+    equipe = [(ep.pessoa(f"funcionario-{i}", idade_conta_dias=ep.acaso.randint(400, 4000)), ep.valor(150000, 450000, 5000))
+              for i in range(b["funcionarios"])]
+    for mes in range(b["meses_de_historico"], 0, -1):
+        inicio = ep.momento(30 * mes, "09:00", 30)
+        for j, (funcionario, salario) in enumerate(equipe):
+            ep.pix(empresa, funcionario, salario, inicio + timedelta(minutes=j), rotulo="legitimo", papel="rotina")
+    inicio = ep.momento(0, "09:00", 30)
+    for j, (funcionario, salario) in enumerate(equipe):
+        ep.pix(empresa, funcionario, salario, inicio + timedelta(minutes=j), rotulo="legitimo", papel="alvo",
+               aceitavel_ate="approved" if b["meses_de_historico"] else "facial_document")
+
+
+@perfil(nome="doacoes_da_igreja", tipo="legitimo",
+        descricao="Domingo de manha: dezenas de fieis mandam o dizimo para a igreja, muitos toda semana",
+        botoes={"fieis": [30, 15, 50], "recorrentes_pct": [70, 30, 0]})
+def doacoes_da_igreja(ep, b):
+    igreja = ep.pessoa("igreja", pj=True, idade_conta_dias=6000)
+    inicio = ep.momento(0, "08:30")
+    for i in range(b["fieis"]):
+        fiel = ep.cliente_comum(f"fiel-{i}", n=4)
+        valor = ep.valor(1000, 20000, 500)
+        if ep.acaso.random() * 100 < b["recorrentes_pct"]:
+            for semana in (21, 14, 7):
+                ep.pix(fiel, igreja, valor, ep.momento(semana, "09:00", 150), rotulo="legitimo", papel="rotina")
+        ep.pix(fiel, igreja, valor, inicio + timedelta(minutes=ep.acaso.randrange(180)), rotulo="legitimo",
+               papel="alvo", aceitavel_ate="facial")
+
+
+@perfil(nome="idoso_de_habitos_raros", tipo="legitimo",
+        descricao="Aposentado que quase nao usa o Pix, so no dia do beneficio, e de repente precisa de algo diferente",
+        botoes={"situacao": ["remedio_e_neto", "reforma", "boleto_atrasado"], "gps": ["desligado", "ligado"]})
+def idoso_de_habitos_raros(ep, b):
+    idoso = ep.pessoa("aposentado", idade_conta_dias=8000, usa_gps=b["gps"] == "ligado")
+    contas = [ep.pessoa(f"conta-{i}", pj=True, idade_conta_dias=5000) for i in range(2)]
+    for mes in (5, 4, 3, 2, 1):
+        ep.pix(idoso, ep.acaso.choice(contas), ep.valor(8000, 25000), ep.momento(30 * mes + 2, "10:00", 120),
+               rotulo="legitimo", papel="rotina")
+    quando = ep.momento(0, "11:00", 180)
+    if b["situacao"] == "remedio_e_neto":
+        farmacia = ep.pessoa("farmacia", pj=True, idade_conta_dias=3000)
+        ep.pix(idoso, farmacia, ep.valor(8000, 30000), quando, rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+        ep.pix(idoso, ep.pessoa("neto"), ep.valor(20000, 60000), quando + timedelta(minutes=30), rotulo="legitimo",
+               papel="alvo", aceitavel_ate="facial")
+    elif b["situacao"] == "reforma":
+        ep.pix(idoso, ep.pessoa("pedreiro", idade_conta_dias=3000), ep.valor(300000, 800000, 10000), quando,
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial_document")
+    else:
+        ep.pix(idoso, ep.pessoa("cobranca", pj=True, idade_conta_dias=4000), ep.valor(30000, 120000), quando,
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+
+
+@perfil(nome="compras_de_black_friday", tipo="legitimo",
+        descricao="Black Friday ou 13o salario: varias compras seguidas em lojas novas, numa noite so",
+        botoes={"compras": [6, 10, 3], "multiplo": [3, 8], "hora": ["20:00", "00:05"]})
+def compras_de_black_friday(ep, b):
+    cliente = ep.cliente_comum("comprador", faixa=(5000, 30000))
+    for quando in ep.sequencia(ep.momento(0, b["hora"], 10), b["compras"], 3, 25):
+        loja = ep.pessoa("loja", pj=True, idade_conta_dias=ep.acaso.randint(800, 5000))
+        ep.pix(cliente, loja, cliente.mediana() * b["multiplo"] * ep.acaso.uniform(0.5, 1.5), quando,
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+
+
+@perfil(nome="organizador_que_repassa", tipo="legitimo",
+        descricao="Quem organiza a viagem da turma recebe dos amigos e, horas depois, paga a agencia com quase tudo",
+        botoes={"amigos": [8, 4, 15], "atraso_horas": [2, 0.5, 5], "agencia": ["nova", "ja_usada"], "parcelas": [1, 2],
+                "amigos_conhecidos": [True, False]})
+def organizador_que_repassa(ep, b):
+    organizador = ep.cliente_comum("organizador", faixa=(5000, 30000))
+    agencia = ep.pessoa("agencia", pj=True, idade_conta_dias=3000)
+    if b["agencia"] == "ja_usada":
+        for dia in (200, 120, 40):
+            ep.pix(organizador, agencia, ep.valor(30000, 120000), ep.momento(dia, "11:00", 120), rotulo="legitimo",
+                   papel="rotina")
+    inicio, recebido = ep.momento(0, "10:00", 60), 0
+    for i in range(b["amigos"]):
+        valor = ep.valor(30000, 80000, 1000)
+        amigo = ep.cliente_comum(f"amigo-{i}", n=5)
+        if b["amigos_conhecidos"] and i % 2 == 0:
+            # Metade da turma ja trocou Pix com o organizador (racha do bar, presente da vaquinha).
+            ep.pix(organizador, amigo, 4000 + 500 * i, ep.momento(20 + i, "21:00"), rotulo="legitimo", papel="rotina")
+        ep.pix(amigo, organizador, valor, inicio + timedelta(minutes=ep.acaso.randrange(60)),
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+        recebido += valor
+    pagamento = inicio + timedelta(hours=1 + b["atraso_horas"])
+    for j in range(b["parcelas"]):
+        ep.pix(organizador, agencia, recebido * 0.92 / b["parcelas"], pagamento + timedelta(minutes=10 * j),
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial_document")
+
+
+@perfil(nome="organizador_enganado", tipo="legitimo",
+        descricao="O organizador junta o dinheiro da turma e paga uma agencia que era golpe; a turma e os "
+                  "conhecidos continuam pagando ele depois",
+        botoes={"amigos_conhecidos": [True, False], "amigos": [6, 3], "depois": [4, 8]})
+def organizador_enganado(ep, b):
+    organizador = ep.cliente_comum("organizador", faixa=(5000, 30000))
+    agencia_falsa = ep.pessoa("agencia-falsa", documento=pix_utils.DOC_FRAUDE_ATIVA)
+    amigos = [ep.cliente_comum(f"amigo-{i}", n=5) for i in range(b["amigos"])]
+    if b["amigos_conhecidos"]:
+        # A turma ja trocava Pix com o organizador: e o vinculo que separa ele de uma laranja.
+        for i, amigo in enumerate(amigos):
+            ep.pix(amigo, organizador, 4000 + 500 * i, ep.momento(20 + i, "21:00"), rotulo="legitimo", papel="rotina")
+    inicio, recebido = ep.momento(0, "10:00", 60), 0
+    for amigo in amigos:
+        valor = ep.valor(30000, 80000, 1000)
+        ep.pix(amigo, organizador, valor, inicio + timedelta(minutes=ep.acaso.randrange(60)),
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+        recebido += valor
+    # A agencia ja estava marcada: a recusa protege o organizador e nao conta como erro.
+    ep.pix(organizador, agencia_falsa, recebido * 0.9, inicio + timedelta(hours=2), rotulo="neutro", papel="preparo")
+    for i in range(b["depois"]):
+        quem = ep.cliente_comum(f"conhecido-{i}", n=5) if i % 2 else amigos[i % len(amigos)]
+        ep.pix(quem, organizador, ep.valor(5000, 150000, 500), inicio + timedelta(hours=3, minutes=20 * i),
+               rotulo="legitimo", papel="alvo", aceitavel_ate="facial")

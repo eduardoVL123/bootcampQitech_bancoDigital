@@ -1,18 +1,59 @@
 [
   {
-    "httpRequest": { "method": "GET", "path": "/receita/v1/health" },
-    "httpResponse": { "statusCode": 200 }
+    "httpRequest": {
+      "method": "GET",
+      "path": "/receita/v1/health"
+    },
+    "httpResponse": {
+      "statusCode": 200
+    }
   },
   {
-    "httpRequest": { "method": "GET", "path": "/sancoes/v1/health" },
-    "httpResponse": { "statusCode": 200 }
+    "httpRequest": {
+      "method": "GET",
+      "path": "/sancoes/v1/health"
+    },
+    "httpResponse": {
+      "statusCode": 200
+    }
   },
   {
-    "httpRequest": { "method": "GET", "path": "/pep/v1/health" },
-    "httpResponse": { "statusCode": 200 }
+    "httpRequest": {
+      "method": "GET",
+      "path": "/pep/v1/health"
+    },
+    "httpResponse": {
+      "statusCode": 200
+    }
   },
   {
-    "httpRequest": { "method": "POST", "path": "/internal/event" },
-    "httpResponse": { "statusCode": 202 }
+    "httpRequest": {
+      "method": "POST",
+      "path": "/internal/event"
+    },
+    "httpResponse": {
+      "statusCode": 202
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/dict/v1/informacoes-seguranca"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ]
+      },
+      "body": {
+        "type": "JSON",
+        "json": {
+          "statistics": {}
+        }
+      }
+    },
+    "priority": 0
   }
 ]

@@ -47,6 +47,23 @@ rodada  ->  "o que falta"  ->  corrigir a API  ->  regressao  ->  cacar  ->  rod
 
 O comando `loop` faz os passos 1, 4 e 5 sem parar, até três voltas seguidas sem nenhum erro.
 
+## Quanto confiar nos números
+
+- **Margem de erro.** Cada taxa do placar vem com a faixa de 95% de confiança entre colchetes, calculada reamostrando os episódios (os Pix de um mesmo episódio não são independentes). Faixa larga quer dizer poucos episódios: aumente `--por-perfil`.
+- **Dia simulado sorteado.** Cada rodada cai num dia diferente do último ano, tirado da semente. Os documentos do seed (fraude ativa, vítima registrada) são os mesmos em todas as rodadas, e no mesmo dia elas somariam pagamentos umas das outras.
+- **Comparação A/B.** `comparar` repete os episódios de uma rodada salva (mesmos perfis, botões, sementes e dia) contra a API de agora e mostra, episódio por episódio, o que melhorou e o que piorou, com a margem de erro da diferença. É o jeito de saber se uma mudança na API ajudou: rode uma `rodada` antes da mudança, mude, e rode `comparar`.
+
+## O que a API devolve e o laboratório aproveita
+
+A API devolve o score, os pontos por eixo, o piso de autenticação e o bloqueio de cada regra. Com isso o relatório traz:
+
+- **E se a política fosse outra?** A mesma rodada, refeita com outros cortes (rejeitar a partir de 70, rejeitar com um eixo forte, pedir selfie a partir de 30...), com golpe contido, falso positivo, fricção, proteção e um **custo estimado** em reais (o golpe que passou mais um valor por selfie, documento e bloqueio de cliente honesto; os valores de exemplo ficam em `analise.CUSTOS`). A primeira linha diz quanto das decisões reais a tabela reproduz.
+- **Efeito de cada regra.** Em quantos Pix cada regra foi decisiva: sem os pontos dela, a decisão teria sido mais branda. Separado entre golpe contido, cliente honesto atrapalhado e cliente protegido de si mesmo. A regra que mais atrapalha honestos e quase não contém golpe é a primeira candidata a ajuste.
+
+## A selfie como na vida real
+
+Quando a API pede selfie, quem está com o aparelho responde. O cliente honesto confirma, mas às vezes desiste no meio (3% na selfie, 8% no documento: estimativas do laboratório). A vítima enganada e o dono da laranja passam. O golpista não passa, a não ser com selfie falsa, e o titular de verdade, avisado de um desafio que não pediu, responde "não fui eu" (`reproved_by_client`) na metade das vezes. Esse é o caminho que alimenta a lista interna da API. O placar conta as desistências e as contestações.
+
 ## Comandos
 
 ```bash
@@ -77,6 +94,10 @@ python tools/laboratorio_antifraude.py metamorfico --quantidade 20
 python tools/laboratorio_antifraude.py loop
 ```
 
+```bash
+python tools/laboratorio_antifraude.py comparar --base ultima
+```
+
 Para repetir um episódio exato, Pix por Pix, use o comando que o relatório imprime em "Repetir o pior episódio".
 
 Opções comuns: `--perfis a,b` restringe os perfis, `--semente N` repete a mesma história, `--url` aponta para outra API (o padrão é `http://localhost:${ANTIFRAUD_API_PORT:-3020}`, com o `INTERNAL_TOKEN` do ambiente). `gerar` grava a massa rotulada sem mandar nada, para inspecionar.
@@ -85,9 +106,9 @@ Os relatórios e o histórico ficam em `tools/resultados/` (fora do Git). O corp
 
 ## O que cada rodada cobre
 
-**Golpes (15):** conta tomada, mão fantasma, falsa central, falso parente, QR Code adulterado, sequestro relâmpago, conta laranja, repasse em cascata, sondagem de limite, dreno lento e gradual, fazenda de aparelhos, rede suspeita, recebedor ou aparelho marcado, conta dormente, golpe escalonado (falso investimento ou golpe do amor).
+**Golpes (21):** conta tomada, mão fantasma, falsa central, falso parente, QR Code adulterado, sequestro relâmpago, conta laranja, repasse em cascata, sondagem de limite, aumento de limite e saque, dreno lento e gradual, fazenda de aparelhos, rede suspeita, recebedor ou aparelho marcado, conta dormente, golpe escalonado (falso investimento ou golpe do amor), e mais cinco: fraude do próprio cliente (paga um comparsa e pede devolução pelo MED), selfie falsificada (deepfake), empréstimo falso (taxa antecipada), abuso financeiro de idoso e o golpe do Pix por engano (com um controle legítimo: devolver para quem mandou).
 
-**Legítimos difíceis (16):** rotina, pagamento recorrente, PJ e fornecedor, troca de celular, viajante, compra grande planejada, autônomo que recebe de muitos, racha da conta no bar, família à noite, dia do pagamento, aparelho da família, cliente sem permissão de GPS, e quatro situações de emergência e de vida real:
+**Legítimos difíceis (21):** vaquinha que viraliza, folha de pagamento de uma pequena empresa, doações para a igreja, idoso de hábitos raros, compras de Black Friday, rotina, pagamento recorrente, PJ e fornecedor, troca de celular, viajante, compra grande planejada, autônomo que recebe de muitos, racha da conta no bar, família à noite, dia do pagamento, aparelho da família, cliente sem permissão de GPS, e quatro situações de emergência e de vida real:
 
 - **emergência da família no exterior:** filho e esposa na Austrália, e às 2h de Brasília o pai manda R$ 20 mil e depois compra remédio numa farmácia daqui;
 - **brasileiro no exterior:** usa o app de dia por lá, que é madrugada aqui, com um IP que a API não conhece;

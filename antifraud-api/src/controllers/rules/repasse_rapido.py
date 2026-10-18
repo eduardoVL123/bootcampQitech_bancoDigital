@@ -3,6 +3,7 @@ from datetime import timedelta
 from controllers.engine.context import DESTINO
 from controllers.engine.profile import profile_for
 from controllers.engine.rule import Rule
+from utils.document_number import is_legal_person
 from utils.money import brl
 
 
@@ -26,26 +27,43 @@ class RepasseRapido(Rule):
 
     def evaluate(self, ctx, params):
         p = params[self.code]
+        # A laranja esperta divide a saida em varios Pix menores: com
+        # `cumulative`, o que conta e o total que ja saiu na janela mais este.
         for janela in p["windows"]:
             recebido, pagadores = ctx.history.received_by_account(ctx.source_account.id, ctx.moment, janela["minutes"])
-            if len(pagadores) >= janela["min_payers"] and recebido and ctx.amount / recebido >= p["share"]:
+            if len(pagadores) < janela["min_payers"] or not recebido:
+                continue
+            ja_saiu = 0
+            if p.get("cumulative"):
+                ja_saiu = ctx.history.sent_by_account(ctx.source_account.id, ctx.moment, janela["minutes"], pagadores)
+            if (ctx.amount + ja_saiu) / recebido >= p["share"]:
                 break
         else:
             return self.not_triggered()
         if ctx.destination_document in pagadores or ctx.destination_document == ctx.source_document:
             return self.not_triggered("O dinheiro volta para quem pagou.")
-        fatia = ctx.amount / recebido
+        fatia = (ctx.amount + ja_saiu) / recebido
         quando = "na ultima hora" if janela["minutes"] <= 60 else f"nas ultimas {janela['minutes'] // 60} h"
 
-        detalhe = (f"Recebeu {brl(recebido)} de {len(pagadores)} titulares {quando} e repassa "
-                   f"{brl(ctx.amount)} ({fatia:.0%}).")
+        detalhe = (f"Recebeu {brl(recebido)} de {len(pagadores)} titulares {quando} e ja repassou "
+                   f"{brl(ctx.amount + ja_saiu)} ({fatia:.0%}), contando este Pix.")
         familiar = self._familiar(ctx, params)
         perfil = profile_for(ctx, params)
         velocity = ctx.result("VELOCITY")
         desvio = ctx.triggered("PERFIL") or (velocity is not None and velocity.is_triggered
                                              and velocity.extra.get("reference") == "adaptive")
         if not familiar or desvio:
-            return self.triggered(p["points"], detalhe, data_origin="history")
+            # Quem repassa e o dono da laranja: ele passa na selfie, entao so
+            # segurar a saida protege as vitimas (e deixa o dinheiro para o MED).
+            # O bloqueio vale para onde a laranja manda: pessoa fisica ou conta
+            # recente. Para empresa antiga (o organizador que paga a agencia), so pontua.
+            idade = ctx.moment - ctx.destination_account.opening_date
+            alvo_de_laranja = (not is_legal_person(ctx.destination_document)
+                               or idade < timedelta(days=p.get("hard_block_max_destination_days", 0)))
+            if p.get("hard_block") and not alvo_de_laranja:
+                return self.not_triggered(detalhe + " Destino e empresa antiga: parece fornecedor, nao dispersao.")
+            return self.triggered(p["points"], detalhe, data_origin="history",
+                                  hard_block=p.get("hard_block", False) and alvo_de_laranja)
         velocity_normal = velocity is not None and velocity.extra.get("reference") == "adaptive"
         if perfil.evaluable and velocity_normal:
             return self.not_triggered(detalhe + " Destino familiar, perfil e ritmo normais.")

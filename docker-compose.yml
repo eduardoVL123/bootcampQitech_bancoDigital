@@ -139,6 +139,9 @@ services:
       APP_ENV: ${APP_ENV:-local}
       SERVICE_NAME: antifraud-api
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      # As informacoes de seguranca do DICT, de mentira, no Mockserver (como os
+      # biros da onboarding-api). Sem Mockserver de pe, o Pix segue sem elas.
+      DICT_URL: ${DICT_URL:-http://mockserver:1080}
     volumes:
       - ./antifraud-api/src:/app
     command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --reload

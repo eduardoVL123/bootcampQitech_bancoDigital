@@ -1,7 +1,9 @@
 from controllers.base_controller import BaseController
 from errors import ChallengeAlreadyAnswered, ChallengeNotRequired, NotFoundPixAnalysis
 from models import PixStatus
-from repositories import ChallengeRepository, PixRepository, WatchlistRepository
+from repositories import (
+    ChallengeRepository, HistoryRepository, PixRepository, PolicyRepository, ReputationRepository, WatchlistRepository,
+)
 from utils.dates import parse_moment
 
 
@@ -12,9 +14,9 @@ class ChallengeController(BaseController):
     GET passa a mostra-lo em `metadata.challenge`. Duas consequencias:
     - `approved_by_client` vira dinheiro que saiu, e entra no montante, no
       perfil e na familiaridade dos proximos Pix;
-    - `reproved_by_client` e o titular dizendo "nao fui eu". O aparelho e o
-      documento destino entram na lista interna. E a unica alimentacao
-      automatica da lista, e nao vem da decisao do proprio motor.
+    - `reproved_by_client` e o titular dizendo "nao fui eu". E a unica
+      alimentacao automatica da lista interna, e nao vem da decisao do
+      proprio motor. Ver _nao_fui_eu.
     """
 
     def __init__(self) -> None:
@@ -22,6 +24,9 @@ class ChallengeController(BaseController):
         self.pix_repo = PixRepository(self.context)
         self.challenge_repo = ChallengeRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
+        self.history_repo = HistoryRepository(self.context)
+        self.policy_repo = PolicyRepository(self.context)
+        self.reputation_repo = ReputationRepository(self.context)
 
     def answer(self, pix_id: str, payload: dict):
         analysis = self.pix_repo.get_by_pix_id(pix_id)
@@ -40,9 +45,33 @@ class ChallengeController(BaseController):
         momento = parse_moment(payload["event_date"])
         registro = self.challenge_repo.create(analysis.id, resultado, momento)
         if resultado == "reproved_by_client":
-            self.watchlist_repo.add_client_report("device", analysis.device_id,
-                                                  f"challenge-{analysis.analysis_key}-device", momento)
-            self.watchlist_repo.add_client_report("document", analysis.destination_document,
-                                                  f"challenge-{analysis.analysis_key}-document", momento)
+            self._nao_fui_eu(analysis, momento)
         self.session.commit()
         return analysis, registro
+
+    def _nao_fui_eu(self, analysis, momento) -> None:
+        """O aparelho entra na lista, e o documento destino entra em cautelar.
+
+        A cautelar e a palavra de um titular so: +40 por 24 horas, sem bloquear
+        e sem espalhar suspeita pela rede. Se ninguem mais reclamar, ela vence
+        sozinha e a conta fica livre. Vira fraude confirmada (bloqueio e
+        ancora da rede) quando chega uma segunda fonte independente:
+        - outro titular, distinto, diz "nao fui eu" para o mesmo documento nos
+          30 dias seguintes. O mesmo titular reclamando duas vezes conta uma;
+        - a reputacao externa (DICT ou mock) ja tinha denuncia ou marcacao de
+          golpe contra ele.
+
+        A trava e a mesma do recebedor no Pix: duas denuncias simultaneas para
+        o mesmo documento se enxergam, e o Pix seguinte ja ve a cautelar.
+        """
+        p = self.policy_repo.get_current().parameters["REPUTACAO_INTERNA"]
+        destino, chave = analysis.destination_document, analysis.analysis_key
+        self.history_repo.lock([f"payee:{destino}"])
+        self.watchlist_repo.add_client_report("device", analysis.device_id, f"challenge-{chave}-device", momento,
+                                              hours=p["device_days"] * 24)
+        self.watchlist_repo.add_client_report("document", destino, f"challenge-{chave}-document", momento,
+                                              hours=p["cautelar_hours"], reporter=analysis.source_document)
+
+        denunciantes = self.watchlist_repo.reporters_of(destino, momento, p["reports_window_days"])
+        if len(denunciantes) >= p["min_reporters"] or self.reputation_repo.suspected(destino, momento):
+            self.watchlist_repo.confirm(destino, f"confirmed-{chave}", momento, p["confirmed_days"])

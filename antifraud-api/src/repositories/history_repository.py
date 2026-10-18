@@ -261,6 +261,50 @@ class HistoryRepository:
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
         )})
 
+    def new_payers_to_account(self, account_id: int, document: str, moment, hours: int) -> tuple:
+        """Quem pagou esta conta na janela sem vinculo anterior com ela: (documentos, soma).
+
+        Vinculo e Pix aprovado antes da janela, nos dois sentidos: o pagador ja
+        tinha pago esta conta, ou ja tinha recebido do dono dela. Amigo que
+        racha a conta com o organizador tem vinculo; vitima de laranja nunca tem.
+        Conta qualquer status dentro da janela: a tentativa barrada tambem e sinal.
+        """
+        def consulta():
+            inicio = moment - timedelta(hours=hours)
+            linhas = self._all(
+                "SELECT a.source_document, a.amount FROM pix_analysis a WHERE a.destination_account_id = :conta "
+                "AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+                "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.destination_account_id = :conta "
+                f"AND b.source_document = a.source_document AND b.transaction_date <= :inicio "
+                f"AND {APPROVED.replace('a.', 'b.')}) "
+                "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = :dono "
+                f"AND b.destination_document = a.source_document AND b.transaction_date <= :inicio "
+                f"AND {APPROVED.replace('a.', 'b.')})",
+                conta=account_id, dono=document, inicio=inicio, fim=moment,
+            )
+            return {linha[0] for linha in linhas}, sum(int(linha[1]) for linha in linhas)
+        return self._remember(("novos_pagadores", account_id, hours, moment), consulta)
+
+    def received_before(self, account_id: int, moment, hours: int, days: int) -> int:
+        """O que a conta recebeu (aprovado) nos `days` dias antes da janela de `hours` horas."""
+        fim = moment - timedelta(hours=hours)
+        return self._remember(("recebido_antes", account_id, hours, days, moment), lambda: int(self._scalar(
+            f"SELECT COALESCE(SUM(a.amount), 0) FROM pix_analysis a WHERE a.destination_account_id = :conta "
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
+            conta=account_id, inicio=fim - timedelta(days=days), fim=fim,
+        ) or 0))
+
+    def sent_by_account(self, account_id: int, moment, minutes: int, excluir: set) -> int:
+        """O que a conta pagou (aprovado) na janela, sem contar o que voltou para quem pagou."""
+        def consulta():
+            linhas = self._all(
+                f"SELECT a.destination_document, a.amount FROM pix_analysis a WHERE a.source_account_id = :conta "
+                f"AND a.transaction_date > :inicio AND a.transaction_date < :fim AND {APPROVED}",
+                conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
+            )
+            return sum(int(valor) for destino, valor in linhas if destino not in excluir)
+        return self._remember(("enviado", account_id, minutes, moment), consulta)
+
     def received_by_account(self, account_id: int, moment, minutes: int) -> tuple:
         """O que a conta recebeu (aprovado) na janela: total e quem pagou."""
         def consulta():
@@ -342,4 +386,46 @@ class HistoryRepository:
         if dois_saltos:
             meio, ancora = dois_saltos[0]
             return 2, [ancora, meio, destination_document]
+        return None
+
+    def forwarded_to_anchor(self, anchors: set, document: str, moment, days: int, min_amount: int,
+                            hours: int, min_payers: int, share: float):
+        """O documento mandou (ou tentou mandar) a uma ancora o dinheiro que tinha acabado de receber.
+
+        E o outro sentido da rede: a laranja que repassa para o chefe. So
+        pagar uma ancora nao separa ninguem, porque a vitima tambem pagou o
+        golpista. O que separa a laranja da vitima e o repasse: nas `hours`
+        horas antes de mandar, ela recebeu de `min_payers` ou mais pagadores
+        sem vinculo com ela, e isso cobre pelo menos `share` do que mandou.
+        Vinculo e o da CONTA_LARANJA: Pix aprovado antes, nos dois sentidos.
+        O amigo que racha a conta com o organizador tem vinculo; a vitima da
+        laranja nunca tem.
+
+        A saida conta mesmo recusada: quando a ancora ja e conhecida, o
+        repasse para ela e barrado, e a recusa mostra para onde o dinheiro
+        ia. A entrada, nao: so conta o dinheiro que entrou de verdade. Devolve
+        (ancora, pagadores, recebido, enviado) ou None.
+        """
+        if not anchors:
+            return None
+        saidas = self._all(
+            "SELECT a.destination_document, a.amount, a.transaction_date FROM pix_analysis a "
+            "WHERE a.source_document = :doc AND a.destination_document = ANY(:ancoras) "
+            "AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND a.amount >= :minimo "
+            "ORDER BY a.transaction_date DESC",
+            doc=document, ancoras=list(anchors), inicio=moment - timedelta(days=days), fim=moment, minimo=min_amount,
+        )
+        for ancora, enviado, data in saidas:
+            pagadores, recebido = self.session.execute(text(
+                f"SELECT count(DISTINCT e.source_document), coalesce(sum(e.amount), 0) FROM pix_analysis e "
+                f"WHERE e.destination_document = :doc AND e.source_document NOT IN (:doc, :ancora) "
+                f"AND e.transaction_date > :inicio AND e.transaction_date < :fim AND {APPROVED.replace('a.', 'e.')} "
+                "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = e.source_document "
+                f"AND b.destination_document = :doc AND b.transaction_date <= :inicio AND {APPROVED.replace('a.', 'b.')}) "
+                "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = :doc "
+                f"AND b.destination_document = e.source_document AND b.transaction_date <= :inicio "
+                f"AND {APPROVED.replace('a.', 'b.')})"
+            ), {"doc": document, "ancora": ancora, "inicio": data - timedelta(hours=hours), "fim": data}).first()
+            if pagadores >= min_payers and recebido >= share * int(enviado):
+                return ancora, int(pagadores), int(recebido), int(enviado)
         return None

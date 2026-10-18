@@ -333,6 +333,15 @@ def paga(payload: dict, confirma: bool = True) -> dict:
     return corpo
 
 
+def nega(pagador: Pagador, destino: Recebedor, valor: int, momento: datetime) -> None:
+    """O titular recebe um desafio que nao pediu e responde "nao fui eu"."""
+    payload = pix(pagador, destino, valor, momento.isoformat())
+    assert analisa(payload)["status"] == "two_factor_required"
+    resposta = AntifraudApi.patch(payload["id"], {"challenge_result": "reproved_by_client",
+                                                  "event_date": (momento + timedelta(minutes=2)).isoformat()})
+    assert resposta.status_code == 200, resposta.text
+
+
 def historico(pagador: Pagador, valores: list, inicio: datetime, passo: timedelta, recebedor: Recebedor = None,
               recebedores_novos: bool = False) -> list:
     """Uma sequencia de Pix aprovados (ou confirmados) do pagador, a partir de `inicio`."""

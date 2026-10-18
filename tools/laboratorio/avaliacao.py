@@ -9,6 +9,7 @@ A API e medida pelo resultado, nao pelo nome da regra:
 import json
 import statistics
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -26,23 +27,54 @@ HISTORICO = PASTA_RESULTADOS / "historico.jsonl"
 def executar(cliente, episodios: list, aviso=None) -> list:
     """Manda os eventos em ordem de tempo e julga cada resposta.
 
-    Quando a API pede selfie e quem esta com o aparelho e o titular, ele
-    confirma (PATCH approved_by_client), como faria no app. E isso que faz o
-    Pix contar no historico. Quando e o golpista, ninguem confirma.
+    Quando a API pede selfie, quem esta com o aparelho responde como o
+    evento manda (mundo.py): o titular confirma (approved_by_client), as vezes
+    desiste; o golpista nao passa, e o titular de verdade as vezes contesta
+    (reproved_by_client). So o Pix confirmado conta no historico da API.
+
+    Com cliente.paralelo > 1, varios episodios andam ao mesmo tempo, cada um
+    na sua ordem. Episodios nao dividem pessoas nem contas, entao a historia
+    de cada um nao muda. O que muda e so a ordem entre episodios, que pesa
+    apenas no que eles dividem de fato (os documentos do seed e a faixa de IP):
+    para um A/B fino, rode a base e a comparacao do mesmo jeito.
     """
-    eventos = sorted((ev for ep in episodios for ev in ep.eventos), key=lambda ev: ev.quando)
+    if cliente.paralelo == 1 or len(episodios) == 1:
+        eventos = sorted((ev for ep in episodios for ev in ep.eventos), key=lambda ev: ev.quando)
+        registros = []
+        for i, evento in enumerate(eventos, start=1):
+            registros.append(_executar_evento(cliente, evento))
+            if aviso and i % 250 == 0:
+                aviso(f"  {i} de {len(eventos)} pedidos")
+        return registros
+
     registros = []
-    for i, evento in enumerate(eventos, start=1):
-        conferir = evento.id if evento.metodo == "POST" and evento.papel != "rotina" else None
-        registro = julgar(evento, cliente.enviar(evento.metodo, evento.caminho, evento.corpo, conferir))
-        if registro["decisao"] in api.NIVEIS and evento.confirma:
-            registro["confirmado"] = cliente.confirmar(evento.id, evento.corpo["transaction_date"])
-            if not registro["confirmado"]:
-                registro["problemas"].append("PATCH approved_by_client recusado")
-        registros.append(registro)
-        if aviso and i % 250 == 0:
-            aviso(f"  {i} de {len(eventos)} pedidos")
-    return registros
+    with ThreadPoolExecutor(max_workers=cliente.paralelo) as pool:
+        # Os episodios mais longos primeiro: assim nenhum deles fica sozinho no fim.
+        ordem = sorted(episodios, key=lambda ep: len(ep.eventos), reverse=True)
+        tarefas = [pool.submit(_executar_episodio, cliente, ep) for ep in ordem]
+        for feitos, tarefa in enumerate(as_completed(tarefas), start=1):
+            registros.extend(tarefa.result())
+            if aviso and feitos % 20 == 0:
+                aviso(f"  {feitos} de {len(episodios)} episodios")
+    return sorted(registros, key=lambda r: r["quando"])
+
+
+def _executar_episodio(cliente, episodio) -> list:
+    return [_executar_evento(cliente, evento) for evento in sorted(episodio.eventos, key=lambda ev: ev.quando)]
+
+
+def _executar_evento(cliente, evento) -> dict:
+    medir = evento.metodo == "POST" and evento.papel != "rotina" and cliente.conferir_get
+    registro = julgar(evento, cliente.enviar(evento.metodo, evento.caminho, evento.corpo, evento.id if medir else None))
+    acao = (evento.desafio or {}).get(registro["decisao"])
+    registro["desafio"] = acao
+    if acao in ("aprova", "contesta"):
+        resultado = "approved_by_client" if acao == "aprova" else "reproved_by_client"
+        aceito = cliente.responder_desafio(evento.id, evento.corpo["transaction_date"], resultado)
+        registro["confirmado"] = aceito and acao == "aprova"
+        if not aceito:
+            registro["problemas"].append(f"PATCH {resultado} recusado")
+    return registro
 
 
 def _problemas(evento, resultado: dict, decisao: str) -> list:
@@ -77,22 +109,31 @@ def julgar(evento, resultado: dict) -> dict:
         "rotulo": evento.rotulo, "papel": evento.papel, "valor": evento.valor, "quando": evento.quando.isoformat(),
         "contido_por": evento.contido_por, "aceitavel_ate": evento.aceitavel_ate, "regulatorio": evento.regulatorio,
         "decisao": decisao, "pontos": api.pontos(resultado["corpo"]), "regras": api.regras(resultado["corpo"]),
+        "eixos": api.eixos(resultado["corpo"]), "piso": api.piso(resultado["corpo"]),
+        "bloqueio": api.bloqueio(resultado["corpo"]), "regras_detalhadas": api.regras_detalhadas(resultado["corpo"]),
         "latencia": resultado["latencia"], "problemas": _problemas(evento, resultado, decisao),
         "bcb_violado": bool(evento.regulatorio) and decisao == "approved",
-        "confirmado": False,
+        "confirmado": False, "desafio": None,
     }
+    return classificar(registro)
+
+
+def classificar(registro: dict) -> dict:
+    """Marca acerto e erro a partir da decisao. Separado do julgar para a simulacao de politica reusar."""
+    decisao = registro["decisao"]
     decidiu = decisao in ORDEM
-    if evento.metodo == "POST" and evento.rotulo == "fraude":
-        contido = decidiu and ORDEM[decisao] >= ORDEM[evento.contido_por]
+    teto = "rejected" if registro["regulatorio"] else registro["aceitavel_ate"]
+    if registro["metodo"] != "POST":
+        return registro
+    if registro["rotulo"] == "fraude":
+        contido = decidiu and ORDEM[decisao] >= ORDEM[registro["contido_por"]]
         registro.update(detectado=decidiu and decisao != "approved", contido=contido,
-                        escapou=0 if contido else evento.valor)
-    elif evento.metodo == "POST" and evento.rotulo == "autoprotecao":
-        teto = "rejected" if evento.regulatorio else evento.aceitavel_ate
-        protegido = decidiu and ORDEM[decisao] >= ORDEM[evento.contido_por]
+                        escapou=0 if contido else registro["valor"])
+    elif registro["rotulo"] == "autoprotecao":
+        protegido = decidiu and ORDEM[decisao] >= ORDEM[registro["contido_por"]]
         registro.update(protegido=protegido, excesso=decidiu and ORDEM[decisao] > ORDEM[teto],
-                        exposto=0 if protegido else evento.valor)
-    elif evento.metodo == "POST" and evento.rotulo == "legitimo":
-        teto = "rejected" if evento.regulatorio else evento.aceitavel_ate
+                        exposto=0 if protegido else registro["valor"])
+    elif registro["rotulo"] == "legitimo":
         registro.update(alerta=decidiu and decisao != "approved",
                         falso_positivo=decisao == "rejected" and teto != "rejected",
                         friccao_indevida=decisao in api.NIVEIS and ORDEM[decisao] > ORDEM[teto])
@@ -151,6 +192,9 @@ def resumir(registros: list) -> dict:
         "precisao_base_1": _precisao(deteccao, alarme, 0.01),
         "p50": _percentil(latencias, 50), "p95": _percentil(latencias, 95), "p99": _percentil(latencias, 99),
         "fora_do_contrato": sum(1 for r in registros if r["problemas"]),
+        "desistencias": sum(1 for r in pix if r["rotulo"] in ("legitimo", "autoprotecao") and r.get("desafio") == "nada"),
+        "desafios_honestos": sum(1 for r in pix if r["rotulo"] in ("legitimo", "autoprotecao") and r["decisao"] in api.NIVEIS),
+        "contestacoes": sum(1 for r in pix if r.get("desafio") == "contesta"),
         "violacoes_bcb": sum(1 for r in pix if r["bcb_violado"]),
     }
 
@@ -213,6 +257,8 @@ def por_botao(registros: list, metas: dict, nome: str) -> list:
         meta = metas.get(ep_id)
         if not meta or meta["perfil"] != nome:
             continue
+        if not any(r["metodo"] == "POST" and r["rotulo"] == meta["tipo"] and r["papel"] == "alvo" for r in regs):
+            continue  # ex.: o controle legitimo dentro de uma tipologia de golpe
         falha = falha_do_episodio(regs, meta["tipo"])
         for botao, opcao in meta["botoes"].items():
             baldes.setdefault((botao, str(opcao)), []).append(falha)
@@ -276,12 +322,18 @@ def comando_repetir(meta: dict) -> str:
             f'--semente {meta["semente"]} --botoes "{botoes}"')
 
 
-def _placar(resumo: dict, anterior: dict) -> list:
+def _placar(resumo: dict, anterior: dict, margem: dict = None) -> list:
+    margem = margem or {}
+
     def delta(chave):
-        if not anterior or anterior.get(chave) is None or resumo.get(chave) is None:
-            return ""
-        diferenca = 100 * (resumo[chave] - anterior[chave])
-        return f" ({'+' if diferenca >= 0 else ''}{diferenca:.1f} pp)".replace(".", ",")
+        texto = ""
+        if chave in margem:
+            minimo, maximo = margem[chave]
+            texto += f" [{_pct(minimo)} a {_pct(maximo)}]"
+        if anterior and anterior.get(chave) is not None and resumo.get(chave) is not None:
+            diferenca = 100 * (resumo[chave] - anterior[chave])
+            texto += f" ({'+' if diferenca >= 0 else ''}{diferenca:.1f} pp)".replace(".", ",")
+        return texto
 
     linhas = [
         "## Placar", "",
@@ -300,6 +352,12 @@ def _placar(resumo: dict, anterior: dict) -> list:
         f"| latencia p50 / p95 / p99 | {_ms(resumo['p50'])} / {_ms(resumo['p95'])} / {_ms(resumo['p99'])} | |",
         f"| pedidos fora do contrato | {resumo['fora_do_contrato']} | HTTP, status, nivel ou GET divergente |",
         f"| aprovados contra regra do BCB | {resumo['violacoes_bcb']} | limite noturno ou aparelho novo |",
+        f"| honestos que desistiram na selfie | {resumo['desistencias']} de {resumo['desafios_honestos']} desafios "
+        "| cada desistencia e um Pix que nao saiu e um cliente irritado |",
+        f"| contestacoes \"nao fui eu\" | {resumo['contestacoes']} | o titular avisado de um desafio que ele nao pediu |",
+        "",
+        "Entre colchetes, a margem de erro com 95% de confianca (reamostrando os episodios). Para estreitar, "
+        "aumente --por-perfil.",
         "",
     ]
     if not resumo["fraudes"]:
@@ -460,13 +518,17 @@ def _fora_do_contrato(registros) -> list:
 
 
 def relatorio(registros: list, metas: dict, catalogo: dict, cabecalho: list, anterior: dict = None) -> str:
+    from laboratorio import analise  # aqui dentro: analise tambem importa este modulo
+
     resumo = resumir(registros)
-    partes = cabecalho + [""] + _placar(resumo, anterior)
+    partes = cabecalho + [""] + _placar(resumo, anterior, analise.intervalos(registros))
     partes += _tabela_fraudes(registros, metas, catalogo)
     partes += _tabela_legitimos(registros, metas, catalogo)
     partes += _tabela_protecao(registros, metas, catalogo)
     partes += _o_que_falta(registros, metas, catalogo)
     partes += _onde_barra_demais(registros, metas, catalogo)
+    partes += analise.secao_politica(registros)
+    partes += analise.secao_regras(registros)
     partes += _fora_do_contrato(registros)
     return "\n".join(partes)
 
@@ -474,6 +536,20 @@ def relatorio(registros: list, metas: dict, catalogo: dict, cabecalho: list, ant
 # ----------------------------------------------------------------------
 # Arquivos
 # ----------------------------------------------------------------------
+
+def carregar_rodada(base: str) -> dict:
+    """Uma rodada salva: pela tag, ou "ultima" para a mais recente."""
+    if base == "ultima":
+        salvas = sorted(PASTA_RESULTADOS.glob("rodada-*.json"), key=lambda p: p.stat().st_mtime)
+        if not salvas:
+            raise SystemExit("Nenhuma rodada salva em tools/resultados. Rode antes: python tools/laboratorio_antifraude.py rodada")
+        arquivo = salvas[-1]
+    else:
+        arquivo = PASTA_RESULTADOS / f"rodada-{base}.json"
+        if not arquivo.exists():
+            raise SystemExit(f"Nao achei {arquivo}")
+    return json.loads(arquivo.read_text(encoding="utf-8"))
+
 
 def ultima_rodada(perfis: list = None) -> dict:
     """O resumo da ultima rodada com os mesmos perfis, para o placar mostrar a evolucao."""
@@ -484,7 +560,7 @@ def ultima_rodada(perfis: list = None) -> dict:
     return rodadas[-1]["resumo"] if rodadas else None
 
 
-def guardar(tag: str, modo: str, semente, registros: list, metas: dict, texto: str) -> Path:
+def guardar(tag: str, modo: str, semente, registros: list, metas: dict, texto: str, dia: str = None) -> Path:
     PASTA_RESULTADOS.mkdir(exist_ok=True)
     resumo = resumir(registros)
     with HISTORICO.open("a", encoding="utf-8") as arquivo:
@@ -492,7 +568,7 @@ def guardar(tag: str, modo: str, semente, registros: list, metas: dict, texto: s
                                   "em": datetime.now().isoformat(timespec="seconds"),
                                   "perfis": sorted({m["perfil"] for m in metas.values()}), "resumo": resumo}) + "\n")
     destino = PASTA_RESULTADOS / f"{modo}-{tag}.json"
-    destino.write_text(json.dumps({"tag": tag, "semente": semente, "metas": metas, "registros": registros},
+    destino.write_text(json.dumps({"tag": tag, "semente": semente, "data": dia, "metas": metas, "registros": registros},
                                   ensure_ascii=False, indent=1), encoding="utf-8")
     (PASTA_RESULTADOS / f"{modo}-{tag}.md").write_text(texto + "\n", encoding="utf-8")
     return destino
