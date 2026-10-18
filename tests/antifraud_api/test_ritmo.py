@@ -46,6 +46,29 @@ def test_decima_tentativa_em_5_min_pede_facial_document():
     assert corpos[-1]["metadata"]["authentication"]["level"] == "facial_document"
 
 
+def test_empresa_com_nove_pagamentos_em_5_min_nao_dispara():
+    # Empresa paga fornecedores e folha em lote: o corte de CNPJ comeca em 10.
+    corpos = _sequencia(Pagador(pj=True), [5000] * 9, timedelta(seconds=20))
+
+    assert not disparou(corpos[-1], "VELOCITY")
+
+
+def test_empresa_com_dez_pagamentos_em_5_min_soma_25_sem_verificacao():
+    # Os mesmos dez Pix, de uma pessoa fisica, pedem facial e documento.
+    corpos = _sequencia(Pagador(pj=True), [5000] * 10, timedelta(seconds=20))
+
+    assert pontos(corpos[-1], "VELOCITY") == 25
+    assert regra(corpos[-1], "VELOCITY")["payer_type"] == "PJ"
+    assert corpos[-1]["status"] == "approved"
+
+
+def test_empresa_com_vinte_pagamentos_em_5_min_pede_facial():
+    corpos = _sequencia(Pagador(pj=True), [5000] * 20, timedelta(seconds=10))
+
+    assert pontos(corpos[-1], "VELOCITY") == 40
+    assert corpos[-1]["metadata"]["authentication"]["level"] == "facial"
+
+
 def test_replay_nao_conta_como_tentativa():
     pagador, recebedor, base = Pagador(), Recebedor(), nova_base()
     repetido = pix(pagador, recebedor, 5000, base.isoformat())

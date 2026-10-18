@@ -74,9 +74,16 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "VELOCITY": {
         "windows_minutes": [5, 30],
         "fallback_window_minutes": 5,
-        "fallback": [{"count": 10, "points": 60, "floor": "facial_document"}, {"count": 5, "points": 40, "floor": "facial"}, {"count": 3, "points": 25, "floor": "none"}],
-        "moderate": {"minimum": 3, "multiple": 2, "k": 3, "points": 40},
-        "high": {"minimum": 5, "multiple": 3, "k": 6, "points": 60}
+        "pf": {
+            "fallback": [{"count": 10, "points": 60, "floor": "facial_document"}, {"count": 5, "points": 40, "floor": "facial"}, {"count": 3, "points": 25, "floor": "none"}],
+            "moderate": {"minimum": 3, "multiple": 2, "k": 3, "points": 40},
+            "high": {"minimum": 5, "multiple": 3, "k": 6, "points": 60}
+        },
+        "pj": {
+            "fallback": [{"count": 40, "points": 60, "floor": "facial_document"}, {"count": 20, "points": 40, "floor": "facial"}, {"count": 10, "points": 25, "floor": "none"}],
+            "moderate": {"minimum": 10, "multiple": 2, "k": 3, "points": 40},
+            "high": {"minimum": 20, "multiple": 3, "k": 6, "points": 60}
+        }
     },
     "reference": {"days": 30, "min_active_days": 7, "min_events": 20},
     "MONTANTE_24H": {"limit": 5000000, "points": 40, "deviation": {"multiple": 2, "k": 3, "floor": 100000}},

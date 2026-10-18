@@ -154,8 +154,8 @@ class Pagador:
     """Uma pessoa que paga: conta, documento, aparelho, IP e lugar fixos."""
 
     def __init__(self, documento: str = None, aberta_em: datetime = None, canal: str = "app",
-                 rede: str = REDE_SAO_PAULO, gps=SAO_PAULO_GPS) -> None:
-        self.documento = documento or RandomGenerator.generate_cpf()
+                 rede: str = REDE_SAO_PAULO, gps=SAO_PAULO_GPS, pj: bool = False) -> None:
+        self.documento = documento or (RandomGenerator.generate_cnpj() if pj else RandomGenerator.generate_cpf())
         self.agencia = "0001"
         self.conta = nova_conta()
         self.aberta_em = aberta_em or datetime(2020, 1, 15, 10, 0, tzinfo=SAO_PAULO)
