@@ -737,11 +737,13 @@ O resultado sai assim:
 ```
 tests/integration/test_healthcheck.py::TestHealthCheck::test_home PASSED
 ...
-============== 356 passed, 27 skipped in 677.50s (0:11:17) ==============
+============== 873 passed, 43 skipped in 867.62s (0:14:27) ==============
 ```
 
-**Os 27 que pulam, e como rodar eles também.** Dois grupos de teste
-precisam de uma porta de serviço que fica **desligada por padrão**, de
+**Os 43 que pulam, e como rodar eles também.** Dezesseis são da
+antifraude e só rodam quando ligados (`RUN_ESCALA=true` e
+`RUN_ATAQUES=true`, na seção do antifraude, lá em cima). Os outros 27 são
+de dois grupos de teste que precisam de uma porta de serviço que fica **desligada por padrão**, de
 propósito: a injeção de falha, que faz a API quebrar num ponto exato
 para provar que nada fica pela metade, e o relógio simulado, que faz o
 prazo de 20 minutos vencer sem esperar 20 minutos. Nenhuma das duas pode
@@ -758,8 +760,9 @@ set -a && . ./.env && set +a
 pytest
 ```
 
-Aí são **383 passando e nada pulado**, que é o que o CI roda a cada
-push. Vale rodar assim antes de qualquer entrega.
+Aí são **900 passando e 16 pulados** (os de escala e os de ataque), que
+é o que o CI roda a cada push. Medido num clone limpo da `main` em
+18/10/2026, em 18 minutos. Vale rodar assim antes de qualquer entrega.
 
 Para rodar só um arquivo (ou só um teste), acrescente o caminho:
 
