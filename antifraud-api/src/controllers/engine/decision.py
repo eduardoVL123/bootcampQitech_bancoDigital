@@ -2,8 +2,9 @@
 
 A ordem dos passos e a politica, e cada um responde a uma pergunta:
 
-1. Ha bloqueio prioritario? Limite do cliente, teto operacional ou marcacao
-   critica do recebedor rejeitam sozinhos, e nada os desfaz.
+1. Ha bloqueio prioritario? Teto operacional ou evidencia confirmada do
+   recebedor rejeitam sozinhos, e nada os desfaz. (O limite que o cliente
+   escolhe e aplicado pela plataforma, nao aqui.)
 2. Quanto vale cada familia? Regras da mesma familia medem o mesmo fato
    (limite e perfil olham, os dois, o valor), entao so a maior conta. As
    outras ficam registradas com 0 e `correlated`.
@@ -13,12 +14,26 @@ A ordem dos passos e a politica, e cada um responde a uma pergunta:
 5. A tabela: rejeita com 80 ou mais SO SE dois eixos tiverem 20 ou mais.
    Risco alto concentrado num eixo pede a verificacao reforcada em vez de
    rejeitar: um sinal so, por mais forte, pode ter explicacao legitima.
+   A excecao e o eixo destino no corte (`reject_destination_alone`), e so
+   com mais um fato, porque concentracao em conta nova pode ser loja ou
+   conta laranja:
+   - alguem ja denunciou o recebedor (`destination_corroboration`: o alerta
+     do mock externo ou o "nao fui eu" de outro cliente). Loja de verdade
+     nao junta denuncia na primeira semana, e ali o 2FA nao protege: quem
+     faz a verificacao e o pagador enganado, e ele passa;
+   - ou a conta destino e da primeira semana e o Pix passa do teto dela
+     (TETO_DESTINO_NOVO): a loja vende o tiquete pequeno, e a laranja nao
+     recebe o valor alto.
+   Sem a chave na politica, o ramo nao existe.
 6. Os pisos: uma regra pode exigir um nivel minimo de verificacao sem
    somar pontos. Piso nunca reduz a decisao.
+7. Na rejeicao, o eixo que pesou mais: o da regra que bloqueou, ou o eixo
+   com mais pontos. Empate fica com o eixo da regra que explica a decisao.
 """
 from dataclasses import dataclass
+from typing import Optional
 
-from controllers.engine.context import AXES, FACIAL, FACIAL_DOCUMENT, LEVELS, MOVIMENTACAO, NONE
+from controllers.engine.context import AXES, DESTINO, FACIAL, FACIAL_DOCUMENT, LEVELS, MOVIMENTACAO, NONE
 from models import PixStatus
 
 VALUE_FAMILY = "valor_individual"
@@ -27,6 +42,10 @@ TRUST_FAMILY = "confianca"
 # Exceção entre famílias: a coordenação já conta o aparelho compartilhado
 # pelos mesmos titulares, e ele não pode contar de novo como acesso.
 SUPPRESSED_BY = {"COORDENACAO_ENTRE_CONTAS": ["APARELHO_COMPARTILHADO"]}
+
+# Sem denuncia do recebedor, e o teto da conta nova que deixa o eixo destino
+# reprovar sozinho (passo 5).
+NEW_DESTINATION_CAP = "TETO_DESTINO_NOVO"
 
 
 @dataclass
@@ -37,6 +56,7 @@ class Decision:
     level: str
     reason: str
     reason_description: str
+    rejection_axis: Optional[str] = None
 
 
 def _strongest_floor(floors) -> str:
@@ -100,6 +120,8 @@ def decide(results: list, params: dict) -> Decision:
         status, nivel = PixStatus.REJECTED, NONE
     elif score >= regras["reject"] and eixos_fortes >= regras["reject_min_axes"]:
         status, nivel = PixStatus.REJECTED, NONE
+    elif _destination_rejects_alone(eixos, disparadas, regras):
+        status, nivel = PixStatus.REJECTED, NONE
     elif score >= regras["facial_document"] or piso == FACIAL_DOCUMENT:
         status, nivel = PixStatus.TWO_FACTOR_REQUIRED, FACIAL_DOCUMENT
     elif score >= regras["facial"] or piso == FACIAL:
@@ -110,7 +132,36 @@ def decide(results: list, params: dict) -> Decision:
     motivo = _reason(bloqueios, disparadas, piso, nivel)
     return Decision(status=status, score=score, axes=eixos, level=nivel,
                     reason=motivo.rule if motivo else "SEM_ALERTA",
-                    reason_description=motivo.detail if motivo else "Nenhuma regra com pontos efetivos.")
+                    reason_description=motivo.detail if motivo else "Nenhuma regra com pontos efetivos.",
+                    rejection_axis=_rejection_axis(status, bloqueios, eixos, motivo))
+
+
+def _destination_rejects_alone(eixos, disparadas, regras) -> bool:
+    """O eixo destino no corte, com denuncia do recebedor ou acima do teto da conta nova.
+
+    Vale a regra disparada mesmo `correlated`: a familia so decide os pontos.
+    O aparelho na lista interna soma no eixo destino, mas e risco de quem
+    paga, e ali a facial funciona: nao e denuncia do recebedor.
+    """
+    corte = regras.get("reject_destination_alone")
+    if corte is None or eixos[DESTINO] < corte:
+        return False
+    denuncias = set(regras.get("destination_corroboration", []))
+    return any((r.rule in denuncias and r.extra.get("kind") != "device") or r.rule == NEW_DESTINATION_CAP
+               for r in disparadas)
+
+
+def _rejection_axis(status, bloqueios, eixos, motivo) -> Optional[str]:
+    """O eixo que mais pesou numa rejeicao (passo 7), ou None se nao rejeitou."""
+    if status != PixStatus.REJECTED:
+        return None
+    if bloqueios and bloqueios[0].axis in eixos:
+        return bloqueios[0].axis
+    maior = max(eixos.values())
+    empatados = [eixo for eixo in AXES if eixos[eixo] == maior]
+    if motivo is not None and motivo.axis in empatados:
+        return motivo.axis
+    return empatados[0]
 
 
 def _reason(bloqueios, disparadas, piso, nivel):

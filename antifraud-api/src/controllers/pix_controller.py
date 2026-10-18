@@ -19,10 +19,10 @@ from errors import (
 )
 from models import PixAnalysis
 from repositories import (
-    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, LimitRepository, PixRepository,
+    AccountRepository, ChallengeRepository, HistoryRepository, IpLocationRepository, PixRepository,
     PolicyRepository, ReputationRepository, WatchlistRepository,
 )
-from utils.document_number import digits_of, has_valid_check_digits, is_legal_person
+from utils.document_number import has_valid_check_digits, is_legal_person, normalize_document
 from utils.dates import parse_moment
 from utils.geo import in_brazil, ip_network
 
@@ -55,7 +55,6 @@ class PixController(BaseController):
         self.history_repo = HistoryRepository(self.context)
         self.ip_location_repo = IpLocationRepository(self.context)
         self.policy_repo = PolicyRepository(self.context)
-        self.limit_repo = LimitRepository(self.context)
         self.challenge_repo = ChallengeRepository(self.context)
         self.reputation_repo = ReputationRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
@@ -89,24 +88,35 @@ class PixController(BaseController):
 
         origem = payload["source_account"]
         destino = payload["destination_account"]
-        source_document = digits_of(origem["owner"]["document_number"])
-        destination_document = digits_of(destino["owner"]["document_number"])
-        source_account = self.account_repo.get_or_create(
-            OWN_PARTICIPANT, origem["branch"], origem["account_number"],
-            parse_moment(origem["opening_date"]), source_document,
-        )
-        destination_account = self.account_repo.get_or_create(
-            destino["participant"], destino["branch"], destino["account_number"],
-            parse_moment(destino["opening_date"]), destination_document,
-        )
+        source_document = normalize_document(origem["owner"]["document_number"])
+        destination_document = normalize_document(destino["owner"]["document_number"])
+        # As contas sao criadas em ordem fixa (a da chave unica), e nao
+        # "origem, depois destino". O INSERT de uma conta nova segura a chave
+        # dela ate o commit: com A -> B e B -> A chegando juntos, as duas
+        # contas da casa e nunca vistas, cada pedido criava a sua origem e
+        # esperava a do outro. Era um deadlock ANTES das travas consultivas,
+        # que so protegem o que vem depois delas.
+        pedidos = {
+            "source": (OWN_PARTICIPANT, origem["branch"], origem["account_number"],
+                       parse_moment(origem["opening_date"]), source_document),
+            "destination": (destino["participant"], destino["branch"], destino["account_number"],
+                            parse_moment(destino["opening_date"]), destination_document),
+        }
+        contas = {}
+        for lado, argumentos in sorted(pedidos.items(), key=lambda item: item[1][:3]):
+            contas[lado] = self.account_repo.get_or_create(*argumentos)
+        source_account, destination_account = contas["source"], contas["destination"]
 
         device_id = payload["source"]["device_id"]
+        # O IP fica de fora das travas de proposito: atras de um CGNAT de
+        # operadora, milhares de clientes dividem o mesmo IP, e travar por ele
+        # enfileirava todos. A unica regra que conta por IP (IP_COMPARTILHADO,
+        # +15) aceita errar por um num pico simultaneo.
         self.history_repo.lock([
             f"payer:{source_document}",
             f"payee:{destination_document}",
             f"account:{destination_account.id}",
             f"device:{device_id}",
-            f"ip:{ip}",
         ])
 
         existente = self.pix_repo.get_by_pix_id(payload["id"])
@@ -127,7 +137,7 @@ class PixController(BaseController):
             destination_account=destination_account, source_document=source_document,
             destination_document=destination_document, device_id=device_id,
             channel=payload["source"]["channel"], ip=ip, network=network, gps=gps,
-            ip_location=ip_location, history=self.history_repo, limits=self.limit_repo,
+            ip_location=ip_location, history=self.history_repo,
             reputation=self.reputation_repo, watchlist=self.watchlist_repo,
         )
         ctx.cache["params"] = params
@@ -157,7 +167,7 @@ class PixController(BaseController):
             policy_id=policy.id, metadata_=metadata,
         )
         try:
-            self.pix_repo.create(analysis, [self._rule_row(r) for r in resultados])
+            self.pix_repo.create(analysis)
         except IntegrityError:
             # Outro pedido com o mesmo id gravou primeiro. A analise dele e a
             # resposta, como num replay.
@@ -180,7 +190,7 @@ class PixController(BaseController):
         canonical = json.loads(json.dumps(payload))
         for lado in ("source_account", "destination_account"):
             dono = canonical[lado]["owner"]
-            dono["document_number"] = digits_of(dono["document_number"])
+            dono["document_number"] = normalize_document(dono["document_number"])
         return canonical
 
     def _check_dates(self, payload: dict, moment: datetime) -> None:
@@ -207,18 +217,14 @@ class PixController(BaseController):
             return Location(latitude, longitude, "learned", "BR" if in_brazil(latitude, longitude) else None)
         return None
 
-    def _rule_row(self, resultado) -> dict:
-        return {
-            "rule": resultado.rule, "evaluation": resultado.evaluation, "axis": resultado.axis,
-            "family": resultado.family, "raw_points": resultado.raw_points,
-            "effective_points": resultado.effective_points, "hard_block": resultado.hard_block,
-            "authentication_floor": resultado.floor, "detail": resultado.detail,
-        }
-
     def _metadata(self, ctx, policy, decisao, cenario, candidatos, resultados, inicio) -> dict:
-        regras = []
+        # As regras que nao dispararam ficam so pelo codigo: era a frase de
+        # cada uma, numa linha por regra (37 por Pix), que fazia a gravacao
+        # pesar 4 vezes a analise (docs/testes/antifraude-escala.md).
+        regras, nao_dispararam = [], []
         for resultado in resultados:
             if resultado.evaluation == NOT_TRIGGERED:
+                nao_dispararam.append(resultado.rule)
                 continue
             item = {
                 "rule": resultado.rule, "evaluation": resultado.evaluation, "axis": resultado.axis,
@@ -236,6 +242,7 @@ class PixController(BaseController):
             "policy_version": policy.version,
             "risk_score": decisao.score,
             "risk_axes": decisao.axes,
+            "rejection_axis": decisao.rejection_axis,
             "reason": decisao.reason,
             "reason_description": decisao.reason_description,
             "authentication": {
@@ -246,6 +253,7 @@ class PixController(BaseController):
             "scenario": cenario,
             "scenario_candidates": candidatos,
             "rules": regras,
+            "rules_not_triggered": nao_dispararam,
             "signals": self._signals(ctx),
             "reputation": (reputacao.extra.get("reputation") if reputacao else None)
             or {"provider": "mock_bureau", "is_mock": True, "signal": "not_evaluated"},

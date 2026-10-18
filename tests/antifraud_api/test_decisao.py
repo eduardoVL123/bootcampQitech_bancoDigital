@@ -4,10 +4,10 @@ As regras usadas aqui sao as que nao dependem de historico (limite,
 noturno, geolocalizacao ausente e mesma titularidade). Cada teste cria
 pessoas novas, entao nenhum historico de outro teste entra na conta.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from tests.utils.pix import (
-    AntifraudApi, Pagador, Recebedor, analisa, disparou, nova_base, pix, pontos, regra,
+    RECEBEDOR_NA_WATCHLIST, AntifraudApi, Pagador, Recebedor, analisa, disparou, nova_base, pix, pontos, regra,
 )
 
 
@@ -54,6 +54,14 @@ def test_noturno_para_cnpj_nao_dispara():
     corpo = analisa(pix(Pagador(), Recebedor(pj=True), 150000, _dia(22, 15).isoformat()))
 
     assert not disparou(corpo, "NOTURNO")
+
+
+def test_noturno_para_cnpj_com_conta_nova_soma_25():
+    # A conta laranja aberta como MEI: e PJ, mas a conta tem 10 dias.
+    noite = _dia(22, 15)
+    corpo = analisa(pix(Pagador(), Recebedor(pj=True, aberta_em=noite - timedelta(days=10)), 150000, noite.isoformat()))
+
+    assert pontos(corpo, "NOTURNO") == 25
 
 
 def test_noturno_com_valor_pequeno_nao_dispara():
@@ -109,6 +117,28 @@ def test_sem_gps_pela_api_nao_soma():
     assert pontos(corpo, "GEO_AUSENTE") == 0
 
 
+def test_quem_nunca_manda_gps_nao_e_penalizado_pela_ausencia():
+    # Permissao de localizacao negada desde sempre: a ausencia e o normal
+    # deste titular, e nao baixa o corte de 2FA dele em todo Pix.
+    pagador, hoje = Pagador(canal="app", gps=None), _dia(14)
+    for dias in (9, 6, 3):
+        analisa(pix(pagador, Recebedor(), 15000, (hoje - timedelta(days=dias)).isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 15000, hoje.isoformat()))
+
+    assert not disparou(corpo, "GEO_AUSENTE")
+
+
+def test_quem_costuma_mandar_gps_e_chega_sem_ele_soma_20():
+    pagador, hoje = Pagador(canal="app"), _dia(14)
+    for dias in (9, 6, 3):
+        analisa(pix(pagador, Recebedor(), 15000, (hoje - timedelta(days=dias)).isoformat()))
+
+    corpo = analisa(pix(pagador, Recebedor(), 15000, hoje.isoformat(), gps=None))
+
+    assert pontos(corpo, "GEO_AUSENTE") == 20
+
+
 def test_com_gps_nao_dispara():
     corpo = analisa(pix(Pagador(), Recebedor(), 15000, _dia(14).isoformat()))
 
@@ -159,3 +189,36 @@ def test_regras_ficam_no_get_iguais_ao_post():
 
     assert lido["metadata"]["rules"] == criado["metadata"]["rules"]
     assert lido["metadata"]["risk_score"] == criado["metadata"]["risk_score"]
+
+
+# O eixo da rejeicao: quando o Pix e rejeitado, o metadata diz qual dos tres
+# eixos (movimentacao, acesso, destino) pesou mais. No bloqueio, e o eixo da
+# regra que bloqueou; na soma, o eixo com mais pontos.
+
+def test_rejeicao_pela_soma_diz_o_eixo_que_mais_pontuou():
+    # limite 40 + noturno 25 em movimentacao, contra 20 de acesso (sem GPS).
+    corpo = analisa(pix(Pagador(), Recebedor(), 2500000, _dia(23).isoformat(), gps=None))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "movimentacao"
+
+
+def test_bloqueio_pelo_teto_diz_o_eixo_da_regra_que_bloqueou():
+    corpo = analisa(pix(Pagador(), Recebedor(), 15000000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "movimentacao"
+
+
+def test_bloqueio_pelo_recebedor_diz_o_eixo_destino():
+    corpo = analisa(pix(Pagador(), Recebedor(documento=RECEBEDOR_NA_WATCHLIST), 5000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "destino"
+
+
+def test_pix_que_nao_foi_rejeitado_nao_tem_eixo_de_rejeicao():
+    corpo = analisa(pix(Pagador(), Recebedor(), 2500000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "two_factor_required"
+    assert corpo["metadata"]["rejection_axis"] is None

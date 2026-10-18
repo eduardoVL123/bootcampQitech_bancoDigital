@@ -47,7 +47,7 @@ class HistoryRepository:
     # ------------------------------------------------------------------
 
     def lock(self, keys: list) -> None:
-        """Trava, ate o commit, o pagador, o recebedor, o aparelho e o IP.
+        """Trava, ate o commit, o pagador, o recebedor e o aparelho (o IP nao: ver o controller).
 
         Sao travas consultivas (pg_advisory_xact_lock): nao prendem linha
         nenhuma, so serializam quem pede a mesma chave. Dois Pix do mesmo
@@ -88,7 +88,8 @@ class HistoryRepository:
     def restrictive_attempts(self, account_id: int, moment, minutes: int) -> list:
         """As tentativas recentes que nao viraram dinheiro, em ordem."""
         return self._remember(("restrictive", account_id, minutes), lambda: self._all(
-            f"SELECT a.transaction_date, a.amount FROM pix_analysis a WHERE a.source_account_id = :conta "
+            f"SELECT a.transaction_date, a.amount, a.destination_document FROM pix_analysis a "
+            f"WHERE a.source_account_id = :conta "
             f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {RESTRICTIVE} "
             "ORDER BY a.transaction_date",
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
@@ -103,6 +104,17 @@ class HistoryRepository:
             ), {"conta": account_id, "fim": moment}).first()
             return linha[0], linha[1]
         return self._remember(("attempt_dates", account_id), consulta)
+
+    def latest_attempt(self, account_id: int):
+        """A data mais nova ja analisada para a conta, SEM limite superior.
+
+        E a unica consulta que olha depois do instante do Pix: serve para
+        ver que ele chegou com data anterior a Pix que ja aconteceram.
+        """
+        return self._remember(("latest", account_id), lambda: self._scalar(
+            "SELECT max(a.transaction_date) FROM pix_analysis a WHERE a.source_account_id = :conta",
+            conta=account_id,
+        ))
 
     def last_attempt_before(self, account_id: int, before):
         return self._remember(("last_before", account_id), lambda: self._scalar(
@@ -160,6 +172,33 @@ class HistoryRepository:
             "AND a.device_id = :aparelho AND a.transaction_date <= :fim)",
             doc=document, aparelho=device_id, fim=moment,
         ))
+
+    def gps_habit(self, document: str, moment, days: int) -> tuple:
+        """(tentativas com GPS, tentativas no total) do titular na janela, antes deste Pix."""
+        def consulta():
+            linha = self.session.execute(text(
+                "SELECT count(a.latitude), count(*) FROM pix_analysis a WHERE a.source_document = :doc "
+                "AND a.transaction_date > :inicio AND a.transaction_date <= :fim"
+            ), {"doc": document, "inicio": moment - timedelta(days=days), "fim": moment}).first()
+            return int(linha[0]), int(linha[1])
+        return self._remember(("gps_habit", document, days), consulta)
+
+    def device_registration(self, document: str, device_id: str, moment, day_start) -> tuple:
+        """(aparelho do primeiro Pix do titular, aparelho ja confirmado num desafio, aprovado hoje nele)."""
+        def consulta():
+            linha = self.session.execute(text(
+                "SELECT "
+                "(SELECT a.device_id FROM pix_analysis a WHERE a.source_document = :doc AND a.transaction_date <= :fim "
+                " ORDER BY a.transaction_date, a.id LIMIT 1), "
+                "EXISTS (SELECT 1 FROM pix_analysis a JOIN pix_challenge_result c ON c.analysis_id = a.id "
+                " WHERE a.source_document = :doc AND a.device_id = :aparelho AND c.result = 'approved_by_client' "
+                " AND a.transaction_date <= :fim), "
+                f"(SELECT coalesce(sum(a.amount), 0) FROM pix_analysis a WHERE a.source_document = :doc "
+                f" AND a.device_id = :aparelho AND a.transaction_date >= :dia AND a.transaction_date <= :fim "
+                f" AND {APPROVED})"
+            ), {"doc": document, "aparelho": device_id, "fim": moment, "dia": day_start}).first()
+            return linha[0], bool(linha[1]), int(linha[2])
+        return self._remember(("device_registration", document, device_id), consulta)
 
     def network_seen(self, document: str, network: str, moment) -> bool:
         return self._remember(("network_seen", document, network), lambda: self._scalar(
@@ -233,6 +272,19 @@ class HistoryRepository:
             return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
         return self._remember(("received", account_id, minutes), consulta)
 
+    def approved_credits_from_others(self, account_id: int, payer_document: str, moment, days: int) -> list:
+        """(valor, data, pagador) dos creditos aprovados na conta, de quem nao e o pagador de agora.
+
+        E a regua de ticket do recebedor. O proprio pagador fica de fora: o
+        que ele costuma pagar ali e o par do PERFIL, e contaria duas vezes.
+        """
+        return self._remember(("credits_from_others", account_id, payer_document, days), lambda: self._all(
+            f"SELECT a.amount, a.transaction_date, a.source_document FROM pix_analysis a "
+            f"WHERE a.destination_account_id = :conta AND a.source_document <> :pagador "
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
+            conta=account_id, pagador=payer_document, inicio=moment - timedelta(days=days), fim=moment,
+        ))
+
     # ------------------------------------------------------------------
     # Eventos para as reguas de cada cliente (controllers/engine/reference.py)
     # ------------------------------------------------------------------
@@ -255,13 +307,16 @@ class HistoryRepository:
             conta=account_id, inicio=start, fim=end,
         )]
 
-    def network_path(self, anchors: set, destination_document: str, moment, days: int):
+    def network_path(self, anchors: set, destination_document: str, moment, days: int, min_amount: int = 1):
         """O caminho de ate dois saltos de uma ancora ate o destino, por Pix aprovados.
 
         Um salto: a ancora pagou o destino. Dois: a ancora pagou alguem que
         pagou o destino. So as ancoras espalham suspeita; o vizinho nao vira
         ancora nova, e a suspeita nao se propaga sem fim. Devolve (saltos,
         caminho) ou None.
+
+        Aresta abaixo de `min_amount` nao conta: sem o corte, uma ancora que
+        e cliente da casa contaminava qualquer conta com um Pix de R$ 0,01.
         """
         if not anchors:
             return None
@@ -269,8 +324,8 @@ class HistoryRepository:
         um_salto = self._all(
             f"SELECT a.source_document FROM pix_analysis a WHERE a.source_document = ANY(:ancoras) "
             f"AND a.destination_document = :destino AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
-            f"AND {APPROVED} LIMIT 1",
-            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+            f"AND a.amount >= :minimo AND {APPROVED} LIMIT 1",
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if um_salto:
             return 1, [um_salto[0][0], destination_document]
@@ -280,8 +335,9 @@ class HistoryRepository:
             f"WHERE a.destination_document = :destino AND b.source_document = ANY(:ancoras) "
             f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
             f"AND b.transaction_date > :inicio AND b.transaction_date <= a.transaction_date "
+            f"AND a.amount >= :minimo AND b.amount >= :minimo "
             f"AND {APPROVED} AND {APPROVED.replace('a.', 'b.')} LIMIT 1",
-            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim,
+            ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if dois_saltos:
             meio, ancora = dois_saltos[0]

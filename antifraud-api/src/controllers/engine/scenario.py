@@ -11,13 +11,17 @@ def _any(ctx, *rules) -> bool:
 
 
 def _limite(ctx, decision) -> bool:
-    return any(r.hard_block and r.is_triggered and r.rule in ("LIMITE_DO_CLIENTE", "LIMITE_POR_PIX")
+    return any(r.hard_block and r.is_triggered and r.rule == "LIMITE_POR_PIX"
                for r in ctx.results.values())
 
 
 def _recebedor_critico(ctx, decision) -> bool:
-    resultado = ctx.result("REPUTACAO_EXTERNA")
-    return resultado is not None and resultado.is_triggered and resultado.hard_block
+    """Bloqueio por evidencia do recebedor: a do mock externo ou a da lista interna."""
+    for regra in ("REPUTACAO_EXTERNA", "REPUTACAO_INTERNA"):
+        resultado = ctx.result(regra)
+        if resultado is not None and resultado.is_triggered and resultado.hard_block:
+            return True
+    return False
 
 
 def _conta_tomada(ctx, decision) -> bool:
@@ -43,7 +47,7 @@ CANDIDATES = [
     ("conta_laranja", lambda ctx, d: _any(ctx, "CONTA_LARANJA", "REPASSE_RAPIDO")),
     ("conta_tomada", _conta_tomada),
     ("sondagem_de_limite", lambda ctx, d: ctx.triggered("SONDAGEM_DE_LIMITE")),
-    ("quebra_de_padrao_mensal", lambda ctx, d: ctx.triggered("PADRAO_MENSAL")),
+    ("data_fora_de_ordem", lambda ctx, d: ctx.triggered("DATA_RETROATIVA")),
     ("esvaziamento_fatiado", lambda ctx, d: _any(ctx, "VELOCITY", "FATIAMENTO", "MONTANTE_24H")),
     ("coacao_noturna", _coacao),
     ("pagamento_recorrente",

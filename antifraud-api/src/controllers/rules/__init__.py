@@ -8,16 +8,17 @@ from controllers.rules.perfil_sem_historico import PerfilSemHistorico
 from controllers.rules.limite_por_pix import LimitePorPix
 from controllers.rules.montante_diario_atipico import MontanteDiarioAtipico
 from controllers.rules.noturno import Noturno
-from controllers.rules.padrao_mensal import PadraoMensal
 from controllers.rules.geo_ausente import GeoAusente
 from controllers.rules.mesma_titularidade import MesmaTitularidade
 from controllers.rules.origem_nova import OrigemNova
 from controllers.rules.conta_reativada import ContaReativada
 from controllers.rules.destino_novo import DestinoNovo
+from controllers.rules.teto_destino_novo import TetoDestinoNovo
 from controllers.rules.contraparte_inedita import ContraparteInedita
+from controllers.rules.ticket_do_recebedor import TicketDoRecebedor
 from controllers.rules.destino_confiavel import DestinoConfiavel
 from controllers.rules.aparelho_novo import AparelhoNovo
-from controllers.rules.rede_nova import RedeNova
+from controllers.rules.aparelho_nao_cadastrado import AparelhoNaoCadastrado
 from controllers.rules.viagem_impossivel import ViagemImpossivel
 from controllers.rules.geo_ip_divergente import GeoIpDivergente
 from controllers.rules.ambiente_incoerente import AmbienteIncoerente
@@ -30,9 +31,8 @@ from controllers.rules.rede_suspeita import RedeSuspeita
 from controllers.rules.reputacao_externa import ReputacaoExterna
 from controllers.rules.reputacao_interna import ReputacaoInterna
 from controllers.rules.ruptura_de_contexto import RupturaDeContexto
+from controllers.rules.data_retroativa import DataRetroativa
 from controllers.rules.velocity import Velocity
-from controllers.rules.limite_do_cliente import LimiteDoCliente
-from controllers.rules.aumento_pendente import AumentoPendente
 from controllers.rules.montante_24h import Montante24h
 from controllers.rules.fatiamento import Fatiamento
 from controllers.rules.sondagem_de_limite import SondagemDeLimite
@@ -46,22 +46,21 @@ RULES = [
     Fatiamento(),
     MontanteDiarioAtipico(),
     SondagemDeLimite(),
-    LimiteDoCliente(),
-    AumentoPendente(),
     OrigemNova(),
     ContaReativada(),
     Noturno(),
     AparelhoNovo(),
-    RedeNova(),
+    AparelhoNaoCadastrado(),
     ViagemImpossivel(),
     GeoIpDivergente(),
     AmbienteIncoerente(),
     GeoAusente(),
     AparelhoCompartilhado(),
     IpCompartilhado(),
-    PadraoMensal(),
     DestinoNovo(),
+    TetoDestinoNovo(),
     ContraparteInedita(),
+    TicketDoRecebedor(),
     ContaLaranja(),
     RepasseRapido(),
     CoordenacaoEntreContas(),
@@ -71,4 +70,5 @@ RULES = [
     MesmaTitularidade(),
     DestinoConfiavel(),
     RupturaDeContexto(),
+    DataRetroativa(),
 ]

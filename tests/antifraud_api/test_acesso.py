@@ -1,11 +1,11 @@
-"""Acesso e localizacao: aparelho e rede novos, viagem impossivel por GPS
+"""Acesso e localizacao: aparelho novo, viagem impossivel por GPS
 ou IP, GPS longe do IP, ambiente fora do Brasil, infraestrutura
 compartilhada e a ruptura de contexto."""
 import random
 from datetime import timedelta
 
 from tests.utils.pix import (
-    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, Pagador, Recebedor, analisa, disparou,
+    LISBOA_GPS, RECIFE_GPS, REDE_LISBOA, REDE_RECIFE, SAO_PAULO_GPS, Pagador, Recebedor, analisa, disparou, paga,
     historico, nova_base, novo_ip, pix, pontos, regra,
 )
 
@@ -33,15 +33,16 @@ def test_primeiro_pix_da_vida_nao_e_aparelho_novo():
     assert not disparou(corpo, "APARELHO_NOVO")
 
 
-def test_rede_nova_e_aparelho_novo_contam_uma_vez():
+def test_aparelho_novo_numa_rede_desconhecida_soma_so_os_20_do_aparelho():
+    # A rede nova nao pesa mais sozinha (a REDE_NOVA saiu): rede de celular
+    # muda o tempo todo, e quem conta a troca de acesso e o aparelho.
     pagador, hoje = Pagador(), nova_base()
     _com_historico(pagador, hoje)
 
     corpo = analisa(pix(pagador, Recebedor(), 5000, hoje.isoformat(), aparelho="dvc-x-" + pagador.conta,
                         ip=f"{_rede_desconhecida()}.9"))
 
-    assert disparou(corpo, "REDE_NOVA")
-    assert regra(corpo, "REDE_NOVA")["correlated"] is True
+    assert pontos(corpo, "APARELHO_NOVO") == 20
     assert corpo["metadata"]["risk_axes"]["acesso"] == 20
 
 
@@ -174,6 +175,58 @@ def test_cinco_titulares_no_mesmo_ip_soma_15():
     corpo = analisa(pix(Pagador(), Recebedor(), 5000, hoje.isoformat(), ip=ip))
 
     assert pontos(corpo, "IP_COMPARTILHADO") == 15
+
+
+def test_aparelho_sem_cadastro_acima_de_200_pede_facial():
+    # Res. BCB 403/2024: aparelho nunca usado pelo cliente fica em R$ 200 por
+    # Pix; acima disso, precisa de cadastro (a verificacao).
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+
+    corpo = analisa(pix(pagador, Recebedor(), 25000, hoje.isoformat(), aparelho=f"dvc-{random.randint(0, 10**9)}"))
+
+    assert disparou(corpo, "APARELHO_NAO_CADASTRADO")
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_aparelho_sem_cadastro_ate_200_passa_mas_o_dia_soma_ate_1000():
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+    novo = f"dvc-{random.randint(0, 10**9)}"
+    corpos = [analisa(pix(pagador, Recebedor(), 19000, (hoje + timedelta(minutes=20 * i)).isoformat(), aparelho=novo))
+              for i in range(6)]
+
+    assert not disparou(corpos[0], "APARELHO_NAO_CADASTRADO")
+    assert disparou(corpos[5], "APARELHO_NAO_CADASTRADO")  # 6 x R$ 190 = R$ 1.140 no dia
+
+
+def test_aparelho_confirmado_numa_verificacao_fica_cadastrado():
+    hoje, pagador = nova_base(), Pagador()
+    _com_historico(pagador, hoje)
+    novo = f"dvc-{random.randint(0, 10**9)}"
+    primeiro = pix(pagador, Recebedor(), 25000, hoje.isoformat(), aparelho=novo)
+    paga(primeiro)  # pede a facial, e o cliente confirma: o aparelho fica cadastrado
+
+    corpo = analisa(pix(pagador, Recebedor(), 25000, (hoje + timedelta(hours=1)).isoformat(), aparelho=novo))
+
+    assert not disparou(corpo, "APARELHO_NAO_CADASTRADO")
+
+
+def test_ip_de_operadora_na_rede_de_sempre_nao_soma():
+    # CGNAT: seis clientes da mesma operadora, cada um no IP de sempre,
+    # pagando um amigo de sempre as 21h. Antes, do quinto em diante levava
+    # NOTURNO 25 + IP_COMPARTILHADO 15 = 40 e a facial.
+    hoje = nova_base().replace(hour=21, minute=0)
+    ip = f"{_rede_desconhecida()}.88"
+    corpos = []
+    for indice in range(6):
+        amigo, cliente = Recebedor(), Pagador()
+        cliente.ip = ip
+        historico(cliente, [150000] * 3, hoje - timedelta(days=40), timedelta(days=3), recebedor=amigo)
+        corpos.append(analisa(pix(cliente, amigo, 150000, (hoje + timedelta(minutes=indice)).isoformat())))
+
+    assert not any(disparou(corpo, "IP_COMPARTILHADO") for corpo in corpos)
+    assert all(corpo["status"] == "approved" for corpo in corpos)
 
 
 def _cliente_estabelecido(hoje):

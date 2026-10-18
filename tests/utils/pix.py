@@ -49,11 +49,15 @@ LISBOA_GPS = (38.72, -9.14)
 
 # Documentos dos seeds de demonstracao (database/antifraud.sql).
 RECEBEDOR_MARCACAO_CRITICA = "529.982.247-25"
+RECEBEDOR_MARCACAO_UM_DENUNCIANTE = "370.245.568-03"
 RECEBEDOR_ALERTA = "111.444.777-35"
 RECEBEDOR_ALERTA_VENCIDO = "390.533.447-05"
 RECEBEDOR_VITIMA = "123.456.789-09"
 RECEBEDOR_NA_WATCHLIST = "275.484.389-23"
 APARELHO_NA_WATCHLIST = "dvc-watchlist-0001"
+# Do mock de cadastro de CNPJ: a atividade principal (CNAE).
+RECEBEDOR_DOCERIA = "41.738.265/0001-79"
+RECEBEDOR_CONCESSIONARIA = "58.291.473/0001-75"
 
 
 def endereco_da_api() -> str:
@@ -82,10 +86,6 @@ class AntifraudApi:
     @staticmethod
     def get(pix_id: str, token: str = TOKEN) -> requests.Response:
         return AntifraudApi.envia("GET", f"/pix/transaction/{pix_id}", token=token)
-
-    @staticmethod
-    def put_limit(payload: dict) -> requests.Response:
-        return AntifraudApi.envia("PUT", "/pix/account_limit", json=payload)
 
     @staticmethod
     def patch(pix_id: str, payload: dict) -> requests.Response:
@@ -150,8 +150,8 @@ class Pagador:
     """Uma pessoa que paga: conta, documento, aparelho, IP e lugar fixos."""
 
     def __init__(self, documento: str = None, aberta_em: datetime = None, canal: str = "app",
-                 rede: str = REDE_SAO_PAULO, gps=SAO_PAULO_GPS) -> None:
-        self.documento = documento or RandomGenerator.generate_cpf()
+                 rede: str = REDE_SAO_PAULO, gps=SAO_PAULO_GPS, pj: bool = False) -> None:
+        self.documento = documento or (RandomGenerator.generate_cnpj() if pj else RandomGenerator.generate_cpf())
         self.agencia = "0001"
         self.conta = nova_conta()
         self.aberta_em = aberta_em or datetime(2020, 1, 15, 10, 0, tzinfo=SAO_PAULO)
@@ -310,7 +310,7 @@ class AntifraudDb:
         try:
             with engine.connect() as conexao:
                 conexao.exec_driver_sql(
-                    "TRUNCATE pix_challenge_result, pix_rule_result, pix_analysis, account_limit, pix_account "
+                    "TRUNCATE pix_challenge_result, pix_analysis, pix_account "
                     "RESTART IDENTITY CASCADE"
                 )
         finally:

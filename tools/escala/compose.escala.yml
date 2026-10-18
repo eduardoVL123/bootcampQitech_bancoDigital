@@ -1,0 +1,11 @@
+# Sobreposicao do compose so para a medicao de escala (tools/escala_antifraude.py).
+#
+#   docker compose -f docker-compose.yml -f tools/escala/compose.escala.yml up -d --build --wait db antifraud-api
+#
+# Liga o pg_stat_statements no Postgres, que conta o tempo de cada consulta.
+# Com ele, o relatorio diz QUAL consulta pesa quando o banco cresce, e nao
+# so que a latencia subiu. Nao vale para a entrega: o compose normal
+# continua igual.
+services:
+  db:
+    command: postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all

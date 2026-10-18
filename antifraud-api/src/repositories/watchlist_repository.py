@@ -14,10 +14,15 @@ class WatchlistRepository:
         self.session = context.db_session
 
     def listed(self, kind: str, value: str, moment):
-        """A entrada vigente da lista para este aparelho ou documento, se houver."""
+        """A entrada vigente da lista para este aparelho ou documento, se houver.
+
+        Com mais de uma, a confirmada (`external`) vem primeiro: um "nao fui
+        eu" antigo nao pode esconder a fraude confirmada do mesmo documento.
+        """
         return self.session.execute(text(
             "SELECT evidence_id, creator, report_type FROM watchlist WHERE kind = :kind AND value = :value "
-            "AND available_from <= :momento AND expires_at > :momento ORDER BY available_from LIMIT 1"
+            "AND available_from <= :momento AND expires_at > :momento "
+            "ORDER BY (creator = 'external') DESC, available_from LIMIT 1"
         ), {"kind": kind, "value": value, "momento": moment}).first()
 
     def add_client_report(self, kind: str, value: str, evidence_id: str, event_date) -> None:

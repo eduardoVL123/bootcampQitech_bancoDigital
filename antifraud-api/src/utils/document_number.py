@@ -9,12 +9,16 @@ CNPJ_FIRST_WEIGHTS = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
 CNPJ_SECOND_WEIGHTS = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
 
 
-def only_digits(document_number: str) -> list:
-    digits = []
-    for character in document_number:
-        if character.isdigit():
-            digits.append(int(character))
-    return digits
+def cnpj_values(document_number: str) -> list:
+    """Cada caractere do CNPJ vira o número que entra na conta do verificador.
+
+    Desde julho de 2026 a Receita emite CNPJ alfanumérico (IN RFB 2.229/2024):
+    as 12 primeiras posições podem ter letras, as 2 últimas continuam
+    dígitos, e a conta continua sendo o módulo 11. Cada caractere vale o
+    seu código ASCII menos 48: "7" continua 7, "A" vale 17, "B" 18...
+    Para um CNPJ só de números, nada muda.
+    """
+    return [ord(character) - 48 for character in normalize_document(document_number)]
 
 
 def is_valid_cnpj(document_number: str) -> bool:
@@ -24,10 +28,12 @@ def is_valid_cnpj(document_number: str) -> bool:
     Para cada verificador: multiplica cada dígito pelo peso da lista, soma,
     tira o resto da divisão por 11. Resto menor que 2 vira 0; nos outros
     casos, o dígito é 11 menos o resto. Dígitos todos iguais não valem.
+    Vale também para o CNPJ alfanumérico (ver cnpj_values).
     """
-    digits = only_digits(document_number)
+    normalizado = normalize_document(document_number)
+    digits = cnpj_values(normalizado)
 
-    if len(digits) != CNPJ_LENGTH or len(set(digits)) == 1:
+    if len(digits) != CNPJ_LENGTH or len(set(digits)) == 1 or not normalizado[-2:].isdigit():
         return False
 
     for weights in [CNPJ_FIRST_WEIGHTS, CNPJ_SECOND_WEIGHTS]:
@@ -109,17 +115,19 @@ def is_valid_cpf(document_number: str) -> bool:
     return True
 
 
-def digits_of(document_number: str) -> str:
-    """O documento so em digitos, preservando zeros a esquerda.
+def normalize_document(document_number: str) -> str:
+    """O documento sem mascara, preservando zeros a esquerda e as letras.
 
     "123.456.789-09" e "12345678909" sao a mesma pessoa: o motor compara e
-    grava sempre esta forma.
+    grava sempre esta forma. Letras ficam (em maiuscula) por causa do CNPJ
+    alfanumerico: tirar so os digitos de "12.ABC.345/01DE-35" deixaria
+    "1234501" + "35", e duas empresas diferentes virariam o mesmo documento.
     """
-    return "".join(character for character in document_number if character.isdigit())
+    return "".join(character for character in document_number.upper() if character.isascii() and character.isalnum())
 
 
 def is_legal_person(document_number: str) -> bool:
-    return len(digits_of(document_number)) == CNPJ_LENGTH
+    return len(normalize_document(document_number)) == CNPJ_LENGTH
 
 
 def has_valid_check_digits(document_number: str) -> bool:
