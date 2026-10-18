@@ -127,10 +127,35 @@ Mesmo banco e mesmo notebook (Intel i7-1165G7, 4 núcleos físicos e 8 threads),
 - **O banco gasta mais CPU do que o `pg_stat_statements` mostra.** O "no banco" das outras tabelas soma só a execução das consultas (uns 7 ms por Pix). Com 31 Pix por segundo, o Postgres ocupou 2,3 núcleos: a conta inclui planejar cada uma das cerca de 40 consultas de cada Pix, que vão sem preparo, e gravar o commit. É a próxima alavanca: menos idas ao banco por Pix.
 - **A mesma loja não escala com processos.** Pix simultâneos para o mesmo recebedor fazem fila na trava dele, e ficam em uns 13 a 17 por segundo com 1 ou com 4 processos; ali a máquina ficou com metade da CPU parada. É o preço da contagem de pagadores da loja nunca errar.
 
+## Conexões e driver: o experimento de 18/10
+
+Um Pix de cliente comum manda **56 comandos SQL** ao banco. Com o planejamento ligado no `pg_stat_statements` (`pg_stat_statements.track_planning=on`), apareceu que o Postgres gastava mais tempo **planejando** essas consultas do que executando. A hipótese era que consultas preparadas, que o Postgres planeja uma vez por conexão, resolveriam. O `psycopg2` não prepara; o `psycopg` 3 prepara sozinho a consulta que se repete.
+
+Antes disso, uma descoberta: com `APP_ENV=local`, que é o padrão do compose e vem do Base Service, a API usa `NullPool` (`antifraud-api/src/database.py`) e **abre conexão nova a cada requisição**. Em qualquer outro `APP_ENV`, ela usa um pool de 5 conexões. Consulta preparada só vale dentro de uma conexão, então o experimento comparou quatro montagens, todas por arquivo de sobreposição, sem mudar a entrega. Cada uma num banco zerado, 50 Pix de clientes com 40 Pix de histórico:
+
+| montagem | conexões novas por Pix | execução no banco | planejamento | motor p50 | ponta p50 | 8 chamadores |
+|---|---:|---:|---:|---:|---:|---:|
+| A: como sobe hoje (`psycopg2`, `APP_ENV=local`) | 2 | 5,6 ms | 14,7 ms | 70 ms | 115 ms | 17,0 Pix/s |
+| B: `psycopg2` com pool (`APP_ENV` de produção) | 0 | 3,1 ms | 9,0 ms | 52 ms | **81 ms** | 18,2 Pix/s |
+| C: `psycopg` 3 com pool | 0 | 2,8 ms | 8,9 ms | 57 ms | 87 ms | 15,4 Pix/s |
+| C com `plan_cache_mode=force_generic_plan` | 0 | 8,0 ms | 8,5 ms | 62 ms | 91 ms | 15,7 Pix/s |
+
+**O que ficou:**
+
+- **O ganho é do pool, não do driver.** Reaproveitar conexões tira 34 ms da ponta (de 115 para 81 ms, 30%). O código já faz isso fora do ambiente local: em produção, com `APP_ENV` diferente de `local`, a API usa o pool. **Os números das outras seções deste documento foram medidos no modo local, e são o caso pessimista.**
+- **O `psycopg` 3 não entrou.** O planejamento continuou em uns 9 ms por Pix, com ou sem o plano genérico forçado, e a vazão caiu. A troca foi desfeita.
+- **O compose da entrega não mudou.** O `NullPool` no ambiente local veio do Base Service. Mudar o ambiente local para pool é uma linha, mas troca um comportamento herdado, e o ganho já vale onde importa, em produção.
+
 ## O que continua em aberto
 
-- **Mais processos em produção.** Medido acima: 4 processos quase dobram a vazão neste notebook. Em produção, seriam processos ou réplicas atrás de um balanceador, com o banco em outra máquina. Cada processo abre o próprio pool (até 15 conexões com `pool_size=5`), e o Postgres aceita 100 por padrão.
-- **Menos idas ao banco por Pix.** São cerca de 40 consultas por Pix, cada uma planejada de novo. Juntar as consultas do mesmo pagador, ou prepará-las, diminui a CPU do Postgres, que é o que aparece quando há mais processos.
-- **Pagador muito ativo.** Com 10 mil Pix no histórico, o banco gasta uns 80 ms por Pix. As consultas que mais pesam leem o histórico inteiro de 186 dias do pagador, e uma delas (`count(*)` por documento) não tem limite de tempo, só para saber se há pelo menos 3 tentativas.
-- **O `analysis_key`** é `CHAR(36)` com índice único de 222 MB em 3 milhões de linhas, e nenhuma consulta busca por ele.
-- **O `metadata`** é a maior parte da linha que sobrou.
+As próximas alavancas, na ordem de ganho medido. Nenhuma foi feita antes da entrega: as de maior ganho mexem no coração do motor.
+
+| # | O que | Evidência | Como melhorar | Custo e risco |
+|---|---|---|---|---|
+| 1 | **Planejamento das consultas** | 9 ms por Pix com pool (14,7 ms sem), contra 3 ms de execução; o driver não resolveu | menos comandos (item 2); ou preparar à mão as consultas mais frequentes, conferindo o plano de cada uma | médio |
+| 2 | **Idas ao banco** | 56 comandos por Pix; a soma e contagem do pagador roda 3 vezes, uma por janela | juntar as janelas do mesmo pagador ou da mesma loja numa consulta só, com `FILTER` por janela | médio: mexe no `history_repository`, e cada número tem de continuar igual |
+| 3 | **A régua é recalculada a cada Pix, mas só muda uma vez por dia** | ela é congelada no início do dia por desenho; o pagador com 10 mil Pix ainda leva 324 ms | guardar a régua por conta e por dia (numa tabela ou no Redis): o primeiro Pix do dia calcula, os outros leem | médio; a correção é garantida pelo próprio desenho |
+| 4 | **A trava da loja segura o Pix inteiro** | a mesma loja fica em 13 a 17 Pix por segundo, com 1 ou 4 processos | calcular tudo e só então travar a loja para reler a contagem, gravar e fazer o commit (uns 10 ms em vez de uns 60 ms) | **alto:** é a garantia de que a contagem nunca erra |
+| 5 | **Pagador muito ativo** | uns 84 ms no banco com 10 mil Pix; um `count(*)` lê o histórico inteiro só para saber se há 3 tentativas | parar de contar no 3 (`LIMIT`) e índices que já tragam valor e status (`INCLUDE`) | baixo, mas só ajuda o pagador muito ativo |
+| 6 | **Disco no longo prazo** | 2,2 KB por Pix; o `analysis_key` é `CHAR(36)` com índice único de 222 MB em 3 milhões de linhas, sem nenhuma leitura | `analysis_key` como `UUID`, `metadata` mais enxuto, partição por mês com arquivamento | médio; exige recriar o banco |
+| 7 | **Infraestrutura** | medido acima | pool em produção (já é o padrão fora do local), mais processos ou réplicas, banco em outra máquina, PgBouncer quando houver muitas réplicas | fora do código |
