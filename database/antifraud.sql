@@ -56,7 +56,8 @@ CREATE TRIGGER fraud_policy_is_append_only
 
 INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "timezone": "America/Sao_Paulo",
-    "decision": {"facial": 40, "facial_document": 60, "reject": 80, "reject_min_axis_points": 20, "reject_min_axes": 2, "reject_destination_alone": 80},
+    "decision": {"facial": 40, "facial_document": 60, "reject": 80, "reject_min_axis_points": 20, "reject_min_axes": 2,
+                 "reject_destination_alone": 80, "destination_corroboration": ["REPUTACAO_EXTERNA", "REPUTACAO_INTERNA"]},
     "reducers": {"max_total": 20},
     "LIMITE_POR_PIX": {"high": 2000000, "points": 40, "ceiling": 10000000},
     "PERFIL": {
@@ -97,6 +98,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "APARELHO_COMPARTILHADO": {"days": 30, "min_documents": 3, "points": 25},
     "IP_COMPARTILHADO": {"window_minutes": 60, "min_documents": 5, "points": 15},
     "DESTINO_NOVO": {"days": 30, "points": 20, "very_new_hours": 24, "very_new_points": 30},
+    "TETO_DESTINO_NOVO": {"days": 7, "per_pix": 20000},
     "CONTRAPARTE_INEDITA": {"min_amount": 100000, "points": 15},
     "CONTA_LARANJA": {
         "window_minutes": 60, "new_destination_days": 30,

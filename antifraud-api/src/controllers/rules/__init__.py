@@ -14,6 +14,7 @@ from controllers.rules.mesma_titularidade import MesmaTitularidade
 from controllers.rules.origem_nova import OrigemNova
 from controllers.rules.conta_reativada import ContaReativada
 from controllers.rules.destino_novo import DestinoNovo
+from controllers.rules.teto_destino_novo import TetoDestinoNovo
 from controllers.rules.contraparte_inedita import ContraparteInedita
 from controllers.rules.destino_confiavel import DestinoConfiavel
 from controllers.rules.aparelho_novo import AparelhoNovo
@@ -64,6 +65,7 @@ RULES = [
     IpCompartilhado(),
     PadraoMensal(),
     DestinoNovo(),
+    TetoDestinoNovo(),
     ContraparteInedita(),
     ContaLaranja(),
     RepasseRapido(),

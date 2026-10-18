@@ -36,9 +36,11 @@ class ReputacaoInterna(Rule):
             if tipo == "document" and entrada.creator == "external" and entrada.report_type == "fraud":
                 return self.triggered(0, "Documento destino na lista interna como fraude confirmada.",
                                       hard_block=True, data_origin="history", evidence_ids=[entrada.evidence_id],
-                                      creator=entrada.creator)
+                                      creator=entrada.creator, kind=tipo)
             alvo = "Documento destino" if tipo == "document" else "Aparelho"
+            # `kind` separa o recebedor denunciado do aparelho de quem paga: so o
+            # primeiro confirma o eixo destino (controllers/engine/decision.py).
             return self.triggered(p["points"], f"{alvo} na lista interna ({entrada.report_type}, {entrada.creator}).",
                                   data_origin="history", evidence_ids=[entrada.evidence_id],
-                                  creator=entrada.creator)
+                                  creator=entrada.creator, kind=tipo)
         return self.not_triggered()

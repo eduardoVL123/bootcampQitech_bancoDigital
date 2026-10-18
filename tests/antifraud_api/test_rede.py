@@ -3,7 +3,8 @@ import random
 from datetime import timedelta
 
 from tests.utils.pix import (
-    RECEBEDOR_MARCACAO_CRITICA, Pagador, Recebedor, analisa, disparou, historico, nova_base, pix, pontos, regra,
+    RECEBEDOR_ALERTA, RECEBEDOR_MARCACAO_CRITICA, AntifraudApi, Pagador, Recebedor, analisa, disparou, historico,
+    nova_base, pix, pontos, regra,
 )
 
 CASA = "99999999"
@@ -16,6 +17,21 @@ def _varios_pagam(recebedor, quantos, hoje, valor=5000):
     return corpos
 
 
+def _no_pico(recebedor, hoje, valor_do_ultimo=5000, ultimo=None):
+    """Nove pagadores de R$ 50 na mesma hora, e o decimo com o valor pedido. Devolve o corpo do decimo."""
+    _varios_pagam(recebedor, 9, hoje)
+    return analisa(pix(ultimo or Pagador(), recebedor, valor_do_ultimo, (hoje + timedelta(minutes=9)).isoformat()))
+
+
+def _nao_fui_eu(pagador, recebedor, hoje):
+    """O titular nega o desafio de um Pix de R$ 25 mil, duas horas antes: o aparelho e o recebedor vao para a lista."""
+    negado = pix(pagador, recebedor, 2500000, (hoje - timedelta(hours=2)).isoformat())
+    assert analisa(negado)["status"] == "two_factor_required"
+    resposta = AntifraudApi.patch(negado["id"], {"challenge_result": "reproved_by_client",
+                                                 "event_date": (hoje - timedelta(hours=2) + timedelta(minutes=1)).isoformat()})
+    assert resposta.status_code == 200, resposta.text
+
+
 def test_cinco_pagadores_para_conta_nova_somam_40():
     hoje = nova_base()
     corpos = _varios_pagam(Recebedor(aberta_em=hoje - timedelta(days=10)), 5, hoje)
@@ -24,17 +40,92 @@ def test_cinco_pagadores_para_conta_nova_somam_40():
     assert pontos(corpos[4], "CONTA_LARANJA") == 40
 
 
-def test_dez_pagadores_para_conta_nova_somam_60_e_o_eixo_destino_reprova():
-    # 60 de concentracao + 20 de conta nova = 80, tudo no eixo destino. Antes,
-    # um eixo so dava 2FA; mas quem faz a verificacao e a vitima pagando, e
-    # ela passa. reject_destination_alone na politica decide.
+def test_dez_pagadores_para_conta_nova_somam_80_e_sem_denuncia_pedem_2fa():
+    # 60 de concentracao + 20 de conta nova = 80, tudo no eixo destino. Pode ser
+    # loja lancando produto ou conta laranja: sem denuncia do recebedor, e com a
+    # conta fora da primeira semana, o eixo destino nao reprova sozinho.
     hoje = nova_base()
     corpos = _varios_pagam(Recebedor(aberta_em=hoje - timedelta(days=10)), 10, hoje)
 
     assert pontos(corpos[-1], "CONTA_LARANJA") == 60
     assert corpos[-1]["metadata"]["risk_axes"]["destino"] == 80
-    assert corpos[-1]["status"] == "rejected"
+    assert corpos[-1]["status"] == "two_factor_required"
+    assert corpos[-1]["metadata"]["authentication"]["level"] == "facial_document"
     assert corpos[-1]["metadata"]["scenario"] == "conta_laranja"
+
+
+def test_dez_pagadores_para_conta_com_denuncia_aberta_reprovam():
+    # A mesma concentracao, com uma denuncia aberta contra o recebedor no mock:
+    # loja de verdade nao junta denuncia na primeira semana.
+    hoje = nova_base()
+    corpos = _varios_pagam(Recebedor(documento=RECEBEDOR_ALERTA, aberta_em=hoje - timedelta(days=10)), 10, hoje)
+
+    assert disparou(corpos[-1], "REPUTACAO_EXTERNA")
+    assert corpos[-1]["metadata"]["risk_axes"]["destino"] == 120
+    assert corpos[-1]["status"] == "rejected"
+
+
+def test_dez_pagadores_depois_do_nao_fui_eu_de_outro_cliente_reprovam():
+    hoje = nova_base()
+    recebedor = Recebedor(aberta_em=hoje - timedelta(days=10))
+    _nao_fui_eu(Pagador(), recebedor, hoje)
+
+    corpos = _varios_pagam(recebedor, 10, hoje)
+
+    assert regra(corpos[-1], "REPUTACAO_INTERNA")["kind"] == "document"
+    assert regra(corpos[-1], "REPUTACAO_INTERNA")["creator"] == "client"
+    assert corpos[-1]["status"] == "rejected"
+
+
+def test_aparelho_do_pagador_na_lista_nao_e_denuncia_do_recebedor():
+    # O "nao fui eu" lista tambem o aparelho. Aqui esse aparelho paga outra
+    # conta: e risco de quem paga, e contra ele a facial funciona.
+    hoje, pagador = nova_base(), Pagador()
+    _nao_fui_eu(pagador, Recebedor(), hoje)
+
+    corpo = _no_pico(Recebedor(aberta_em=hoje - timedelta(days=10)), hoje, ultimo=pagador)
+
+    assert regra(corpo, "REPUTACAO_INTERNA")["kind"] == "device"
+    assert corpo["metadata"]["risk_axes"]["destino"] == 120
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_conta_da_primeira_semana_no_pico_recebe_ate_200_com_2fa():
+    # Sem denuncia, a conta de 5 dias recebe ate o teto: a loja vende o tiquete
+    # pequeno, com a verificacao que a tabela pede.
+    hoje = nova_base()
+    corpo = _no_pico(Recebedor(aberta_em=hoje - timedelta(days=5)), hoje, valor_do_ultimo=20000)
+
+    assert corpo["metadata"]["risk_axes"]["destino"] == 80
+    assert not disparou(corpo, "TETO_DESTINO_NOVO")
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_conta_da_primeira_semana_no_pico_reprova_acima_de_200():
+    hoje = nova_base()
+    corpo = _no_pico(Recebedor(aberta_em=hoje - timedelta(days=5)), hoje, valor_do_ultimo=20001)
+
+    assert disparou(corpo, "TETO_DESTINO_NOVO")
+    assert corpo["metadata"]["risk_axes"]["destino"] == 80
+    assert corpo["status"] == "rejected"
+
+
+def test_conta_fora_da_primeira_semana_nao_tem_teto():
+    hoje = nova_base()
+    corpo = _no_pico(Recebedor(aberta_em=hoje - timedelta(days=10)), hoje, valor_do_ultimo=50000)
+
+    assert not disparou(corpo, "TETO_DESTINO_NOVO")
+    assert corpo["status"] == "two_factor_required"
+
+
+def test_pix_sem_concentracao_para_conta_nova_acima_do_teto_continua_aprovado():
+    # O teto so pesa com o eixo destino no corte: um Pix para quem acabou de
+    # abrir conta, sem mais nada, segue como antes.
+    hoje = nova_base()
+    corpo = analisa(pix(Pagador(), Recebedor(aberta_em=hoje - timedelta(days=3)), 50000, hoje.isoformat()))
+
+    assert disparou(corpo, "TETO_DESTINO_NOVO")
+    assert corpo["status"] == "approved"
 
 
 def test_cinco_pagadores_para_conta_antiga_somam_20():
@@ -105,7 +196,8 @@ def test_repasse_para_destino_familiar_sem_perfil_avaliavel_soma_20():
 
 def test_repasse_para_conta_de_3_horas_reprova_pelo_eixo_destino():
     # Quem repassa e a propria conta laranja (cliente da casa): o dono dela
-    # passa na facial. 90 so no eixo destino reprova.
+    # passa na facial. 90 so no eixo destino, sem denuncia do recebedor: quem
+    # reprova e o teto da conta de 3 horas.
     hoje = nova_base()
     conta = _recebe_de_quatro(hoje)
     novo = Recebedor(aberta_em=hoje - timedelta(hours=3))
@@ -113,6 +205,7 @@ def test_repasse_para_conta_de_3_horas_reprova_pelo_eixo_destino():
     corpo = analisa(pix(conta.como_pagador(), novo, 350000, (hoje + timedelta(minutes=10)).isoformat()))
 
     assert corpo["metadata"]["risk_axes"]["destino"] == 90
+    assert disparou(corpo, "TETO_DESTINO_NOVO")
     assert corpo["status"] == "rejected"
 
 
