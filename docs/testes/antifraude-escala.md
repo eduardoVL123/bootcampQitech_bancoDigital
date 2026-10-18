@@ -142,9 +142,35 @@ Antes disso, uma descoberta: com `APP_ENV=local`, que é o padrão do compose e 
 
 **O que ficou:**
 
-- **O ganho é do pool, não do driver.** Reaproveitar conexões tira 34 ms da ponta (de 115 para 81 ms, 30%). O código já faz isso fora do ambiente local: em produção, com `APP_ENV` diferente de `local`, a API usa o pool. **Os números das outras seções deste documento foram medidos no modo local, e são o caso pessimista.**
+- **O ganho é do pool, não do driver.** Reaproveitar conexões tira 34 ms da ponta (de 115 para 81 ms, 30%). Para separar o pool do nível do log, que o `APP_ENV` também muda (`DEBUG` no local, `INFO` fora), uma quinta rodada ligou só o pool com `APP_ENV=local`: ponta de 80 ms, motor de 51 ms. O log não pesava.
 - **O `psycopg` 3 não entrou.** O planejamento continuou em uns 9 ms por Pix, com ou sem o plano genérico forçado, e a vazão caiu. A troca foi desfeita.
-- **O compose da entrega não mudou.** O `NullPool` no ambiente local veio do Base Service. Mudar o ambiente local para pool é uma linha, mas troca um comportamento herdado, e o ganho já vale onde importa, em produção.
+- **O pool entrou, em todo ambiente.** Desde 18/10, `antifraud-api/src/database.py` cria o pool (5 conexões, até 15 por processo, com `pool_pre_ping`) também no modo local, mantendo o `psycopg2`. Os outros serviços do repositório continuam como no Base Service. **As seções anteriores deste documento foram medidas antes disso; a próxima traz os números de agora.**
+
+## Com o pool: o que a entrega roda hoje
+
+Mesmo notebook, banco zerado e enchido até 1 milhão de Pix, um processo, 30 Pix por linha:
+
+| medida | sem pool | com pool |
+|---|---:|---:|
+| cliente comum, 1 milhão de Pix no banco: motor p50 | 69 ms | **49 ms** |
+| cliente comum, 1 milhão de Pix no banco: ponta p50 | 117 ms | **79 ms** |
+| cliente comum, tempo no banco por Pix | 6,6 ms | **3,3 ms** |
+| pagador com 10.000 Pix: motor p50 | 324 ms | **166 ms** |
+| loja com 1.000 recebimentos: motor p50 | 80 ms | **62 ms** |
+| loja com 10.000 recebimentos: motor p50 | 171 ms | 217 ms |
+| rede /24 fora da tabela com 10.000 Pix com GPS: motor p50 | 65 ms | **45 ms** |
+| 1 chamador, 1 processo | 8,7 Pix/s | **11,8 Pix/s** |
+| 8 chamadores, 1 processo | 17,0 Pix/s | 17,9 Pix/s |
+| **16 chamadores, 4 processos** | 25,9 Pix/s | **40,8 Pix/s** |
+| 16 chamadores na mesma loja, 4 processos | 15,0 Pix/s | 17,4 Pix/s |
+
+Na entrega, do zero: bancada 141 de 141, 199 testes da `antifraud-api` (em 2min38, eram 3min31) e massa 27 de 27, com o motor em p50 44 ms e p95 50 ms (eram 64 e 78).
+
+**O que muda na leitura:**
+
+- **Com 4 processos, o pool faz a diferença que faltava.** Sem ele, cada Pix abria 2 conexões, e o Postgres gastava CPU criando processos; com ele, 4 processos chegam a 40,8 Pix por segundo, 2,3 vezes um processo só, contra 1,8 vez antes.
+- **A loja com 10 mil recebimentos piorou nesta rodada** (171 para 217 ms, e p95 de 343 ms), e não tenho a explicação: o pool não muda a conta da régua, que é Python, e esse caso foi medido uma vez em cada montagem. Pode ser variação do histórico sorteado; só medindo de novo para saber. O item 3 da lista abaixo é o que ataca este caso de qualquer jeito.
+- **Pix para a mesma loja continuam limitados pela trava dela**, agora em uns 17 a 20 por segundo com 4 processos.
 
 ## O que continua em aberto
 
@@ -158,4 +184,4 @@ As próximas alavancas, na ordem de ganho medido. Nenhuma foi feita antes da ent
 | 4 | **A trava da loja segura o Pix inteiro** | a mesma loja fica em 13 a 17 Pix por segundo, com 1 ou 4 processos | calcular tudo e só então travar a loja para reler a contagem, gravar e fazer o commit (uns 10 ms em vez de uns 60 ms) | **alto:** é a garantia de que a contagem nunca erra |
 | 5 | **Pagador muito ativo** | uns 84 ms no banco com 10 mil Pix; um `count(*)` lê o histórico inteiro só para saber se há 3 tentativas | parar de contar no 3 (`LIMIT`) e índices que já tragam valor e status (`INCLUDE`) | baixo, mas só ajuda o pagador muito ativo |
 | 6 | **Disco no longo prazo** | 2,2 KB por Pix; o `analysis_key` é `CHAR(36)` com índice único de 222 MB em 3 milhões de linhas, sem nenhuma leitura | `analysis_key` como `UUID`, `metadata` mais enxuto, partição por mês com arquivamento | médio; exige recriar o banco |
-| 7 | **Infraestrutura** | medido acima | pool em produção (já é o padrão fora do local), mais processos ou réplicas, banco em outra máquina, PgBouncer quando houver muitas réplicas | fora do código |
+| 7 | **Infraestrutura** | medido acima | mais processos ou réplicas (o pool já está ligado em todo ambiente), banco em outra máquina, PgBouncer quando houver muitas réplicas | fora do código |

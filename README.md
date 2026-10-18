@@ -225,7 +225,7 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 - Legitimos aprovados sem friccao: 9 de 12
 - Fraudes retidas (2FA ou rejeicao): 15 de 15
 - Cenarios no resultado esperado: 27 de 27
-- Latencia do motor em 77 analises: p50 64 ms, p95 78 ms (contra a API no Docker, em 18/10/2026)
+- Latencia do motor em 77 analises: p50 44 ms, p95 50 ms (contra a API no Docker, com o pool de conexoes, em 18/10/2026)
 
 Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
 
