@@ -1,5 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
+from constants import TIME_SKEW_SECONDS
 from controllers.base_controller import BaseController
-from errors import ChallengeAlreadyAnswered, ChallengeNotRequired, NotFoundPixAnalysis
+from errors import ChallengeAlreadyAnswered, ChallengeNotRequired, NotFoundPixAnalysis, TransactionDateInTheFuture
 from models import PixStatus
 from repositories import (
     ChallengeRepository, HistoryRepository, PixRepository, PolicyRepository, ReputationRepository, WatchlistRepository,
@@ -36,6 +39,11 @@ class ChallengeController(BaseController):
             raise ChallengeNotRequired(pix_id, analysis.status.enumerator.lower())
 
         resultado = payload["challenge_result"]
+        # Duas respostas juntas para o mesmo Pix (clique duplo, retry do app):
+        # sem a trava, as duas viam "sem resposta" e a segunda estourava a
+        # chave unica (500). Com ela, a segunda le a primeira e responde
+        # 200 (mesmo resultado) ou 409 (outro resultado).
+        self.history_repo.lock([f"challenge:{analysis.id}"])
         existente = self.challenge_repo.get(analysis.id)
         if existente is not None:
             if existente.result != resultado:
@@ -43,9 +51,14 @@ class ChallengeController(BaseController):
             return analysis, existente
 
         momento = parse_moment(payload["event_date"])
+        if momento > datetime.now(timezone.utc) + timedelta(seconds=TIME_SKEW_SECONDS):
+            raise TransactionDateInTheFuture(payload["event_date"], TIME_SKEW_SECONDS)
         registro = self.challenge_repo.create(analysis.id, resultado, momento)
         if resultado == "reproved_by_client":
-            self._nao_fui_eu(analysis, momento)
+            # Ninguem nega um Pix antes de ele acontecer: o event_date anterior
+            # a ele e relogio errado do chamador, e nao pode fazer a cautelar
+            # nascer vencida. Vale a data do Pix.
+            self._nao_fui_eu(analysis, max(momento, analysis.transaction_date))
         self.session.commit()
         return analysis, registro
 
@@ -67,10 +80,14 @@ class ChallengeController(BaseController):
         p = self.policy_repo.get_current().parameters["REPUTACAO_INTERNA"]
         destino, chave = analysis.destination_document, analysis.analysis_key
         self.history_repo.lock([f"payee:{destino}"])
+        # As duas entradas valem desde o Pix contestado, e nao so desde a
+        # denuncia: quem responde dias depois nao deixa o golpista livre no
+        # meio-tempo. A duracao conta da denuncia.
+        desde = analysis.transaction_date
         self.watchlist_repo.add_client_report("device", analysis.device_id, f"challenge-{chave}-device", momento,
-                                              hours=p["device_days"] * 24)
+                                              hours=p["device_days"] * 24, since=desde)
         self.watchlist_repo.add_client_report("document", destino, f"challenge-{chave}-document", momento,
-                                              hours=p["cautelar_hours"], reporter=analysis.source_document)
+                                              hours=p["cautelar_hours"], reporter=analysis.source_document, since=desde)
 
         denunciantes = self.watchlist_repo.reporters_of(destino, momento, p["reports_window_days"])
         if len(denunciantes) >= p["min_reporters"] or self.reputation_repo.suspected(destino, momento):

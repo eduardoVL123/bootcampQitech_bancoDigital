@@ -27,9 +27,13 @@ class WatchlistRepository:
         ), {"kind": kind, "value": value, "momento": moment}).first()
 
     def add_client_report(self, kind: str, value: str, evidence_id: str, event_date, hours: float,
-                          reporter: str = None) -> None:
-        """O titular disse "nao fui eu": evidencia independente da decisao do motor."""
-        self._add(kind, value, "client", evidence_id, event_date, timedelta(hours=hours), reporter)
+                          reporter: str = None, since=None) -> None:
+        """O titular disse "nao fui eu": evidencia independente da decisao do motor.
+
+        `since` e o inicio da entrada, quando ele vem antes da denuncia: o
+        recebedor ja era suspeito desde o Pix contestado.
+        """
+        self._add(kind, value, "client", evidence_id, event_date, timedelta(hours=hours), reporter, since)
 
     def reporters_of(self, document: str, moment, days: int) -> set:
         """Os titulares distintos que disseram "nao fui eu" para este documento nos ultimos `days` dias.
@@ -47,9 +51,9 @@ class WatchlistRepository:
         """Duas fontes independentes apontaram o documento: vira fraude confirmada, por `days` dias."""
         self._add("document", document, "confirmed", evidence_id, event_date, timedelta(days=days), None)
 
-    def _add(self, kind, value, creator, evidence_id, event_date, duracao, reporter) -> None:
+    def _add(self, kind, value, creator, evidence_id, event_date, duracao, reporter, since=None) -> None:
         comando = insert(Watchlist).values(
             kind=kind, value=value, report_type="fraud", creator=creator, reporter=reporter,
-            evidence_id=evidence_id, available_from=event_date, expires_at=event_date + duracao,
+            evidence_id=evidence_id, available_from=since or event_date, expires_at=event_date + duracao,
         ).on_conflict_do_nothing(index_elements=["evidence_id"])
         self.session.execute(comando)
