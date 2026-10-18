@@ -11,7 +11,7 @@ def _any(ctx, *rules) -> bool:
 
 
 def _limite(ctx, decision) -> bool:
-    return any(r.hard_block and r.is_triggered and r.rule in ("LIMITE_DO_CLIENTE", "LIMITE_POR_PIX")
+    return any(r.hard_block and r.is_triggered and r.rule == "LIMITE_POR_PIX"
                for r in ctx.results.values())
 
 

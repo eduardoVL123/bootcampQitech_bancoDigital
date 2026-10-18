@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.utils.pix import (  # noqa: E402
     APARELHO_NA_WATCHLIST, RECEBEDOR_MARCACAO_CRITICA, RECEBEDOR_NA_WATCHLIST, RECEBEDOR_VITIMA, RECIFE_GPS,
-    AntifraudApi, Pagador, Recebedor, analisa, historico, nova_base, novo_ip, paga, payload_do_documento, pix,
+    Pagador, Recebedor, analisa, historico, nova_base, novo_ip, paga, payload_do_documento, pix,
 )
 
 CASA = "99999999"
@@ -210,14 +210,6 @@ def aparelho_na_lista_interna():
     return _post(pix(Pagador(), Recebedor(), 50000, nova_base().isoformat(), aparelho=APARELHO_NA_WATCHLIST))
 
 
-def acima_do_limite_do_cliente():
-    pagador, hoje = Pagador(), nova_base()
-    corpo = pagador.conta_json()
-    corpo.update({"amount": 200000, "requested_at": hoje.isoformat()})
-    AntifraudApi.put_limit(corpo)
-    return _post(pix(pagador, Recebedor(), 300000, (hoje + timedelta(minutes=5)).isoformat()))
-
-
 def noite_valor_alto_sem_gps():
     return _post(pix(Pagador(), Recebedor(), 2500000, nova_base().replace(hour=23).isoformat(), gps=None))
 
@@ -272,7 +264,6 @@ LEGITIMOS = [
 
 FRAUDES = [
     ("acima do teto operacional", acima_do_teto, {"rejected"}),
-    ("acima do limite do cliente", acima_do_limite_do_cliente, {"rejected"}),
     ("recebedor com marcacao critica (mock)", recebedor_com_marcacao_critica, {"rejected"}),
     ("noite, R$ 25 mil, sem GPS", noite_valor_alto_sem_gps, {"rejected"}),
     ("conta tomada (aparelho novo, Recife em 15 min)", conta_tomada, {"rejected", "facial_document"}),

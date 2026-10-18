@@ -15,7 +15,7 @@ Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositó
 
 ## Como o motor de decisão funciona
 
-Cada Pix passa por **35 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
+Cada Pix passa por **34 regras**. Nenhuma decide sozinha, com exceções explícitas (os bloqueios). Cada regra devolve uma avaliação (`triggered`, `not_triggered` ou `not_evaluable`, quando falta dado), uma pontuação e uma frase com os números que a fizeram disparar. O motor junta tudo assim:
 
 1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
 2. **Dado impossível não é risco, é erro.** Data que não existe (mês 13, 30 de fevereiro, fuso +25:00) volta `400`; data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422`. Nos dois casos, sem ser analisada.
@@ -47,7 +47,6 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 | `MONTANTE_DIARIO_ATIPICO` | acumulado aprovado de hoje + este contra a mediana dos totais diários, com pelo menos um aprovado antes hoje | > 3× a mediana e excesso ≥ R$ 1.000: +30. Mínimo de 7 dias com movimento em 30 | O dia como unidade de perfil. Compara o parcial de hoje com dias completos, conservador de propósito |
 | `ORIGEM_NOVA` | conta pagadora com menos de 48h | valor > R$ 1.000: +25 | Conta recém-aberta movimentando é o começo típico de conta laranja ou de cadastro com dado roubado |
 | `CONTA_REATIVADA` | atividade antiga observada, ≥ 60 dias parada, e agora ≥ 3 tentativas em 1h ou valor > R$ 5.000 | +30 | Conta comprada ou tomada fica parada e é usada de uma vez. O primeiro contato com o motor não é reativação |
-| `LIMITE_DO_CLIENTE` | valor acima do limite que o titular escolheu, o vigente no instante | **bloqueio** | É a vontade do dono da conta. Sem limite cadastrado, não se aplica |
 | `AUMENTO_PENDENTE` | pedido de aumento de limite há menos de 24h, ainda não vigente, e valor > 50% do limite atual | +40 | O roteiro da conta tomada: subir o limite e esvaziar. O aumento só vale em 24h (o Banco Central descreve 24 a 48h) |
 | `SONDAGEM_DE_LIMITE` | depois de um 2FA ou recusa nos últimos 15 min, tentar de novo com valor menor; nas últimas 2 h, só vale a sequência de duas reduções. Para outro destino, só conta se o valor ainda for ≥ 30% do anterior | 1 redução: +30 · 2 reduções seguidas: +50 e piso facial+documento | Ir baixando até achar o valor que passa. Uma redução pode ser ajuste legítimo. O almoço de R$ 30 dez minutos depois do 2FA do carro é outro pagamento, não sondagem |
 | `NOTURNO` | 20h às 6h em São Paulo, pessoa física para outra pessoa física, ou para PJ com conta de menos de 30 dias | valor > R$ 1.000: +25 | O Banco Central limita a R$ 1.000 o Pix noturno quando o recebedor é pessoa física diferente do pagador (IN BCB 512/2024, com as alterações da IN BCB 669/2025). Aqui é heurística de risco, não a regra regulatória. PJ estabelecida fica de fora (loja e delivery recebem de madrugada); a PJ nova entra, porque é o MEI de fachada da conta laranja |
@@ -96,7 +95,7 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 
 | Condição | `status` | Verificação (`metadata.authentication.level`) |
 |---|---|---|
-| Algum bloqueio: limite do cliente, teto operacional, fraude confirmada do recebedor (mock ou lista interna), conta segura | `rejected` | `none` |
+| Algum bloqueio: teto operacional, fraude confirmada do recebedor (mock ou lista interna), conta segura | `rejected` | `none` |
 | Score ≥ 80 **e** pelo menos dois eixos com ≥ 20 pontos | `rejected` | `none` |
 | Eixo destino com ≥ 80 pontos, sozinho (`reject_destination_alone`), com denúncia do recebedor ou acima do teto da conta nova | `rejected` | `none` |
 | Score ≥ 60, ou um piso `facial_document` | `two_factor_required` | `facial_document`: facial e documento |
@@ -194,7 +193,6 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 | Cenario | Esperado | Obtido | Score | Cenario deduzido | Regras que pesaram | Ok |
 |---|---|---|---:|---|---|:-:|
 | acima do teto operacional | rejected | rejected | 35 | restricao_por_limite | LIMITE_POR_PIX (bloqueio), PERFIL_SEM_HISTORICO +20, CONTRAPARTE_INEDITA +15 | sim |
-| acima do limite do cliente | rejected | rejected | 15 | restricao_por_limite | LIMITE_DO_CLIENTE (bloqueio), CONTRAPARTE_INEDITA +15 | sim |
 | recebedor com marcacao critica (mock) | rejected | rejected | 0 | risco_critico_do_recebedor | REPUTACAO_EXTERNA (bloqueio) | sim |
 | noite, R$ 25 mil, sem GPS | rejected | rejected | 100 | coacao_noturna | LIMITE_POR_PIX +40, NOTURNO +25, GEO_AUSENTE +20, CONTRAPARTE_INEDITA +15 | sim |
 | conta tomada (aparelho novo, Recife em 15 min) | facial_document ou rejected | rejected | 100 | conta_tomada | PERFIL +50, VIAGEM_IMPOSSIVEL +40, MONTANTE_DIARIO_ATIPICO +30, DESTINO_NOVO +20 | sim |
@@ -213,8 +211,8 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 **Resumo**
 
 - Legitimos aprovados sem friccao: 9 de 12
-- Fraudes retidas (2FA ou rejeicao): 16 de 16
-- Cenarios no resultado esperado: 28 de 28
+- Fraudes retidas (2FA ou rejeicao): 15 de 15
+- Cenarios no resultado esperado: 27 de 27
 - Latencia do motor em 78 analises: p50 20 ms, p95 26 ms (medida fora do Docker: rodar a ferramenta de novo no ambiente da entrega e colar os números)
 
 Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
@@ -223,6 +221,7 @@ Dos três legítimos que não passaram direto, nenhum foi reprovado: a transfer�
 
 - **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas.
 - **Reputação, cadastro de CNPJ e localização de IP são mocks.** O mock de reputação segue o formato do `destination_statistics` da QI, e as faixas de IP são faixas de documentação com lugares fictícios. Em produção, a mesma tabela `ip_range_location` receberia uma base real (por exemplo a DB-IP City Lite, CC BY 4.0), sem mudar o motor. O CNAE do `TICKET_DO_RECEBEDOR` vem de um mock com dois CNPJs fictícios (uma doceria e uma concessionária); em produção, dos dados abertos do CNPJ da Receita, pelo documento que o DICT devolve, e os tetos de tíquete por atividade sairiam de dados reais de liquidação.
+- **O limite que o cliente escolhe é da plataforma (BaaS).** O motor não o aplica e não recusa Pix acima dele. Ele só guarda os pedidos (`PUT /pix/account_limit`: reduzir vale na hora, aumentar só depois de 24 h) para o `AUMENTO_PENDENTE`, que usa esse histórico como sinal de risco.
 - **A verificação é pedida, não executada.** O motor diz `facial` ou `facial_document`; o app executa e devolve o resultado pelo `PATCH`.
 - **O calendário é enxuto:** dia do mês com tolerância, sem dia útil nem feriado.
 - **A data é de quem chama.** Até 5 minutos fora de ordem o motor confia; além disso, a `DATA_RETROATIVA` pede a verificação reforçada, mas o motor não usa o relógio do servidor para datas no passado.

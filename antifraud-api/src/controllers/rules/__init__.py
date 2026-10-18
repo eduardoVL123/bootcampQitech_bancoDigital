@@ -33,7 +33,6 @@ from controllers.rules.reputacao_interna import ReputacaoInterna
 from controllers.rules.ruptura_de_contexto import RupturaDeContexto
 from controllers.rules.data_retroativa import DataRetroativa
 from controllers.rules.velocity import Velocity
-from controllers.rules.limite_do_cliente import LimiteDoCliente
 from controllers.rules.aumento_pendente import AumentoPendente
 from controllers.rules.montante_24h import Montante24h
 from controllers.rules.fatiamento import Fatiamento
@@ -48,7 +47,6 @@ RULES = [
     Fatiamento(),
     MontanteDiarioAtipico(),
     SondagemDeLimite(),
-    LimiteDoCliente(),
     AumentoPendente(),
     OrigemNova(),
     ContaReativada(),

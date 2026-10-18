@@ -2,8 +2,9 @@
 
 A ordem dos passos e a politica, e cada um responde a uma pergunta:
 
-1. Ha bloqueio prioritario? Limite do cliente, teto operacional ou marcacao
-   critica do recebedor rejeitam sozinhos, e nada os desfaz.
+1. Ha bloqueio prioritario? Teto operacional ou marcacao critica do
+   recebedor rejeitam sozinhos, e nada os desfaz. (O limite que o cliente
+   escolhe e aplicado pela plataforma, nao aqui.)
 2. Quanto vale cada familia? Regras da mesma familia medem o mesmo fato
    (limite e perfil olham, os dois, o valor), entao so a maior conta. As
    outras ficam registradas com 0 e `correlated`.
