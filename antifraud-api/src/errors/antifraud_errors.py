@@ -104,6 +104,23 @@ class AccountIdentityMismatch(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class ChallengeBeforeTransaction(QIException):
+    """A resposta do desafio e anterior ao proprio Pix.
+
+    422 como as outras datas impossiveis: o formato esta certo, o que nao
+    pode existir e a ordem. A resposta no mesmo instante do Pix vale.
+    """
+
+    code = "QIT006008"
+
+    def __init__(self, event_date, transaction_date) -> None:
+        title = "Challenge answered before the transaction"
+        http_status = 422
+        description = f"The event_date {event_date} is earlier than the transaction_date {transaction_date} of the Pix."
+        translation = "A resposta da verificação é anterior ao Pix."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class ChallengeAlreadyAnswered(QIException):
     code = "QIT006006"
 
