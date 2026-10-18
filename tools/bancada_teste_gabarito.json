@@ -1,0 +1,1804 @@
+[
+  {
+    "id": "pix-bt-0013",
+    "scenario_name": "aquecimento_persona_a_aluguel",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "aluguel mensal, sempre no dia 05"
+  },
+  {
+    "id": "pix-bt-0014",
+    "scenario_name": "aquecimento_persona_a_aluguel",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "aluguel mensal, sempre no dia 05"
+  },
+  {
+    "id": "pix-bt-0015",
+    "scenario_name": "aquecimento_persona_a_aluguel",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "aluguel mensal, sempre no dia 05"
+  },
+  {
+    "id": "pix-bt-0021",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0001",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0037",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0029",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0016",
+    "scenario_name": "aquecimento_persona_b",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
+  },
+  {
+    "id": "pix-bt-0002",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0022",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0040",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0046",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0052",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0058",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0064",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0070",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0076",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0082",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0088",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0038",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0030",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0117",
+    "scenario_name": "burla_falso_aluguel_fora_da_janela",
+    "category": "evasion",
+    "expected_status": [
+      "two_factor_required",
+      "rejected"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": "quebra_de_padrao_mensal",
+    "expected_rules": [
+      "PADRAO_MENSAL",
+      "APARELHO_NOVO",
+      "CONTRAPARTE_INEDITA"
+    ],
+    "rationale": "valor de aluguel no dia 22, longe da janela do dia 05, de aparelho novo para quem nunca recebeu"
+  },
+  {
+    "id": "pix-bt-0031",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0023",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0003",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0039",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0017",
+    "scenario_name": "aquecimento_persona_b",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
+  },
+  {
+    "id": "pix-bt-0130",
+    "scenario_name": "aquecimento_repassador",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0004",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0041",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0047",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0053",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0059",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0065",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0071",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0077",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0083",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0089",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0005",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0032",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0024",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0006",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0018",
+    "scenario_name": "aquecimento_persona_b",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
+  },
+  {
+    "id": "pix-bt-0042",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0048",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0054",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0060",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0066",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0072",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0078",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0084",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0090",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0033",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0007",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0025",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0131",
+    "scenario_name": "aquecimento_repassador",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0096",
+    "scenario_name": "aluguel_recorrente",
+    "category": "legit_hard",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": "pagamento_recorrente",
+    "expected_rules": [
+      "DESTINO_CONFIAVEL",
+      "!PERFIL"
+    ],
+    "rationale": "50x a mediana, mas e o par de sempre no dia de sempre: a referencia do par neutraliza PERFIL"
+  },
+  {
+    "id": "pix-bt-0019",
+    "scenario_name": "aquecimento_persona_b",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
+  },
+  {
+    "id": "pix-bt-0043",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0049",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0055",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0061",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0067",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0073",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0079",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0085",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0091",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0034",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0026",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0008",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0009",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0010",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0044",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0050",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0056",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0062",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0068",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0074",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0080",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0086",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0092",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0132",
+    "scenario_name": "aquecimento_repassador",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0011",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0035",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0027",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0020",
+    "scenario_name": "aquecimento_persona_b",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagamento recorrente de R$ 40 mil ao fornecedor"
+  },
+  {
+    "id": "pix-bt-0045",
+    "scenario_name": "aquecimento_persona-d",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0051",
+    "scenario_name": "aquecimento_persona-e",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0057",
+    "scenario_name": "aquecimento_persona-f",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0063",
+    "scenario_name": "aquecimento_persona-g",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0069",
+    "scenario_name": "aquecimento_persona-h",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0075",
+    "scenario_name": "aquecimento_persona-i",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0081",
+    "scenario_name": "aquecimento_persona-j",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0087",
+    "scenario_name": "aquecimento_persona-m",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0093",
+    "scenario_name": "aquecimento_persona-n",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "historico de base para os cenarios desta persona"
+  },
+  {
+    "id": "pix-bt-0036",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0028",
+    "scenario_name": "aquecimento_persona_c",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "compra na loja C, que acumula 25 recebimentos em 8 dias"
+  },
+  {
+    "id": "pix-bt-0012",
+    "scenario_name": "aquecimento_persona_a",
+    "category": "warmup",
+    "expected_status": [
+      "approved",
+      "two_factor_required"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "rotina de compras da persona A"
+  },
+  {
+    "id": "pix-bt-0140",
+    "scenario_name": "rede_suspeita_dois_saltos.salto_1",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "aresta DOC_FRAUDE_ATIVA para o salto 1"
+  },
+  {
+    "id": "pix-bt-0141",
+    "scenario_name": "rede_suspeita_dois_saltos.salto_2",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "aresta do salto 1 para o salto 2"
+  },
+  {
+    "id": "pix-bt-0101",
+    "scenario_name": "recebedor_vitima_cadastro",
+    "category": "legit_hard",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "ser vitima registrada nao torna a conta suspeita para receber"
+  },
+  {
+    "id": "pix-bt-0099",
+    "scenario_name": "madrugada_baixo_valor",
+    "category": "legit_hard",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "madrugada sozinha, com R$ 35 para destino habitual, nao justifica atrito"
+  },
+  {
+    "id": "pix-bt-0102",
+    "scenario_name": "burla_fatiamento_smurfing.fatia_1",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "fatia que monta o padrao, sem conferencia propria"
+  },
+  {
+    "id": "pix-bt-0103",
+    "scenario_name": "burla_fatiamento_smurfing.fatia_2",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "fatia que monta o padrao, sem conferencia propria"
+  },
+  {
+    "id": "pix-bt-0104",
+    "scenario_name": "burla_fatiamento_smurfing.fatia_3",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "fatia que monta o padrao, sem conferencia propria"
+  },
+  {
+    "id": "pix-bt-0105",
+    "scenario_name": "burla_fatiamento_smurfing",
+    "category": "evasion",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": null,
+    "expected_scenario": "esvaziamento_fatiado",
+    "expected_rules": [
+      "FATIAMENTO"
+    ],
+    "rationale": "4a fatia de R$ 2.900 em 40 min: FATIAMENTO +40"
+  },
+  {
+    "id": "pix-bt-0097",
+    "scenario_name": "fornecedor_alto_valor_compativel",
+    "category": "legit_hard",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": null,
+    "expected_rules": [
+      "LIMITE_POR_PIX"
+    ],
+    "rationale": "R$ 42 mil e alto, mas compativel com o fornecedor habitual; LIMITE_POR_PIX fica informativo com 0 pts"
+  },
+  {
+    "id": "pix-bt-0106",
+    "scenario_name": "burla_sondagem_de_limite.tentativa_alta",
+    "category": "evasion",
+    "expected_status": [
+      "two_factor_required",
+      "rejected"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "R$ 25 mil, muito acima do perfil: precisa ser barrado ou pedir prova"
+  },
+  {
+    "id": "pix-bt-0107",
+    "scenario_name": "burla_sondagem_de_limite.recuo",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "primeiro recuo de valor depois do bloqueio"
+  },
+  {
+    "id": "pix-bt-0108",
+    "scenario_name": "burla_sondagem_de_limite",
+    "category": "evasion",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": "facial_document",
+    "expected_scenario": "sondagem_de_limite",
+    "expected_rules": [
+      "SONDAGEM_DE_LIMITE"
+    ],
+    "rationale": "valores caindo em sequencia para o mesmo destino em 12 min: SONDAGEM_DE_LIMITE +50"
+  },
+  {
+    "id": "pix-bt-0094",
+    "scenario_name": "rotina_diaria",
+    "category": "legit_clear",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": "sem_alerta_relevante",
+    "expected_rules": [],
+    "rationale": "valor na mediana, destino habitual, aparelho e GPS de sempre"
+  },
+  {
+    "id": "pix-bt-0095",
+    "scenario_name": "mesma_titularidade",
+    "category": "legit_clear",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "transferencia entre contas do mesmo CPF nao tira dinheiro do titular"
+  },
+  {
+    "id": "limite-bt-0109",
+    "scenario_name": "burla_aumento_limite_pendente.define",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "limite do cliente em R$ 2.000"
+  },
+  {
+    "id": "limite-bt-0110",
+    "scenario_name": "burla_aumento_limite_pendente.pede_aumento",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pedido de aumento para R$ 20.000, ainda em carencia"
+  },
+  {
+    "id": "pix-bt-0143",
+    "scenario_name": "bloqueio_reputacao_externa",
+    "category": "fraud_clear",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": "risco_critico_do_recebedor",
+    "expected_rules": [],
+    "rationale": "recebedor com fraude ativa: rejeita qualquer valor, ate R$ 20"
+  },
+  {
+    "id": "pix-bt-0111",
+    "scenario_name": "burla_aumento_limite_pendente",
+    "category": "evasion",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "AUMENTO_PENDENTE"
+    ],
+    "rationale": "R$ 1.500 cabe no limite atual, mas veio 1h depois de um pedido de aumento: AUMENTO_PENDENTE"
+  },
+  {
+    "id": "pix-bt-0112",
+    "scenario_name": "burla_aumento_limite_pendente.acima_do_limite",
+    "category": "evasion",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "LIMITE_DO_CLIENTE"
+    ],
+    "rationale": "R$ 5.000 passa do limite vigente de R$ 2.000; o aumento pendente nao vale ainda"
+  },
+  {
+    "id": "pix-bt-0098",
+    "scenario_name": "primeiro_aluguel_inedito",
+    "category": "legit_hard",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": [
+      "facial",
+      "facial_document"
+    ],
+    "expected_scenario": null,
+    "expected_rules": [
+      "PERFIL",
+      "CONTRAPARTE_INEDITA"
+    ],
+    "rationale": "valor fora do perfil para CNPJ nunca pago, mas aparelho e GPS habituais: pede prova, nunca rejeita"
+  },
+  {
+    "id": "pix-bt-0100",
+    "scenario_name": "canal_api_sem_gps",
+    "category": "legit_hard",
+    "expected_status": "approved",
+    "expected_auth_level": "none",
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "integracao por API nao tem GPS; a ausencia so pesa no canal app"
+  },
+  {
+    "id": "pix-bt-0114",
+    "scenario_name": "burla_spoofing_geo_ip_divergente",
+    "category": "evasion",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "GEO_IP_DIVERGENTE"
+    ],
+    "rationale": "GPS diz Sao Paulo e o IP diz Recife: GEO_IP_DIVERGENTE +30"
+  },
+  {
+    "id": "pix-bt-0118",
+    "scenario_name": "conta_tomada_ruptura_contexto.referencia_sp",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "ultimo Pix legitimo da persona A, em Sao Paulo"
+  },
+  {
+    "id": "pix-bt-0144",
+    "scenario_name": "acima_teto_operacional",
+    "category": "fraud_clear",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": "restricao_por_limite",
+    "expected_rules": [
+      "LIMITE_POR_PIX"
+    ],
+    "rationale": "R$ 150 mil passa do teto operacional por Pix, mesmo para o fornecedor habitual"
+  },
+  {
+    "id": "pix-bt-0119",
+    "scenario_name": "conta_tomada_ruptura_contexto",
+    "category": "fraud_clear",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": "conta_tomada",
+    "expected_rules": [
+      "APARELHO_NOVO",
+      "VIAGEM_IMPOSSIVEL",
+      "PERFIL",
+      "DESTINO_NOVO"
+    ],
+    "rationale": "aparelho novo, Recife 15 min depois de SP, 60x a mediana, conta destino aberta hoje"
+  },
+  {
+    "id": "pix-bt-0115",
+    "scenario_name": "burla_viagem_impossivel_fallback_ip.referencia_sp",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "Pix de referencia em Sao Paulo"
+  },
+  {
+    "id": "pix-bt-0116",
+    "scenario_name": "burla_viagem_impossivel_fallback_ip",
+    "category": "evasion",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "VIAGEM_IMPOSSIVEL",
+      "GEO_AUSENTE"
+    ],
+    "rationale": "sem GPS a API cai no IP: Recife 15 min depois de SP e VIAGEM_IMPOSSIVEL +40, e GEO_AUSENTE +20"
+  },
+  {
+    "id": "pix-bt-0142",
+    "scenario_name": "rede_suspeita_dois_saltos",
+    "category": "fraud_clear",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "REDE_SUSPEITA"
+    ],
+    "rationale": "o destino esta a 2 saltos de uma fraude ativa: REDE_SUSPEITA +30"
+  },
+  {
+    "id": "pix-bt-0120",
+    "scenario_name": "conta_laranja_fan_in.pagador_01",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0121",
+    "scenario_name": "conta_laranja_fan_in.pagador_02",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0122",
+    "scenario_name": "conta_laranja_fan_in.pagador_03",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0123",
+    "scenario_name": "conta_laranja_fan_in.pagador_04",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0124",
+    "scenario_name": "conta_laranja_fan_in.pagador_05",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0125",
+    "scenario_name": "conta_laranja_fan_in.pagador_06",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0126",
+    "scenario_name": "conta_laranja_fan_in.pagador_07",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0127",
+    "scenario_name": "conta_laranja_fan_in.pagador_08",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0128",
+    "scenario_name": "conta_laranja_fan_in.pagador_09",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "pagador que alimenta o fan-in"
+  },
+  {
+    "id": "pix-bt-0129",
+    "scenario_name": "conta_laranja_fan_in",
+    "category": "fraud_clear",
+    "expected_status": [
+      "two_factor_required",
+      "rejected"
+    ],
+    "expected_auth_level": null,
+    "expected_scenario": "conta_laranja",
+    "expected_rules": [
+      "CONTA_LARANJA",
+      "DESTINO_NOVO"
+    ],
+    "rationale": "10o pagador distinto em 54 min para conta de 2 dias: CONTA_LARANJA +60, DESTINO_NOVO +20"
+  },
+  {
+    "id": "pix-bt-0133",
+    "scenario_name": "repasse_rapido_cascata.entrada_1",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "entrada que soma R$ 3.000 em 25 min"
+  },
+  {
+    "id": "pix-bt-0134",
+    "scenario_name": "repasse_rapido_cascata.entrada_2",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "entrada que soma R$ 3.000 em 25 min"
+  },
+  {
+    "id": "pix-bt-0135",
+    "scenario_name": "repasse_rapido_cascata.entrada_3",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "entrada que soma R$ 3.000 em 25 min"
+  },
+  {
+    "id": "pix-bt-0136",
+    "scenario_name": "repasse_rapido_cascata",
+    "category": "fraud_clear",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": "conta_laranja",
+    "expected_rules": [
+      "REPASSE_RAPIDO",
+      "APARELHO_NOVO"
+    ],
+    "rationale": "90% do que entrou sai 5 min depois para um 4o titular, de aparelho novo"
+  },
+  {
+    "id": "pix-bt-0137",
+    "scenario_name": "coordenacao_entre_contas.titular_1",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "titular que compartilha o aparelho"
+  },
+  {
+    "id": "pix-bt-0138",
+    "scenario_name": "coordenacao_entre_contas.titular_2",
+    "category": "setup",
+    "expected_status": null,
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [],
+    "rationale": "titular que compartilha o aparelho"
+  },
+  {
+    "id": "pix-bt-0139",
+    "scenario_name": "coordenacao_entre_contas",
+    "category": "fraud_clear",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": [
+      "facial",
+      "facial_document"
+    ],
+    "expected_scenario": "coordenacao_entre_contas",
+    "expected_rules": [
+      "COORDENACAO_ENTRE_CONTAS",
+      "!APARELHO_COMPARTILHADO"
+    ],
+    "rationale": "3 titulares no mesmo aparelho em 8 min para conta de 4 dias: COORDENACAO_ENTRE_CONTAS +40, piso facial, e APARELHO_COMPARTILHADO fica suprimida"
+  },
+  {
+    "id": "pix-000123",
+    "scenario_name": "exemplo_oficial_qitech",
+    "category": "evasion",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": "facial",
+    "expected_scenario": "primeiro_pagamento",
+    "expected_rules": [
+      "NOTURNO",
+      "DESTINO_NOVO"
+    ],
+    "rationale": "45 pts: NOTURNO 25 + DESTINO_NOVO 20 (conta aberta ha 7 dias); valor dentro do perfil da persona D"
+  },
+  {
+    "id": "pix-bt-0113",
+    "scenario_name": "burla_gps_desligado_noturno_alto",
+    "category": "evasion",
+    "expected_status": "rejected",
+    "expected_auth_level": null,
+    "expected_scenario": null,
+    "expected_rules": [
+      "NOTURNO",
+      "GEO_AUSENTE"
+    ],
+    "rationale": "65 pts em movimentacao + 20 em acesso (GPS desligado no app) = 85 pts com 2 eixos >= 20"
+  }
+]
