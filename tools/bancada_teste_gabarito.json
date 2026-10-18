@@ -1419,12 +1419,15 @@
   {
     "id": "pix-bt-0095",
     "scenario_name": "mesma_titularidade",
-    "category": "legit_clear",
-    "expected_status": "approved",
-    "expected_auth_level": "none",
+    "category": "legit_hard",
+    "expected_status": "two_factor_required",
+    "expected_auth_level": "facial_document",
     "expected_scenario": null,
-    "expected_rules": [],
-    "rationale": "transferencia entre contas do mesmo CPF nao tira dinheiro do titular"
+    "expected_rules": [
+      "PERFIL",
+      "MESMA_TITULARIDADE"
+    ],
+    "rationale": "R$ 1.500 para conta do mesmo CPF, muito acima dos picos do titular: decisao do time, conta do mesmo dono tambem pode ser tomada, e MESMA_TITULARIDADE so desconta 10"
   },
   {
     "id": "limite-bt-0109",

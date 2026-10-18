@@ -298,8 +298,10 @@ def monta_bancada() -> Bancada:
 
     b.pix(persona_a, persona_a, 150000, quando(HOJE, "11:30"),
           conta_destino=g.conta(aberta_em="2020-01-15"),
-          cenario="mesma_titularidade", categoria="legit_clear", status="approved",
-          porque="transferencia entre contas do mesmo CPF nao tira dinheiro do titular")
+          cenario="mesma_titularidade", categoria="legit_hard",
+          status="two_factor_required", nivel="facial_document", regras=["PERFIL", "MESMA_TITULARIDADE"],
+          porque="R$ 1.500 para conta do mesmo CPF, muito acima dos picos do titular: decisao do time, "
+                 "conta do mesmo dono tambem pode ser tomada, e MESMA_TITULARIDADE so desconta 10")
 
     # Fase 2: legitimas que parecem fraude ---------------------------------
 
