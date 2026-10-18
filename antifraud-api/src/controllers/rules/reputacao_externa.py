@@ -36,7 +36,8 @@ class ReputacaoExterna(Rule):
                                                   "fixture_version": registros[-1].fixture_version})
         registro = vigentes[-1]
         estatisticas = registro.statistics
-        base = {**MOCK, "fixture_version": registro.fixture_version, "entity_role": registro.entity_role,
+        base = {**MOCK, "provider": getattr(registro, "provider", MOCK["provider"]),
+                "fixture_version": registro.fixture_version, "entity_role": registro.entity_role,
                 "evidence_id": registro.evidence_id}
 
         def janela(campo, periodo):

@@ -11,6 +11,7 @@ class Watchlist(Base):
     value = Column(String(64), nullable=False)
     report_type = Column(String(12), nullable=False)
     creator = Column(String(10), nullable=False)
+    reporter = Column(String(14))
     evidence_id = Column(String(80), nullable=False, unique=True)
     available_from = Column(DateTime(timezone=True), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)

@@ -10,7 +10,9 @@ from errors import (
     TransactionDateInTheFuture,
 )
 from models import PixStatus
-from repositories import ChallengeRepository, HistoryRepository, PixRepository, WatchlistRepository
+from repositories import (
+    ChallengeRepository, HistoryRepository, PixRepository, PolicyRepository, ReputationRepository, WatchlistRepository,
+)
 from utils.dates import parse_moment
 
 # A unicidade que protege "um resultado por analise" (UNIQUE(analysis_id) em
@@ -25,18 +27,18 @@ class ChallengeController(BaseController):
     GET passa a mostra-lo em `metadata.challenge`. Duas consequencias:
     - `approved_by_client` vira dinheiro que saiu a partir da event_date, e
       entra no montante, no perfil e na familiaridade dos proximos Pix;
-    - `reproved_by_client` e o titular dizendo "nao fui eu". O aparelho e o
-      documento destino entram na lista interna, vigentes a partir da
-      event_date. E a unica alimentacao automatica da lista, e nao vem da
-      decisao do proprio motor.
+    - `reproved_by_client` e o titular dizendo "nao fui eu". E a unica
+      alimentacao automatica da lista interna, e nao vem da decisao do
+      proprio motor. Ver _nao_fui_eu.
 
     A ordem:
     1. A data precisa existir (30 de fevereiro e 400), inclusive na repeticao.
     2. A analise precisa existir e ter pedido o desafio.
     3. As travas sao as da propria analise (analysis_lock_keys, com os dados
        gravados), as mesmas do POST: a resposta espera o Pix da mesma conta
-       que esta sendo analisado, e duas respostas do mesmo desafio esperam
-       uma a outra.
+       que esta sendo analisado, e duas respostas do mesmo desafio (clique
+       duplo, retry do app) esperam uma a outra. A do recebedor tambem faz
+       duas denuncias simultaneas para o mesmo documento se enxergarem.
     4. Com as travas, o resultado e relido. O mesmo resultado devolve o
        registro original (sem mudar a event_date nem repetir a denuncia); o
        oposto e 409.
@@ -52,6 +54,8 @@ class ChallengeController(BaseController):
         self.challenge_repo = ChallengeRepository(self.context)
         self.history_repo = HistoryRepository(self.context)
         self.watchlist_repo = WatchlistRepository(self.context)
+        self.policy_repo = PolicyRepository(self.context)
+        self.reputation_repo = ReputationRepository(self.context)
 
     def answer(self, pix_id: str, payload: dict):
         resultado = payload["challenge_result"]
@@ -83,10 +87,7 @@ class ChallengeController(BaseController):
             return analysis, self._replay(pix_id, self.challenge_repo.get(analysis.id), resultado)
 
         if resultado == "reproved_by_client":
-            self.watchlist_repo.add_client_report("device", analysis.device_id,
-                                                  f"challenge-{analysis.analysis_key}-device", momento)
-            self.watchlist_repo.add_client_report("document", analysis.destination_document,
-                                                  f"challenge-{analysis.analysis_key}-document", momento)
+            self._nao_fui_eu(analysis, momento)
         self.session.commit()
         return analysis, registro
 
@@ -100,3 +101,31 @@ class ChallengeController(BaseController):
             raise ChallengeBeforeTransaction(event_date, transaction_date.isoformat())
         if momento > datetime.now(timezone.utc) + timedelta(seconds=TIME_SKEW_SECONDS):
             raise TransactionDateInTheFuture(event_date, TIME_SKEW_SECONDS)
+
+    def _nao_fui_eu(self, analysis, momento) -> None:
+        """O aparelho entra na lista, e o documento destino entra em cautelar.
+
+        A cautelar e a palavra de um titular so: +40 por 24 horas, sem bloquear
+        e sem espalhar suspeita pela rede. Se ninguem mais reclamar, ela vence
+        sozinha e a conta fica livre. Vira fraude confirmada (bloqueio e
+        ancora da rede) quando chega uma segunda fonte independente:
+        - outro titular, distinto, diz "nao fui eu" para o mesmo documento nos
+          30 dias seguintes. O mesmo titular reclamando duas vezes conta uma;
+        - a reputacao externa (DICT ou mock) ja tinha denuncia ou marcacao de
+          golpe contra ele.
+
+        As entradas valem a partir da event_date validada, que nunca e
+        anterior ao Pix contestado (a cronologia ja recusou isso). Uma analise
+        de um instante anterior a denuncia nao a enxerga: a denuncia ainda nao
+        existia, como a confirmacao do 2FA antes da event_date.
+        """
+        p = self.policy_repo.get_current().parameters["REPUTACAO_INTERNA"]
+        destino, chave = analysis.destination_document, analysis.analysis_key
+        self.watchlist_repo.add_client_report("device", analysis.device_id, f"challenge-{chave}-device", momento,
+                                              hours=p["device_days"] * 24)
+        self.watchlist_repo.add_client_report("document", destino, f"challenge-{chave}-document", momento,
+                                              hours=p["cautelar_hours"], reporter=analysis.source_document)
+
+        denunciantes = self.watchlist_repo.reporters_of(destino, momento, p["reports_window_days"])
+        if len(denunciantes) >= p["min_reporters"] or self.reputation_repo.suspected(destino, momento):
+            self.watchlist_repo.confirm(destino, f"confirmed-{chave}", momento, p["confirmed_days"])

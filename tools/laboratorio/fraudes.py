@@ -212,9 +212,10 @@ def repasse_cascata(ep, b):
         saida = entrada * b["fracao"] / 100
         for origem in camada:
             aparelho = ep.mundo.novo_aparelho() if b["aparelho_mula"] == "novo" else None
-            for destino in proxima:
-                ep.pix(origem, destino, saida / len(camada) / len(proxima), quando, aparelho=aparelho,
-                       rotulo="fraude", papel="alvo")
+            for j, destino in enumerate(proxima):
+                # Um Pix depois do outro, como na vida real: no mesmo segundo nenhuma API soma as fatias.
+                ep.pix(origem, destino, saida / len(camada) / len(proxima), quando + timedelta(minutes=2 * j),
+                       aparelho=aparelho, rotulo="fraude", papel="alvo")
         camada, entrada = proxima, saida
 
 
@@ -299,6 +300,35 @@ def rede_suspeita(ep, b):
         ep.pix(vitima, elo, vitima.mediana() * b["multiplo"], ep.momento(0, "15:00", 120), rotulo="fraude", papel="alvo")
 
 
+@perfil(nome="laranja_do_chefe_marcado", tipo="fraude", contido_por="rejected",
+        descricao="A laranja recebe de vitimas e repassa para o chefe, que ja tem fraude confirmada; o repasse e "
+                  "barrado, mas as vitimas seguintes continuam pagando a laranja",
+        botoes={"valor": ["alto", "baixo"], "vitimas_antes": [2, 3], "vitimas_depois": [3, 5],
+                "idade_conta_dias": [400, 5]},
+        sinais=("a conta tentou repassar para um golpista conhecido", "entrada de gente sem vinculo logo antes"),
+        defesa="Seguir o dinheiro nos dois sentidos: quem repassa para uma conta de fraude confirmada e elo da "
+               "mesma rede, e quem paga essa conta depois e a proxima vitima.",
+        fonte=FONTE_MED)
+def laranja_do_chefe_marcado(ep, b):
+    laranja = ep.pessoa("laranja", idade_conta_dias=b["idade_conta_dias"])
+    if b["idade_conta_dias"] > 60:
+        ep.historico(laranja, n=5, faixa=(2000, 8000))
+    chefe = ep.pessoa("chefe", documento=pix_utils.DOC_FRAUDE_ATIVA)
+    faixa = (120000, 300000) if b["valor"] == "alto" else (20000, 90000)
+    quando, recebido = ep.momento(0, "10:00", 60), 0
+    for i in range(b["vitimas_antes"]):
+        valor = ep.valor(*faixa)
+        ep.pix(ep.cliente_comum(f"vitima-{i}", n=8), laranja, valor, quando + timedelta(minutes=15 * i),
+               rotulo="fraude", papel="alvo")
+        recebido += valor
+    # A marcacao do chefe ja barra o repasse; a recusa mostra para onde o dinheiro ia.
+    repasse = quando + timedelta(minutes=15 * b["vitimas_antes"] + 20)
+    ep.pix(laranja, chefe, recebido * 0.9, repasse, rotulo="fraude", papel="alvo")
+    for i in range(b["vitimas_depois"]):
+        ep.pix(ep.cliente_comum(f"vitima-depois-{i}", n=8), laranja, ep.valor(*faixa),
+               repasse + timedelta(hours=1, minutes=30 * i), rotulo="fraude", papel="alvo")
+
+
 @perfil(nome="recebedor_ou_aparelho_marcado", tipo="fraude", contido_por="rejected",
         descricao="Pix para documento com fraude ativa ou alerta, ou feito de aparelho em lista de observacao",
         botoes={"marca": ["doc_fraude_ativa", "device_watchlist", "doc_alerta_risco", "doc_watchlist"], "multiplo": [1, 10]},
@@ -365,3 +395,122 @@ def golpe_escalonado(ep, b):
         dia = (b["parcelas"] - 1 - i) * b["intervalo_dias"]
         ep.pix(vitima, golpista, valor, ep.momento(dia, "19:00", 120), rotulo="fraude", papel="alvo")
         valor *= b["crescimento"]
+
+
+# ----------------------------------------------------------------------
+# Golpes que ainda faltavam
+# ----------------------------------------------------------------------
+
+FONTE_FEBRABAN = "https://febrabantech.febraban.org.br/temas/seguranca/quase-4-em-cada-10-brasileiros-ja-sofreram-golpe-aponta-pesquisa-da-febraban"
+
+
+@perfil(nome="fraude_do_proprio_cliente", tipo="fraude", contido_por="rejected",
+        descricao="O proprio cliente paga um comparsa e depois diz que caiu num golpe para pedir a devolucao pelo MED",
+        botoes={"pagamentos": [3, 1, 5], "multiplo": [8, 3], "repasse_do_comparsa": [True, False], "intervalo_dias": [4, 1]},
+        sinais=("pagamentos altos para contas novas, uma diferente a cada vez", "o recebedor repassa quase tudo em minutos",
+                "o mesmo pagador repete o padrao"),
+        defesa="Na hora do Pix o sinal e fraco. O que denuncia e o historico de contestacoes do pagador e o comparsa que "
+               "repassa na hora: cruzar o MED com o grafo de quem recebeu.",
+        ausente_no_contrato=("historico de contestacoes (MED) do pagador",),
+        fonte=FONTE_MED)
+def fraude_do_proprio_cliente(ep, b):
+    cliente = ep.cliente_comum("cliente")
+    valor = cliente.mediana() * b["multiplo"]
+    for i in range(b["pagamentos"]):
+        dia = (b["pagamentos"] - 1 - i) * b["intervalo_dias"]
+        comparsa = ep.pessoa(f"comparsa-{i}", idade_conta_dias=dia + ep.acaso.randint(3, 6))
+        quando = ep.momento(dia, "15:00", 120)
+        ep.pix(cliente, comparsa, valor, quando, rotulo="fraude", papel="alvo")
+        if b["repasse_do_comparsa"]:
+            saque = ep.pessoa(f"saque-{i}", idade_conta_dias=dia + ep.acaso.randint(3, 6))
+            ep.pix(comparsa, saque, valor * 0.95, quando + timedelta(minutes=ep.acaso.randint(3, 12)),
+                   rotulo="fraude", papel="alvo")
+
+
+@perfil(nome="selfie_falsificada", tipo="fraude", contido_por="facial_document",
+        descricao="Conta tomada em que o golpista passa na selfie: deepfake, ou a vitima enganada a 'validar o cadastro'",
+        botoes={"valor": [10, 3, 1], "fatias": [1, 3, 6], "localizacao": ["outra_cidade", "mesma_cidade"],
+                "destino": ["conta_nova", "conta_antiga_alugada"]},
+        sinais=("aparelho nunca usado pela vitima", "localizacao ou IP fora do habitual", "valor fora do perfil",
+                "destino inedito"),
+        defesa="Contra deepfake a selfie sozinha nao basta: valor alto em aparelho novo pede documento e prova de vida "
+               "ativa, e de preferencia um tempo de espera depois do cadastro do aparelho.",
+        ausente_no_contrato=("resultado da prova de vida (liveness) e do documento",),
+        fonte=FONTE_BCB_APARELHO)
+def selfie_falsificada(ep, b):
+    vitima = ep.cliente_comum("vitima")
+    aparelho = ep.mundo.novo_aparelho()
+    local = _local(ep, vitima, b["localizacao"])
+    mula = _mula(ep, b["destino"])
+    fatia = vitima.mediana() * b["valor"]
+    for quando in ep.sequencia(ep.momento(0, "14:00", 120), b["fatias"], 2, 9):
+        ep.pix(vitima, mula, fatia, quando, aparelho=aparelho, rotulo="fraude", papel="alvo",
+               golpista=True, passa_selfie=True, **local)
+
+
+@perfil(nome="emprestimo_falso", tipo="fraude", contido_por="rejected",
+        descricao="Emprestimo que nunca sai: a vitima paga 'taxa de liberacao', depois 'seguro', depois 'IOF'",
+        botoes={"taxas": [3, 2, 4], "destino": ["cnpj_novo", "pf_nova"], "intervalo_horas": [3, 24],
+                "primeira_taxa": [40000, 15000, 90000]},
+        sinais=("recebedor novo cobrando valores redondos em sequencia", "cada pagamento maior que o anterior"),
+        defesa="Pagar para receber e o padrao: valores crescentes para o mesmo recebedor novo em poucos dias. Banco "
+               "nao cobra taxa antecipada para liberar emprestimo, e o app pode avisar isso na hora.",
+        ausente_no_contrato=("descricao ou motivo do Pix",),
+        fonte=FONTE_FEBRABAN)
+def emprestimo_falso(ep, b):
+    vitima = ep.cliente_comum("vitima", faixa=(3000, 15000))
+    dias_atras = (b["taxas"] - 1) * b["intervalo_horas"] // 24 + 1
+    financeira = ep.pessoa("financeira", pj=b["destino"] == "cnpj_novo", idade_conta_dias=dias_atras + ep.acaso.randint(3, 10))
+    inicio = ep.momento(dias_atras, "10:00", 60)
+    valor = b["primeira_taxa"]
+    for i in range(b["taxas"]):
+        ep.pix(vitima, financeira, valor, inicio + timedelta(hours=i * b["intervalo_horas"]), rotulo="fraude", papel="alvo")
+        valor = int(valor * 1.6) // 1000 * 1000
+
+
+@perfil(nome="abuso_financeiro_de_idoso", tipo="fraude", contido_por="rejected",
+        descricao="Parente ou cuidador usa o celular do idoso, em casa, para tirar o dinheiro da aposentadoria",
+        botoes={"modo": ["mensal_crescente", "de_uma_vez"], "fatia_pct": [60, 30, 90]},
+        sinais=("idoso de poucos Pix passa a pagar sempre a mesma pessoa", "a fatia do beneficio que sai cresce todo mes",
+                "valor muito acima do habito"),
+        defesa="O aparelho, o lugar e a selfie sao do proprio idoso: so o comportamento denuncia. Contato de confianca, "
+               "e alerta quando um recebedor passa a levar a maior parte do beneficio.",
+        ausente_no_contrato=("idade do titular", "entrada do beneficio (credito do INSS)"),
+        fonte=FONTE_FEBRABAN)
+def abuso_financeiro_de_idoso(ep, b):
+    idoso = ep.pessoa("aposentado", idade_conta_dias=8000, usa_gps=False)
+    contas = [ep.pessoa(f"conta-{i}", pj=True, idade_conta_dias=5000) for i in range(2)]
+    for mes in (6, 5, 4, 3, 2, 1):
+        ep.pix(idoso, ep.acaso.choice(contas), ep.valor(8000, 25000), ep.momento(30 * mes + 2, "10:00", 120),
+               rotulo="legitimo", papel="rotina")
+    beneficio = ep.valor(150000, 400000, 1000)
+    parente = ep.pessoa("parente", idade_conta_dias=3000)
+    if b["modo"] == "de_uma_vez":
+        ep.pix(idoso, parente, beneficio * 6 * b["fatia_pct"] / 100, ep.momento(0, "19:00", 120),
+               rotulo="fraude", papel="alvo")
+        return
+    for i, mes in enumerate((3, 2, 1, 0)):
+        fatia = min(0.95, b["fatia_pct"] / 100 * (0.5 + 0.25 * i))
+        ep.pix(idoso, parente, beneficio * fatia, ep.momento(30 * mes, "19:00", 120), rotulo="fraude", papel="alvo")
+
+
+@perfil(nome="golpe_do_pix_por_engano", tipo="fraude", contido_por="rejected",
+        descricao="Alguem manda um Pix 'por engano' e pede a devolucao numa outra conta; depois pede o original de "
+                  "volta pelo MED, e a vitima paga duas vezes",
+        botoes={"valor": [50000, 20000, 150000], "intervalo_min": [15, 60, 5], "devolve_para": ["outra_conta", "quem_enviou"]},
+        sinais=("Pix recebido de um desconhecido", "logo depois, Pix do mesmo valor para uma terceira conta nova"),
+        defesa="Devolucao se faz pelo botao de devolver o proprio Pix recebido, nunca para outra conta. O valor igual "
+               "ao recem-recebido indo para quem nao mandou e o sinal.",
+        ausente_no_contrato=("se o Pix e a devolucao de um Pix recebido, e de qual",),
+        fonte=FONTE_MED)
+def golpe_do_pix_por_engano(ep, b):
+    vitima = ep.cliente_comum("vitima")
+    golpista = ep.cliente_comum("golpista", n=6)
+    quando = ep.momento(0, "13:00", 180)
+    ep.pix(golpista, vitima, b["valor"], quando, rotulo="neutro", papel="preparo")
+    retorno = quando + timedelta(minutes=b["intervalo_min"])
+    if b["devolve_para"] == "quem_enviou":
+        # Controle: a devolucao certa, para quem mandou, e legitima.
+        ep.pix(vitima, golpista, b["valor"], retorno, rotulo="legitimo", papel="alvo", aceitavel_ate="facial")
+    else:
+        ep.pix(vitima, _mula(ep, "conta_nova", "outra-conta"), b["valor"], retorno, rotulo="fraude", papel="alvo")

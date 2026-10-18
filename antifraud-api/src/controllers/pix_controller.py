@@ -193,6 +193,9 @@ class PixController(BaseController):
     def _canonical(self, payload: dict) -> dict:
         """O pedido na forma que define "o mesmo Pix": documentos so em digitos."""
         canonical = json.loads(json.dumps(payload))
+        # 15000 e 15000.0 sao o mesmo valor, e o schema aceita os dois: sem
+        # isto, o retry com a outra grafia era recusado como outro Pix.
+        canonical["amount"] = int(canonical["amount"])
         for lado in ("source_account", "destination_account"):
             dono = canonical[lado]["owner"]
             dono["document_number"] = normalize_document(dono["document_number"])
@@ -226,10 +229,22 @@ class PixController(BaseController):
         return None
 
     def _check_ip(self, ip: str) -> str:
+        """O IP na forma unica que o motor grava e compara.
+
+        - O escopo do IPv6 ("fe80::1%eth0") diz por qual placa de rede o
+          pacote saiu, nao quem e o cliente, e o tipo inet do Postgres nao o
+          aceita (virava 500). Sai.
+        - O IPv4 escrito como IPv6 ("::ffff:198.51.100.7") e o mesmo endereco
+          que um balanceador IPv6 costuma repassar. Volta a ser IPv4, senao a
+          localizacao e as regras de rede nao o reconhecem.
+        """
         try:
-            return str(ipaddress.ip_address(ip))
+            endereco = ipaddress.ip_address(ip.split("%", 1)[0])
         except ValueError:
             raise InvalidSchema(f"source.ip: '{ip}' is not a valid IPv4 or IPv6 address")
+        if endereco.version == 6 and endereco.ipv4_mapped is not None:
+            endereco = endereco.ipv4_mapped
+        return str(endereco)
 
     def _locate_ip(self, ip: str, network: str, moment: datetime):
         linha = self.ip_location_repo.from_table(ip)

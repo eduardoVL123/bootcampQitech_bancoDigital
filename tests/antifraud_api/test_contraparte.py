@@ -112,11 +112,11 @@ def test_aluguel_recorrente_e_aprovado():
 
 
 def test_destino_familiar_desconta_10_do_perfil():
-    # Tres alugueis em meses diferentes nao bastam para a referencia do par
-    # (pede 5), entao o perfil compara com os gastos pequenos do dia a dia e
-    # dispara. O destino e familiar, e o redutor tira 10 dessa familia.
+    # Tres pagamentos em 10 dias tornam o destino familiar (pede 7 dias), mas
+    # nao bastam para a referencia do par (pede 14), entao o perfil compara
+    # com os gastos pequenos do dia a dia e dispara. O redutor tira 10.
     pagador, senhorio, hoje = Pagador(), Recebedor(), nova_base()
-    historico(pagador, [250000] * 3, hoje - timedelta(days=90), timedelta(days=30), recebedor=senhorio)
+    historico(pagador, [250000] * 3, hoje - timedelta(days=20), timedelta(days=5), recebedor=senhorio)
     historico(pagador, [5000] * 10, hoje - timedelta(days=8), timedelta(hours=12), recebedores_novos=True)
 
     corpo = analisa(pix(pagador, senhorio, 250000, hoje.isoformat()))

@@ -29,6 +29,17 @@ CIDADES = {
     "sydney": (pix_utils.IP_SYDNEY, pix_utils.GPS_SYDNEY),  # fora do seed: a API nao sabe onde fica
 }
 
+# Como as pessoas respondem quando a API pede selfie. Sao estimativas do
+# laboratorio, nao dados reais: parte dos clientes honestos desiste no meio,
+# e o titular de uma conta tomada, avisado de um desafio que ele nao pediu,
+# as vezes responde "nao fui eu" (reproved_by_client).
+DESISTE_DA_SELFIE = {"facial": 0.03, "facial_document": 0.08}
+TITULAR_CONTESTA = 0.5
+
+# Os documentos que ja tem reputacao no seed da API: o DICT de mentira nao mexe neles.
+DOCUMENTOS_DO_SEED = {pix_utils.DOC_FRAUDE_ATIVA, pix_utils.DOC_ALERTA_RISCO, pix_utils.DOC_ALERTA_VENCIDO,
+                      pix_utils.DOC_VITIMA, pix_utils.DOC_WATCHLIST}
+
 # Decisoes em ordem de severidade. "erro" (resposta que nao e decisao) fica fora.
 ORDEM = {"approved": 0, "facial": 1, "facial_document": 2, "rejected": 3}
 
@@ -80,7 +91,7 @@ class Evento:
     contido_por: str = None  # fraude: a decisao minima que segura o golpe; autoprotecao: a que protege
     aceitavel_ate: str = None  # legitimo: a decisao mais dura que ainda nao e erro
     regulatorio: str = None  # regra do BCB que bloquearia este Pix, se houver
-    confirma: bool = False  # se a API pedir selfie, o titular passa (approved_by_client)
+    desafio: dict = None  # se a API pedir selfie, o que quem esta com o aparelho faz: aprova, nada ou contesta
 
 
 class Mundo:
@@ -159,10 +170,15 @@ class Episodio:
         self.semente = semente
         self.fator_valor = fator_valor
         self.acaso = random.Random(f"{perfil.nome}:{semente}")
+        # Acaso proprio para as respostas ao desafio: assim elas nao mudam os
+        # valores e horarios dos episodios que ja estao no corpus.
+        self.acaso_desafio = random.Random(f"{perfil.nome}:{semente}:desafio")
         self.id = mundo.novo_id("ep")
         self.eventos = []
         self._noite = {}
         self._aparelho_novo_dia = {}
+        # Quem recebe o dinheiro do golpe: as contas que o DICT poderia ja ter marcado.
+        self.recebedores_do_golpe = set()
 
     # -- tempo e lugar -------------------------------------------------
 
@@ -221,13 +237,16 @@ class Episodio:
     def pix(self, origem: Pessoa, destino: Pessoa, valor: int, quando: datetime, *, rotulo: str, papel: str,
             aparelho: str = None, ip_de: str = None, ip: str = None, gps=None, canal: str = None,
             conta_destino: dict = None, contido_por: str = None, aceitavel_ate: str = None,
-            golpista: bool = None) -> str:
+            golpista: bool = None, passa_selfie: bool = False) -> str:
         """Um Pix. gps None calcula sozinho, False nao manda, dict manda o que vier.
 
         golpista diz quem esta com o aparelho na mao. O golpista nao passa na
-        selfie, entao o desafio fica sem resposta. O titular (cliente honesto,
-        vitima enganada ou dono da laranja) passa e confirma. Sem valor
-        explicito, e golpista quem pratica o golpe que a selfie seguraria.
+        selfie; quem responde e o titular de verdade, que as vezes contesta.
+        O titular (cliente honesto, vitima enganada ou dono da laranja) passa,
+        e o honesto as vezes desiste no meio. Sem valor explicito, e golpista
+        quem pratica o golpe que a selfie seguraria. passa_selfie e o golpista
+        com selfie falsa (deepfake, ou a vitima enganada a fazer a selfie para
+        ele): passa no facial, nao no documento.
         """
         if papel != "rotina":
             valor = valor * self.fator_valor
@@ -260,12 +279,26 @@ class Episodio:
             aceitavel_ate = aceitavel_ate or "facial_document"
         if golpista is None:
             golpista = rotulo == "fraude" and contido_por == "facial"
+        if rotulo == "fraude" and destino.documento not in DOCUMENTOS_DO_SEED:
+            self.recebedores_do_golpe.add(destino.documento)
         self.eventos.append(Evento(pix_id, quando, "POST", "/pix/transaction", corpo, rotulo, papel, self.perfil.nome,
-                                   self.id, valor, contido_por, aceitavel_ate, regulatorio, not golpista))
+                                   self.id, valor, contido_por, aceitavel_ate, regulatorio,
+                                   self._resposta_ao_desafio(rotulo, golpista, passa_selfie)))
         if papel == "rotina":
             origem.valores.append(valor)
             origem.aparelhos.add(aparelho)
         return pix_id
+
+    def _resposta_ao_desafio(self, rotulo: str, golpista: bool, passa_selfie: bool) -> dict:
+        if golpista:
+            # Quem pode responder e o titular de verdade, que recebe o aviso.
+            titular = "contesta" if self.acaso_desafio.random() < TITULAR_CONTESTA else "nada"
+            return {"facial": "aprova" if passa_selfie else titular, "facial_document": titular}
+        if rotulo in ("legitimo", "autoprotecao"):
+            return {nivel: "nada" if self.acaso_desafio.random() < chance else "aprova"
+                    for nivel, chance in DESISTE_DA_SELFIE.items()}
+        # Vitima enganada, dono da laranja ou complice: passa em tudo.
+        return {"facial": "aprova", "facial_document": "aprova"}
 
     def _regulatorio(self, origem, destino, valor, quando, aparelho, canal):
         motivos = []

@@ -1,10 +1,10 @@
-"""Concentracao, repasse, coordenacao entre contas e a rede de dois saltos."""
+"""Concentracao, repasse, coordenacao entre contas e a rede, nos dois sentidos do dinheiro."""
 import random
 from datetime import timedelta
 
 from tests.utils.pix import (
     RECEBEDOR_ALERTA, RECEBEDOR_MARCACAO_CRITICA, AntifraudApi, Pagador, Recebedor, analisa, disparou, historico,
-    nova_base, paga, pix, pontos, regra,
+    nega, nova_base, paga, pix, pontos, regra,
 )
 
 CASA = "99999999"
@@ -529,3 +529,71 @@ def test_tres_saltos_nao_dispara():
     corpo = analisa(pix(Pagador(), destino, 5000, hoje.isoformat()))
 
     assert not disparou(corpo, "REDE_SUSPEITA")
+
+
+def test_laranja_que_repassa_para_a_ancora_contamina_quem_paga_ela():
+    # A laranja recebe de duas pessoas sem vinculo e manda o dinheiro para a
+    # ancora. O repasse e recusado (a ancora tem marcacao critica), mas a
+    # recusa mostra para onde o dinheiro ia: a proxima vitima e protegida.
+    hoje, laranja = nova_base(), Recebedor()
+    ancora = Recebedor(documento=RECEBEDOR_MARCACAO_CRITICA)
+    for minutos in (180, 120):
+        analisa(pix(Pagador(), laranja, 30000, (hoje - timedelta(minutes=minutos)).isoformat()))
+    repasse = analisa(pix(laranja.como_pagador(), ancora, 50000, (hoje - timedelta(hours=1)).isoformat()))
+    assert repasse["status"] == "rejected"
+
+    corpo = analisa(pix(Pagador(), laranja, 5000, hoje.isoformat()))
+
+    rede = regra(corpo, "REDE_SUSPEITA")
+    assert rede["raw_points"] == 60
+    assert rede["direction"] == "to_anchor"
+
+
+def test_vitima_que_pagou_a_ancora_com_o_proprio_dinheiro_nao_contamina():
+    hoje, vitima = nova_base(), Recebedor()
+    analisa(pix(vitima.como_pagador(), Recebedor(documento=RECEBEDOR_MARCACAO_CRITICA), 50000,
+                (hoje - timedelta(hours=1)).isoformat()))
+
+    corpo = analisa(pix(Pagador(), vitima, 5000, hoje.isoformat()))
+
+    assert not disparou(corpo, "REDE_SUSPEITA")
+
+
+def test_repasse_do_dinheiro_de_quem_tem_vinculo_nao_contamina():
+    # O organizador junta o dinheiro dos amigos de sempre e paga uma agencia
+    # que era golpe. Ele e vitima, nao laranja: os amigos ja pagavam ele antes.
+    hoje, organizador = nova_base(), Recebedor()
+    amigos = [Pagador(), Pagador()]
+    for amigo in amigos:
+        analisa(pix(amigo, organizador, 5000, (hoje - timedelta(days=10)).isoformat()))
+    for minutos, amigo in zip((180, 120), amigos):
+        analisa(pix(amigo, organizador, 30000, (hoje - timedelta(minutes=minutos)).isoformat()))
+    analisa(pix(organizador.como_pagador(), Recebedor(documento=RECEBEDOR_MARCACAO_CRITICA), 50000,
+                (hoje - timedelta(hours=1)).isoformat()))
+
+    corpo = analisa(pix(Pagador(), organizador, 5000, hoje.isoformat()))
+
+    assert not disparou(corpo, "REDE_SUSPEITA")
+
+
+def test_cautelar_de_um_titular_so_nao_espalha_pela_rede():
+    # O denunciado pagou uma loja. Antes, um "nao fui eu" so fazia todo cliente
+    # novo da loja levar +60 por 30 dias.
+    hoje, denunciado, loja = nova_base(), Recebedor(), Recebedor(pj=True)
+    analisa(pix(denunciado.como_pagador(), loja, 20000, (hoje - timedelta(days=2)).isoformat()))
+    nega(Pagador(), denunciado, 2500000, hoje - timedelta(days=1))
+
+    corpo = analisa(pix(Pagador(), loja, 150000, hoje.isoformat()))
+
+    assert not disparou(corpo, "REDE_SUSPEITA")
+
+
+def test_denuncia_confirmada_espalha_pela_rede():
+    hoje, denunciado, vizinho = nova_base(), Recebedor(), Recebedor()
+    analisa(pix(denunciado.como_pagador(), vizinho, 20000, (hoje - timedelta(days=2)).isoformat()))
+    nega(Pagador(), denunciado, 2500000, hoje - timedelta(days=1))
+    nega(Pagador(), denunciado, 50000, hoje - timedelta(hours=23))
+
+    corpo = analisa(pix(Pagador(), vizinho, 5000, hoje.isoformat()))
+
+    assert pontos(corpo, "REDE_SUSPEITA") == 60

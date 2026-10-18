@@ -1,10 +1,11 @@
 """O perfil de valor do pagador, contra a primeira referencia elegivel.
 
 Ordem das referencias, sem somar avaliacoes:
-1. o par pagador -> recebedor (5 pagamentos em 3 dias, cobrindo 14 dias,
+1. o par pagador -> recebedor (3 pagamentos em 3 dias, cobrindo 14 dias,
    em 365 dias): o aluguel compara com os alugueis, o fornecedor com o
-   fornecedor. A janela do par e maior que a das outras de proposito: um
-   pagamento mensal nunca juntaria 5 ocorrencias em 90 dias;
+   fornecedor. Tres meses de aluguel ja bastam de referencia. A janela do
+   par e maior que a das outras de proposito: um pagamento mensal nunca
+   juntaria ocorrencias suficientes em 90 dias;
 2. a fase do mes no calendario do cliente (controllers/engine/calendar.py), quando ha um;
 3. as saidas gerais do pagador (10 pagamentos em 3 dias).
 

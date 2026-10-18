@@ -19,6 +19,9 @@ TIME_SKEW_SECONDS = int(os.environ.get("TIME_SKEW_SECONDS", "300"))
 # `participant`, e e com ele que o motor a reconhece quando ela aparece
 # primeiro como destino de outro Pix e depois como origem. Ficticio.
 OWN_PARTICIPANT = os.environ.get("OWN_PARTICIPANT", "99999999")
+# Onde consultar as informacoes de seguranca do DICT. Vazio desliga a consulta.
+DICT_URL = os.environ.get("DICT_URL", "")
+DICT_TIMEOUT_SECONDS = float(os.environ.get("DICT_TIMEOUT_SECONDS", "0.3"))
 
 BYPASS_ENDPOINTS = [
     "/",

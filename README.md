@@ -161,7 +161,7 @@ O cliente responde o desafio uma vez. A ordem do `PATCH`:
 3. **As travas são as da própria análise:** as mesmas chaves do `POST`, montadas a partir dos dados gravados. A resposta espera o Pix da mesma conta que está sendo analisado, e duas respostas do mesmo desafio esperam uma a outra.
 4. **Com as travas, o resultado é relido.** O mesmo resultado devolve `200` com o registro original: a `event_date` não muda, a denúncia não se repete e a análise não é refeita. O oposto é `409 QIT006006`. Respostas simultâneas gravam uma vez só: iguais dão todas `200`, opostas dão uma vencedora e `409` para as outras, nunca `500`.
 5. **Só a primeira resposta passa pela cronologia:** `transaction_date ≤ event_date ≤ agora + 5 min` (a mesma folga do `POST`). Anterior ao Pix é `422 QIT006008`; no futuro, `422 QIT006002`. Responder no mesmo instante do Pix vale, e não há prazo máximo: a confirmação de anos atrás vale para a simulação daquela época.
-6. **O resultado e a lista interna são gravados juntos.** O "não fui eu" lista o aparelho e o documento destino por 30 dias a partir da `event_date` validada, e as consultas respeitam o instante de cada análise.
+6. **O resultado e a lista interna são gravados juntos.** O "não fui eu" põe o aparelho na lista por 30 dias e o documento destino em cautelar (+40) por 24 horas. Vira fraude confirmada, por 30 dias, com uma segunda fonte independente: outro titular, nos 30 dias, ou a reputação externa. Tudo vale a partir da `event_date` validada, nunca antes dela: uma análise de um instante anterior à denúncia não a enxerga, como não enxerga a confirmação de 2FA futura.
 
 | Código | HTTP | Quando acontece |
 |---|---|---|
