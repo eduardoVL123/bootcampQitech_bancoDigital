@@ -32,6 +32,19 @@ def test_terceira_tentativa_em_5_min_soma_25():
     assert regra(corpos[-1], "VELOCITY")["reference"] == "fallback"
 
 
+def test_rajada_dividida_entre_contas_do_mesmo_titular_conta_como_uma():
+    # Cinco Pix em dois minutos, em tres contas do mesmo CPF: nenhuma conta
+    # passa de dois, mas o titular fez cinco.
+    base, titular, recebedor = nova_base(), Pagador(), Recebedor()
+    contas = [titular] + [Pagador(documento=titular.documento) for _ in range(2)]
+
+    corpos = [analisa(pix(contas[i % 3], recebedor, 5000, (base + timedelta(seconds=30 * i)).isoformat()))
+              for i in range(5)]
+
+    assert pontos(corpos[-1], "VELOCITY") == 40
+    assert corpos[-1]["status"] == "two_factor_required"
+
+
 def test_quinta_tentativa_em_5_min_pede_facial():
     corpos = _sequencia(Pagador(), [5000] * 5, timedelta(seconds=30))
 

@@ -160,3 +160,21 @@ def test_muitos_eventos_numa_varredura_so():
 
     assert fluxo.incoming == 10000000
     assert fluxo.outflow == 9000000 + 1000
+
+
+def test_a_base_minima_e_da_janela_e_exata():
+    # As duas escoam 80% ou mais; so a base decide.
+    no_minimo = _projeta([_entra(3333, "v1"), _entra(3333, "v2"), _entra(3334, "v3")], 8000)
+    abaixo = _projeta([_entra(3333, "v1"), _entra(3333, "v2"), _entra(3333, "v3")], 8000)
+
+    assert no_minimo.base == 10000 and no_minimo.identifies(3, OITENTA, 10000)
+    assert abaixo.reaches(OITENTA) and not abaixo.identifies(3, OITENTA, 10000)
+
+
+def test_creditos_de_centavo_seguem_na_projecao_e_somam_para_a_base():
+    centavos = _projeta([_entra(1, "c1"), _entra(1, "c2"), _entra(1, "c3")], 1000)
+    somados = _projeta([_entra(1000, f"p{indice % 4}") for indice in range(12)], 10000)
+
+    assert (centavos.incoming, centavos.outflow) == (3, 3)
+    assert centavos.reaches(OITENTA) and not centavos.identifies(3, OITENTA, 10000)
+    assert somados.base == 12000 and somados.identifies(3, OITENTA, 10000)

@@ -65,9 +65,15 @@ class Flow:
         """E / B >= share, sem ponto flutuante: E * den >= B * num."""
         return self.base > 0 and self.outflow * share.denominator >= self.base * share.numerator
 
-    def identifies(self, min_payers: int, share: Fraction) -> bool:
-        """O repasse: pagadores suficientes, o escoamento no corte, e o Pix atual escoando parte do pool."""
-        return self.qualified_payers >= min_payers and self.reaches(share) and self.current_outflow > 0
+    def identifies(self, min_payers: int, share: Fraction, min_base: int = 0) -> bool:
+        """O repasse: pagadores suficientes, base material, o escoamento no corte e o Pix atual escoando o pool.
+
+        `min_base` e o minimo da base da janela inteira, e nao de cada entrada
+        ou saida: tres creditos de R$ 0,01 nao fazem repasse, e varios creditos
+        pequenos somados fazem.
+        """
+        return (self.qualified_payers >= min_payers and self.base >= min_base and self.reaches(share)
+                and self.current_outflow > 0)
 
     def describe(self) -> dict:
         return {

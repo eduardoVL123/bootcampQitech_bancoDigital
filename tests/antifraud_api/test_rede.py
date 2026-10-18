@@ -429,6 +429,67 @@ def test_o_corte_de_80_por_cento_e_exato():
     assert not disparou(um_centavo_abaixo, "REPASSE_RAPIDO")
 
 
+def test_tres_creditos_de_um_centavo_nao_fazem_a_saida_comum_pedir_verificacao():
+    # A saida de R$ 10 era aprovada; depois de tres creditos de R$ 0,01 de
+    # titulares diferentes, o "escoamento" de R$ 0,03 pedia facial e documento.
+    # Abaixo da base minima da janela (`min_base`), o repasse nao aparece.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje, valor=1)
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 1000, (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert not disparou(corpo, "REPASSE_RAPIDO")
+    assert corpo["status"] == "approved"
+
+
+def test_base_minima_exata_e_um_centavo_abaixo():
+    # Os dois escoam 80% ou mais da base: so a base decide.
+    hoje = nova_base()
+    no_minimo, abaixo = Recebedor(participante=CASA), Recebedor(participante=CASA)
+    for conta, valores in ((no_minimo, (3333, 3333, 3334)), (abaixo, (3333, 3333, 3333))):
+        for indice, valor in enumerate(valores):
+            paga(pix(Pagador(), conta, valor, (hoje + timedelta(minutes=indice)).isoformat()))
+
+    exato = analisa(pix(no_minimo.como_pagador(), Recebedor(), 8000, (hoje + timedelta(minutes=10)).isoformat()))
+    um_centavo_abaixo = analisa(pix(abaixo.como_pagador(), Recebedor(), 8000, (hoje + timedelta(minutes=10)).isoformat()))
+
+    assert pontos(exato, "REPASSE_RAPIDO") == 60
+    assert _fluxo(exato)["base"] == 10000
+    assert not disparou(um_centavo_abaixo, "REPASSE_RAPIDO")
+
+
+def test_entradas_pequenas_somadas_formam_base_material():
+    # Quatro pagadores com tres Pix de R$ 10 cada: R$ 120 de base. O minimo e
+    # da janela, e nao de cada entrada: fracionar nao escapa.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    for indice in range(4):
+        pagador = Pagador()
+        for vez in range(3):
+            paga(pix(pagador, conta, 1000, (hoje + timedelta(minutes=3 * indice + vez)).isoformat()))
+
+    corpo = analisa(pix(conta.como_pagador(), Recebedor(), 10000, (hoje + timedelta(minutes=20)).isoformat()))
+
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo)["base"] == 12000
+
+
+def test_saidas_pequenas_somadas_continuam_escoando_a_base_material():
+    # R$ 300 de base escoados em Pix de R$ 30: nenhum minimo por saida.
+    hoje = nova_base()
+    conta = Recebedor(participante=CASA)
+    _vitimas_pagam(conta, hoje, valor=10000)
+    laranja, destino = conta.como_pagador(), Recebedor()
+    anteriores = [_sai(laranja, destino, 3000, hoje + timedelta(minutes=5 * (indice + 1))) for indice in range(7)]
+
+    corpo = analisa(pix(laranja, destino, 3000, (hoje + timedelta(minutes=40)).isoformat()))
+
+    assert not any(disparou(anterior, "REPASSE_RAPIDO") for anterior in anteriores)
+    assert pontos(corpo, "REPASSE_RAPIDO") == 60
+    assert _fluxo(corpo)["outflow"] == 24000
+
+
 def test_saida_pequena_nao_e_repasse():
     hoje = nova_base()
     conta = _recebe_de_quatro(hoje)

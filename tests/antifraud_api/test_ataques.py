@@ -10,9 +10,10 @@ remoto, conta parada que volta); o catalogo, com as fontes, esta em
 docs/testes/antifraude-ataques.md.
 
 O que cada teste exige e o MINIMO que uma defesa razoavel daria: que o
-ataque inteiro nao passe sem nenhum atrito. Onde so a recusa protege (a
-vitima enganada passa na facial), o teste diz isso no nome e exige
-`rejected`.
+ataque inteiro nao passe sem nenhum atrito. Onde a vitima enganada e quem
+faz a facial (a falsa central, o falso parente), a facial sozinha nao
+protege: o teste exige a verificacao COM o aviso ao pagador
+(`metadata.authentication.payer_warning`), que e o que o app mostra na hora.
 
 ESCRITOS EM 18/10/2026 SEM RODAR, enquanto o motor estava em mudanca. A
 expectativa e que varios fiquem vermelhos: e para isso que existem, cada
@@ -257,13 +258,17 @@ def test_falso_parente_pede_valor_do_perfil_para_conta_aberta_ha_3_horas():
     corpo = analisa(pix(vitima, golpista, 70000, hoje.isoformat()))
 
     assert not _passou(corpo), _resumo([corpo])
+    assert corpo["metadata"]["authentication"]["payer_warning"]["code"] == "new_payee_account"
 
 
-def test_conta_segura_no_proprio_cpf_em_outro_banco_e_rejeitada():
+def test_conta_segura_no_proprio_cpf_em_outro_banco_pede_verificacao_com_aviso():
     # A falsa central manda "proteger o saldo" numa conta nova no nome da
     # propria vitima, em outro banco, aberta ha 2 horas, sem nenhuma
-    # marcacao no mock. A MESMA_TITULARIDADE ainda desconta 10. A vitima
-    # passa na facial: so a recusa protege.
+    # marcacao no mock. A vitima passa na facial, entao a facial sozinha nao
+    # protege. Reprovar toda transferencia alta para conta nova no proprio CPF,
+    # porem, barraria quem so esta trocando de banco: o que protege e o aviso
+    # na hora ("nenhum banco pede conta segura"). Decisao de 18/10/2026; antes
+    # o teste exigia `rejected`.
     hoje = nova_base()
     vitima = Pagador()
     _rotina(vitima, hoje)
@@ -271,7 +276,8 @@ def test_conta_segura_no_proprio_cpf_em_outro_banco_e_rejeitada():
 
     corpo = analisa(pix(vitima, conta_segura, 800000, hoje.isoformat()))
 
-    assert corpo["status"] == "rejected", _resumo([corpo])
+    assert corpo["status"] == "two_factor_required", _resumo([corpo])
+    assert corpo["metadata"]["authentication"]["payer_warning"]["code"] == "safe_account"
 
 
 # ----------------------------------------------------------------------

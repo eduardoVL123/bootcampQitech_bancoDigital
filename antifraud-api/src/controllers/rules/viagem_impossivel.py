@@ -11,6 +11,13 @@ class ViagemImpossivel(Rule):
     100 km (imprecisao em cidade grande); com IP de algum lado, ignora menos
     de 500 km, porque IP e impreciso. Vale +40 e nao rejeita sozinha. Com
     aparelho novo junto, pede a verificacao reforcada.
+
+    A distancia vem antes do intervalo. Dois Pix do mesmo instante em lugares
+    alem do corte sao uma contradicao (o titular nao esta nos dois lugares),
+    e nao "sem intervalo para medir": dispara com `simultaneous` e `kmh`
+    nulo, sem dividir por zero. Perto um do outro, no mesmo instante, nao
+    dispara. Ponto anterior com data posterior a deste Pix nao e avaliado:
+    o modulo do intervalo inventaria uma velocidade.
     """
 
     code = "VIAGEM_IMPOSSIVEL"
@@ -28,16 +35,25 @@ class ViagemImpossivel(Rule):
         data, lat, lon, ip_lat, ip_lon = anterior
         pelo_ip = ctx.gps is None or lat is None
         lat_anterior, lon_anterior = (float(lat), float(lon)) if lat is not None else (float(ip_lat), float(ip_lon))
-        horas = (ctx.moment - data).total_seconds() / 3600
-        if horas <= 0:
-            return self.not_evaluable("O ponto anterior e do mesmo instante; nao ha intervalo para medir.")
+        segundos = (ctx.moment - data).total_seconds()
+        if segundos < 0:
+            return self.not_evaluable("O ponto anterior tem data posterior a deste Pix; nao ha intervalo para medir.")
         km = haversine_km(lat_anterior, lon_anterior, atual.latitude, atual.longitude)
-        velocidade = km / horas
         minimo = p["min_km_ip"] if pelo_ip else p["min_km_gps"]
-        if km <= minimo or velocidade <= p["max_kmh"]:
+        if km <= minimo:
             return self.not_triggered()
         piso = FACIAL_DOCUMENT if ctx.triggered("APARELHO_NOVO") else NONE
+        origem = "ip_location" if pelo_ip else "gps"
+        if segundos == 0:
+            return self.triggered(
+                p["points"], f"{km:.0f} km entre dois Pix do mesmo instante: o titular nao pode estar nos dois "
+                "lugares.", floor=piso, data_origin=origem, km=round(km), kmh=None, simultaneous=True,
+            )
+        horas = segundos / 3600
+        velocidade = km / horas
+        if velocidade <= p["max_kmh"]:
+            return self.not_triggered()
         return self.triggered(
             p["points"], f"{km:.0f} km em {horas * 60:.0f} min ({velocidade:.0f} km/h) desde o ultimo Pix.",
-            floor=piso, data_origin="ip_location" if pelo_ip else "gps", km=round(km), kmh=round(velocidade),
+            floor=piso, data_origin=origem, km=round(km), kmh=round(velocidade), simultaneous=False,
         )

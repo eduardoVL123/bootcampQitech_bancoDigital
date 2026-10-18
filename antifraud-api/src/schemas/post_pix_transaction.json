@@ -20,7 +20,13 @@
     }
   },
   "properties": {
-    "id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?![\\s\\S])",
+      "description": "1 a 64 caracteres: o primeiro letra ASCII ou numero, os outros letras ASCII, numeros, ponto, hifen e sublinhado. E o que cabe num segmento do endereco do GET e do PATCH sem codificacao. O fim e (?![\\s\\S]), e nao $: no Python, $ aceita uma quebra de linha no fim."
+    },
     "amount": {"type": "integer", "minimum": 1, "maximum": 999999999999},
     "transaction_date": {"$ref": "post_pix_transaction.json#/definitions/datetime_with_offset"},
     "source_account": {
