@@ -66,6 +66,13 @@ jobs:
       - name: Roda os testes da antifraud-api
         run: pytest -v tests/antifraud_api
 
+      # Os testes de unidade da projecao do repasse (antifraud-api/tests):
+      # sem banco e sem API, uns dois segundos. O CI completo os recolhe pelo
+      # `pytest` da raiz; aqui eles rodam sozinhos, para um vermelho deles
+      # aparecer no branch antes de chegar na main.
+      - name: Roda os testes de unidade da antifraud-api
+        run: pytest -v antifraud-api/tests
+
       - name: Mostra os logs se algo falhou
         if: failure()
         run: docker compose logs --no-color db antifraud-api
