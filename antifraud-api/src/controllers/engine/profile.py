@@ -10,6 +10,9 @@ Ordem das referencias, sem somar avaliacoes:
 
 As outras usam os aprovados dos 90 dias ate o inicio de hoje (Sao Paulo):
 o proprio Pix e os de hoje nao entram na regua.
+
+A conta (amostra minima em `eligible`, mediana e MAD em `evaluate_amount`)
+serve tambem para o ticket do recebedor (controllers/rules/ticket_do_recebedor.py).
 """
 from dataclasses import dataclass
 from datetime import timedelta
@@ -45,7 +48,7 @@ def day_start(ctx):
     return ctx.local_moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _eligible(ctx, linhas, regra: dict) -> bool:
+def eligible(ctx, linhas, regra: dict) -> bool:
     if len(linhas) < regra["min_payments"]:
         return False
     fuso = ctx.local_moment.tzinfo
@@ -64,17 +67,17 @@ def _reference(ctx, params):
 
     janela_do_par = refs["pair"].get("window_days", janela)
     par = ctx.history.approved_amounts_of_pair(ctx.source_document, ctx.destination_document, inicio, janela_do_par)
-    if _eligible(ctx, par, refs["pair"]):
+    if eligible(ctx, par, refs["pair"]):
         return "pair", par
 
     from controllers.engine.calendar import calendar_for
 
     calendario = calendar_for(ctx, params)
-    if calendario.evaluable and _eligible(ctx, calendario.phase, refs["calendar_phase"]):
+    if calendario.evaluable and eligible(ctx, calendario.phase, refs["calendar_phase"]):
         return "calendar_phase", calendario.phase
 
     pagador = ctx.history.approved_amounts_of_payer(ctx.source_account.id, inicio, janela)
-    if _eligible(ctx, pagador, refs["payer"]):
+    if eligible(ctx, pagador, refs["payer"]):
         return "payer", pagador
     return None, None
 
@@ -86,12 +89,12 @@ def profile_for(ctx, params) -> Profile:
     if nome is None:
         perfil = Profile(evaluable=False)
     else:
-        perfil = _evaluate(ctx.amount, [int(linha[0]) for linha in linhas], nome, params["PERFIL"])
+        perfil = evaluate_amount(ctx.amount, [int(linha[0]) for linha in linhas], nome, params["PERFIL"])
     ctx.cache["profile"] = perfil
     return perfil
 
 
-def _evaluate(x: int, valores: list, nome: str, p: dict) -> Profile:
+def evaluate_amount(x: int, valores: list, nome: str, p: dict) -> Profile:
     m = median(valores)
     mad = median(abs(v - m) for v in valores)
     perfil = Profile(evaluable=True, reference=nome, sample=len(valores), m=m, mad=mad)

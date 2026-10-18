@@ -100,6 +100,13 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
     "DESTINO_NOVO": {"days": 30, "points": 20, "very_new_hours": 24, "very_new_points": 30},
     "TETO_DESTINO_NOVO": {"days": 7, "per_pix": 20000},
     "CONTRAPARTE_INEDITA": {"min_amount": 100000, "points": 15},
+    "TICKET_DO_RECEBEDOR": {
+        "window_days": 90, "min_payments": 10, "min_days": 3, "min_payers": 3, "min_difference": 50000,
+        "mad": {"moderate": {"z": 3.5, "multiple": 3, "points": 20}, "high": {"z": 7, "multiple": 10, "points": 40}},
+        "mad_zero": {"moderate": {"multiple": 3, "points": 20}, "high": {"multiple": 10, "points": 40}},
+        "cnae": {"ticket_ceiling": {"1091": 200000, "4721": 200000, "4511": 50000000}, "high_multiple": 5,
+                 "points": {"moderate": 20, "high": 40}}
+    },
     "CONTA_LARANJA": {
         "window_minutes": 60, "new_destination_days": 30,
         "fallback_new": [{"count": 10, "points": 60}, {"count": 5, "points": 40}],
@@ -254,6 +261,17 @@ CREATE TABLE reputation_fixture(
 
 CREATE INDEX reputation_fixture_document ON reputation_fixture (document);
 
+-- O mock do cadastro de CNPJ: a atividade principal (CNAE, subclasse so em
+-- digitos) de quem recebe. Faz as vezes dos dados abertos do CNPJ da Receita.
+-- Ficticio e marcado como tal.
+CREATE TABLE cnpj_fixture(
+    id SERIAL PRIMARY KEY,
+    document VARCHAR(14) NOT NULL UNIQUE,
+    cnae VARCHAR(7) NOT NULL CHECK (cnae ~ '^[0-9]{7}$'),
+    fixture_version VARCHAR(30) NOT NULL,
+    is_mock BOOLEAN NOT NULL DEFAULT TRUE
+);
+
 -- A lista interna: casos confirmados, semeados, ou o "nao fui eu" do
 -- titular depois de um desafio. Nunca a decisao do proprio motor.
 CREATE TABLE watchlist(
@@ -331,6 +349,12 @@ INSERT INTO reputation_fixture (document, scope, statistics, entity_role, eviden
     ('37024556803', 'person',
      '{"mule_accounts": {"d90": 1, "m12": 1, "m60": 1}, "scammer_accounts": {"d90": 0, "m12": 0, "m60": 0}, "application_frauds": {"d90": 0, "m12": 0, "m60": 0}, "distinct_fraud_reporters": {"d90": 1, "m12": 1, "m60": 1}, "open_reports": 0, "rejected_reports": {"d90": 0, "m12": 0, "m60": 0}, "settlements": {"d90": 12, "m12": 12, "m60": 12}}',
      'suspected_perpetrator', 'mock-evidence-005', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00', '2026-10-17-v2');
+
+-- Duas atividades com tickets bem diferentes: a doceria (1091-1/02, padaria e
+-- confeitaria com producao propria) e a concessionaria (4511-1/01, automoveis).
+INSERT INTO cnpj_fixture (document, cnae, fixture_version) VALUES
+    ('41738265000179', '1091102', '2026-10-18-v1'),
+    ('58291473000175', '4511101', '2026-10-18-v1');
 
 INSERT INTO watchlist (kind, value, report_type, creator, evidence_id, available_from, expires_at) VALUES
     ('document', '27548438923', 'fraud', 'external', 'seed-watchlist-document-001', '2020-01-01T00:00:00-03:00', '2030-01-01T00:00:00-03:00'),

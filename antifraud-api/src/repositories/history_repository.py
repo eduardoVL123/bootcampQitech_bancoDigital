@@ -272,6 +272,19 @@ class HistoryRepository:
             return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
         return self._remember(("received", account_id, minutes), consulta)
 
+    def approved_credits_from_others(self, account_id: int, payer_document: str, moment, days: int) -> list:
+        """(valor, data, pagador) dos creditos aprovados na conta, de quem nao e o pagador de agora.
+
+        E a regua de ticket do recebedor. O proprio pagador fica de fora: o
+        que ele costuma pagar ali e o par do PERFIL, e contaria duas vezes.
+        """
+        return self._remember(("credits_from_others", account_id, payer_document, days), lambda: self._all(
+            f"SELECT a.amount, a.transaction_date, a.source_document FROM pix_analysis a "
+            f"WHERE a.destination_account_id = :conta AND a.source_document <> :pagador "
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
+            conta=account_id, pagador=payer_document, inicio=moment - timedelta(days=days), fim=moment,
+        ))
+
     # ------------------------------------------------------------------
     # Eventos para as reguas de cada cliente (controllers/engine/reference.py)
     # ------------------------------------------------------------------

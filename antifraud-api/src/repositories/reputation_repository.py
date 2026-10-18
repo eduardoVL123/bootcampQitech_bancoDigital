@@ -4,10 +4,12 @@ from database import Context
 
 
 class ReputationRepository:
-    """O mock de reputacao externa e as ancoras da rede.
+    """O mock de reputacao externa, o mock de cadastro de CNPJ e as ancoras da rede.
 
-    O mock imita o `destination_statistics` da API Pix da QI. Ele fornece
-    evidencias; quem decide e o motor (controllers/rules/reputacao_externa.py).
+    O mock de reputacao imita o `destination_statistics` da API Pix da QI. Ele
+    fornece evidencias; quem decide e o motor (controllers/rules/reputacao_externa.py).
+    O de cadastro faz as vezes dos dados abertos do CNPJ da Receita: a atividade
+    principal (CNAE) de quem recebe.
     """
 
     def __init__(self, context: Context) -> None:
@@ -18,6 +20,12 @@ class ReputationRepository:
             "SELECT document, scope, statistics, entity_role, evidence_id, available_from, expires_at, "
             "fixture_version FROM reputation_fixture WHERE document = :doc ORDER BY available_from"
         ), {"doc": document}).all()
+
+    def company(self, document: str):
+        """O cadastro do CNPJ no mock (a atividade principal), ou None."""
+        return self.session.execute(text(
+            "SELECT document, cnae, fixture_version FROM cnpj_fixture WHERE document = :doc"
+        ), {"doc": document}).first()
 
     def anchors(self, moment) -> set:
         """Os documentos com evidencia qualificada e vigente: as ancoras da rede.
