@@ -2,7 +2,8 @@
 pagador, o recebedor, o aparelho e o IP, e nenhum par cruzado trava."""
 import pytest
 
-from tests.utils.pix import AntifraudApi, Pagador, Recebedor, nova_base, pix, regra
+from tests.utils.pix import AntifraudApi, Pagador, Recebedor, mutar, nova_base, pix, regra
+from tests.utils.random_generator import RandomGenerator
 from tests.utils.run_at_the_same_time import run_at_the_same_time
 
 CASA = "99999999"
@@ -64,6 +65,24 @@ def test_pix_cruzados_entre_contas_novas_da_casa_nao_dao_deadlock():
         respostas = run_at_the_same_time(AntifraudApi.post, payloads)
 
         assert [r.status_code for r in respostas] == [201] * 6
+
+
+@pytest.mark.concurrency
+def test_conta_nova_descrita_com_dois_titulares_ao_mesmo_tempo_fica_com_um_so():
+    # Quem insere a conta primeiro define o titular. Os pedidos com o outro
+    # titular esperam esse INSERT, leem a conta gravada e voltam 409, sem 500.
+    destino, data = Recebedor(), nova_base().isoformat()
+    outro_titular = RandomGenerator.generate_cpf()
+    payloads = [pix(Pagador(), destino, 5000, data) for _ in range(6)]
+    payloads[3:] = [mutar(p, "destination_account.owner.document_number", outro_titular) for p in payloads[3:]]
+
+    respostas = run_at_the_same_time(AntifraudApi.post, payloads)
+
+    assert sorted(r.status_code for r in respostas) == [201] * 3 + [409] * 3
+    assert all(r.json()["code"] == "QIT006007" for r in respostas if r.status_code == 409)
+    titulares = {p["destination_account"]["owner"]["document_number"]
+                 for p, r in zip(payloads, respostas) if r.status_code == 201}
+    assert len(titulares) == 1
 
 
 @pytest.mark.concurrency

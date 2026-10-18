@@ -5,25 +5,76 @@ nunca no relogio do servidor: `moment - janela < transaction_date <= moment`.
 O Pix em analise ainda nao foi gravado quando estas consultas rodam, entao
 nenhuma delas o conta; a regra que precisa dele soma +1.
 
-"Aprovado" e dinheiro que saiu: status APPROVED, ou um desafio que o
-cliente confirmou depois (approved_by_client). `two_factor_required` sem
-confirmacao nao aconteceu.
+"Aprovado" e dinheiro que saiu ATE O INSTANTE CONSULTADO: status APPROVED,
+ou um desafio que o cliente confirmou (approved_by_client) com event_date
+ate aquele instante. O Pix das 10h confirmado as 10h05 era, as 10h03, um
+desafio pendente, e ainda uma decisao restritiva, mesmo que a confirmacao
+ja esteja gravada quando a consulta roda. `two_factor_required` sem
+confirmacao nao aconteceu. O corte e a data do Pix sao coisas diferentes:
+as janelas continuam pela transaction_date, e o corte so decide se a
+confirmacao ja existia.
+
+Os cortes: nas regras, o instante do Pix (`moment`); nas referencias
+congeladas no inicio do dia (perfil, calendario, totais diarios, ticket do
+recebedor, regua adaptativa), o inicio do dia em Sao Paulo, com a
+transaction_date abaixo dele (exclusivo): o Pix da meia-noite e a
+confirmacao de hoje entram so na regua de amanha. E corte de eventos, nao
+snapshot: um Pix historico gravado depois ainda muda a amostra das
+proximas consultas. A analise gravada nao muda.
 """
+import re
 from datetime import timedelta
 
 from sqlalchemy import text
 
 from database import Context
 
-APPROVED = (
-    "(a.status_id = (SELECT id FROM pix_status WHERE enumerator = 'APPROVED') "
-    "OR EXISTS (SELECT 1 FROM pix_challenge_result c WHERE c.analysis_id = a.id AND c.result = 'approved_by_client'))"
-)
+_IDENTIFIER = re.compile(r"[a-z_]+")
+_APPROVED_STATUS = "(SELECT id FROM pix_status WHERE enumerator = 'APPROVED')"
 
-RESTRICTIVE = (
-    "(a.status_id <> (SELECT id FROM pix_status WHERE enumerator = 'APPROVED') "
-    "AND NOT EXISTS (SELECT 1 FROM pix_challenge_result c WHERE c.analysis_id = a.id AND c.result = 'approved_by_client'))"
-)
+
+def _confirmed_as_of(alias: str, cutoff: str) -> str:
+    if not (_IDENTIFIER.fullmatch(alias) and _IDENTIFIER.fullmatch(cutoff)):
+        raise ValueError(f"Identificador SQL invalido: {alias!r}, {cutoff!r}")
+    confirmacao = f"c_{alias}"
+    return (f"EXISTS (SELECT 1 FROM pix_challenge_result {confirmacao} WHERE {confirmacao}.analysis_id = {alias}.id "
+            f"AND {confirmacao}.result = 'approved_by_client' AND {confirmacao}.event_date <= :{cutoff})")
+
+
+def approved_as_of(alias: str, cutoff: str) -> str:
+    """A analise `alias` virou dinheiro ate o instante do parametro `:cutoff`.
+
+    `alias` e `cutoff` sao nomes do codigo (o alias da pix_analysis na
+    consulta e o nome do parametro), nunca valores: o instante vai sempre
+    como parametro SQL. O helper nao limita a data do Pix; cada consulta
+    continua com o filtro da sua janela.
+    """
+    return f"({alias}.status_id = {_APPROVED_STATUS} OR {_confirmed_as_of(alias, cutoff)})"
+
+
+def restrictive_as_of(alias: str, cutoff: str) -> str:
+    """O complemento de approved_as_of, no mesmo corte: ainda nao era dinheiro naquele instante."""
+    return f"({alias}.status_id <> {_APPROVED_STATUS} AND NOT {_confirmed_as_of(alias, cutoff)})"
+
+
+def analysis_lock_keys(source_document: str, destination_document: str, source_account_id: int,
+                       destination_account_id: int, device_id: str) -> list:
+    """As chaves das travas de uma analise. O POST e o PATCH usam esta funcao, e so ela.
+
+    A conta entra pelo id, com o mesmo prefixo nos dois papeis: a conta que
+    recebe aqui e a mesma que paga ali, e quem a usa como origem espera
+    quem a usa como destino. O IP fica de fora de proposito: atras de um
+    CGNAT de operadora, milhares de clientes dividem o mesmo IP, e travar
+    por ele enfileirava todos. A unica regra que conta por IP
+    (IP_COMPARTILHADO, +15) aceita errar por um num pico simultaneo.
+    """
+    return [
+        f"payer:{source_document}",
+        f"payee:{destination_document}",
+        f"account:{source_account_id}",
+        f"account:{destination_account_id}",
+        f"device:{device_id}",
+    ]
 
 
 class HistoryRepository:
@@ -47,12 +98,13 @@ class HistoryRepository:
     # ------------------------------------------------------------------
 
     def lock(self, keys: list) -> None:
-        """Trava, ate o commit, o pagador, o recebedor e o aparelho (o IP nao: ver o controller).
+        """Trava, ate o commit, as chaves pedidas (as de uma analise: ver analysis_lock_keys).
 
         Sao travas consultivas (pg_advisory_xact_lock): nao prendem linha
         nenhuma, so serializam quem pede a mesma chave. Dois Pix do mesmo
-        pagador, ou para o mesmo recebedor, ou do mesmo aparelho, esperam um
-        o outro, e cada um ve o historico que o anterior gravou. Sem isso,
+        pagador, ou para o mesmo recebedor, ou da mesma conta, ou do mesmo
+        aparelho, esperam um o outro, e cada um ve o historico que o
+        anterior gravou. Sem isso,
         oito Pix simultaneos veriam todos "zero tentativas" e a velocity nao
         dispararia em nenhum.
 
@@ -64,6 +116,11 @@ class HistoryRepository:
         """
         for chave in sorted(set(keys)):
             self.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": chave})
+
+    def lock_analysis(self, source_document: str, destination_document: str, source_account_id: int,
+                      destination_account_id: int, device_id: str) -> None:
+        self.lock(analysis_lock_keys(source_document, destination_document, source_account_id,
+                                     destination_account_id, device_id))
 
     # ------------------------------------------------------------------
     # Ritmo e montante da conta pagadora
@@ -80,17 +137,17 @@ class HistoryRepository:
         def consulta():
             linha = self.session.execute(text(
                 f"SELECT coalesce(sum(a.amount), 0), count(*) FROM pix_analysis a WHERE a.source_account_id = :conta "
-                f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}"
+                f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {approved_as_of('a', 'fim')}"
             ), {"conta": account_id, "inicio": moment - timedelta(minutes=minutes), "fim": moment}).first()
             return int(linha[0]), int(linha[1])
-        return self._remember(("approved", account_id, minutes), consulta)
+        return self._remember(("approved", account_id, moment, minutes), consulta)
 
     def restrictive_attempts(self, account_id: int, moment, minutes: int) -> list:
-        """As tentativas recentes que nao viraram dinheiro, em ordem."""
-        return self._remember(("restrictive", account_id, minutes), lambda: self._all(
+        """As tentativas recentes que nao tinham virado dinheiro neste instante, em ordem."""
+        return self._remember(("restrictive", account_id, moment, minutes), lambda: self._all(
             f"SELECT a.transaction_date, a.amount, a.destination_document FROM pix_analysis a "
             f"WHERE a.source_account_id = :conta "
-            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {RESTRICTIVE} "
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {restrictive_as_of('a', 'fim')} "
             "ORDER BY a.transaction_date",
             conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
         ))
@@ -123,35 +180,38 @@ class HistoryRepository:
             conta=account_id, antes=before,
         ))
 
-    def approved_amounts_of_payer(self, account_id: int, moment, days: int) -> list:
-        return self._remember(("payer_amounts", account_id, days), lambda: self._all(
+    def approved_amounts_of_payer(self, account_id: int, day_start, days: int) -> list:
+        """Os aprovados da conta nos `days` dias antes do inicio de hoje: a referencia congelada."""
+        return self._remember(("payer_amounts", account_id, day_start, days), lambda: self._all(
             f"SELECT a.amount, a.transaction_date FROM pix_analysis a WHERE a.source_account_id = :conta "
-            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-            conta=account_id, inicio=moment - timedelta(days=days), fim=moment,
+            f"AND a.transaction_date > :inicio AND a.transaction_date < :fim AND {approved_as_of('a', 'fim')}",
+            conta=account_id, inicio=day_start - timedelta(days=days), fim=day_start,
         ))
 
-    def approved_amounts_of_pair(self, source_document: str, destination_document: str, moment, days: int) -> list:
-        return self._remember(("pair_amounts", source_document, destination_document, days), lambda: self._all(
+    def approved_amounts_of_pair(self, source_document: str, destination_document: str, day_start, days: int) -> list:
+        """Os aprovados do par nos `days` dias antes do inicio de hoje: a referencia congelada."""
+        return self._remember(("pair_amounts", source_document, destination_document, day_start, days),
+                              lambda: self._all(
             f"SELECT a.amount, a.transaction_date FROM pix_analysis a WHERE a.source_document = :origem "
             f"AND a.destination_document = :destino AND a.transaction_date > :inicio "
-            f"AND a.transaction_date <= :fim AND {APPROVED}",
+            f"AND a.transaction_date < :fim AND {approved_as_of('a', 'fim')}",
             origem=source_document, destino=destination_document,
-            inicio=moment - timedelta(days=days), fim=moment,
+            inicio=day_start - timedelta(days=days), fim=day_start,
         ))
 
     def approved_to_document(self, source_document: str, destination_document: str, moment) -> list:
         """Todos os pagamentos aprovados deste titular para aquele titular, antes do Pix."""
-        return self._remember(("to_document", source_document, destination_document), lambda: self._all(
+        return self._remember(("to_document", source_document, destination_document, moment), lambda: self._all(
             f"SELECT a.amount, a.transaction_date FROM pix_analysis a WHERE a.source_document = :origem "
-            f"AND a.destination_document = :destino AND a.transaction_date < :fim AND {APPROVED}",
+            f"AND a.destination_document = :destino AND a.transaction_date < :fim AND {approved_as_of('a', 'fim')}",
             origem=source_document, destino=destination_document, fim=moment,
         ))
 
     def daily_approved_totals(self, account_id: int, day_start, days: int, timezone: str) -> list:
         """O total aprovado de cada dia com movimento, nos dias completos antes de hoje."""
-        return self._remember(("daily_totals", account_id, days), lambda: [linha[0] for linha in self._all(
+        return self._remember(("daily_totals", account_id, day_start, days), lambda: [linha[0] for linha in self._all(
             f"SELECT sum(a.amount) FROM pix_analysis a WHERE a.source_account_id = :conta "
-            f"AND a.transaction_date >= :inicio AND a.transaction_date < :fim AND {APPROVED} "
+            f"AND a.transaction_date >= :inicio AND a.transaction_date < :fim AND {approved_as_of('a', 'fim')} "
             "GROUP BY (a.transaction_date AT TIME ZONE :fuso)::date",
             conta=account_id, inicio=day_start - timedelta(days=days), fim=day_start, fuso=timezone,
         )])
@@ -184,7 +244,11 @@ class HistoryRepository:
         return self._remember(("gps_habit", document, days), consulta)
 
     def device_registration(self, document: str, device_id: str, moment, day_start) -> tuple:
-        """(aparelho do primeiro Pix do titular, aparelho ja confirmado num desafio, aprovado hoje nele)."""
+        """(aparelho do primeiro Pix do titular, aparelho ja confirmado num desafio, aprovado hoje nele).
+
+        O aparelho fica cadastrado no instante da confirmacao: uma
+        confirmacao posterior a este Pix nao o cadastra retroativamente.
+        """
         def consulta():
             linha = self.session.execute(text(
                 "SELECT "
@@ -192,13 +256,13 @@ class HistoryRepository:
                 " ORDER BY a.transaction_date, a.id LIMIT 1), "
                 "EXISTS (SELECT 1 FROM pix_analysis a JOIN pix_challenge_result c ON c.analysis_id = a.id "
                 " WHERE a.source_document = :doc AND a.device_id = :aparelho AND c.result = 'approved_by_client' "
-                " AND a.transaction_date <= :fim), "
+                " AND c.event_date <= :fim AND a.transaction_date <= :fim), "
                 f"(SELECT coalesce(sum(a.amount), 0) FROM pix_analysis a WHERE a.source_document = :doc "
                 f" AND a.device_id = :aparelho AND a.transaction_date >= :dia AND a.transaction_date <= :fim "
-                f" AND {APPROVED})"
+                f" AND {approved_as_of('a', 'fim')})"
             ), {"doc": document, "aparelho": device_id, "fim": moment, "dia": day_start}).first()
             return linha[0], bool(linha[1]), int(linha[2])
-        return self._remember(("device_registration", document, device_id), consulta)
+        return self._remember(("device_registration", document, device_id, moment), consulta)
 
     def network_seen(self, document: str, network: str, moment) -> bool:
         return self._remember(("network_seen", document, network), lambda: self._scalar(
@@ -231,10 +295,10 @@ class HistoryRepository:
         ), {"doc": document, "fim": moment}).first())
 
     def approved_gps_points(self, document: str, moment, days: int) -> list:
-        return self._remember(("gps_points", document, days), lambda: self._all(
+        return self._remember(("gps_points", document, moment, days), lambda: self._all(
             f"SELECT a.latitude, a.longitude, a.transaction_date FROM pix_analysis a "
             f"WHERE a.source_document = :doc AND a.latitude IS NOT NULL AND a.transaction_date > :inicio "
-            f"AND a.transaction_date <= :fim AND {APPROVED}",
+            f"AND a.transaction_date <= :fim AND {approved_as_of('a', 'fim')}",
             doc=document, inicio=moment - timedelta(days=days), fim=moment,
         ))
 
@@ -276,10 +340,10 @@ class HistoryRepository:
                 "AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
                 "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.destination_account_id = :conta "
                 f"AND b.source_document = a.source_document AND b.transaction_date <= :inicio "
-                f"AND {APPROVED.replace('a.', 'b.')}) "
+                f"AND {approved_as_of('b', 'fim')}) "
                 "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = :dono "
                 f"AND b.destination_document = a.source_document AND b.transaction_date <= :inicio "
-                f"AND {APPROVED.replace('a.', 'b.')})",
+                f"AND {approved_as_of('b', 'fim')})",
                 conta=account_id, dono=document, inicio=inicio, fim=moment,
             )
             return {linha[0] for linha in linhas}, sum(int(linha[1]) for linha in linhas)
@@ -290,43 +354,63 @@ class HistoryRepository:
         fim = moment - timedelta(hours=hours)
         return self._remember(("recebido_antes", account_id, hours, days, moment), lambda: int(self._scalar(
             f"SELECT COALESCE(SUM(a.amount), 0) FROM pix_analysis a WHERE a.destination_account_id = :conta "
-            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-            conta=account_id, inicio=fim - timedelta(days=days), fim=fim,
+            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {approved_as_of('a', 'corte')}",
+            conta=account_id, inicio=fim - timedelta(days=days), fim=fim, corte=moment,
         ) or 0))
 
-    def sent_by_account(self, account_id: int, moment, minutes: int, excluir: set) -> int:
-        """O que a conta pagou (aprovado) na janela, sem contar o que voltou para quem pagou."""
-        def consulta():
-            linhas = self._all(
-                f"SELECT a.destination_document, a.amount FROM pix_analysis a WHERE a.source_account_id = :conta "
-                f"AND a.transaction_date > :inicio AND a.transaction_date < :fim AND {APPROVED}",
-                conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
-            )
-            return sum(int(valor) for destino, valor in linhas if destino not in excluir)
-        return self._remember(("enviado", account_id, minutes, moment), consulta)
+    def flow_events(self, account_id: int, moment, minutes: int) -> list:
+        """As entradas e saidas da conta que viraram dinheiro, por disponibilidade, na janela.
 
-    def received_by_account(self, account_id: int, moment, minutes: int) -> tuple:
-        """O que a conta recebeu (aprovado) na janela: total e quem pagou."""
-        def consulta():
-            linhas = self._all(
-                f"SELECT a.source_document, a.amount FROM pix_analysis a WHERE a.destination_account_id = :conta "
-                f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-                conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
-            )
-            return sum(int(item[1]) for item in linhas), {item[0] for item in linhas}
-        return self._remember(("received", account_id, minutes), consulta)
+        E o insumo da projecao do repasse (controllers/engine/flow.py). Aqui
+        o relogio e o da disponibilidade, nao o da data do Pix: o aprovado
+        direto fica disponivel na transaction_date; o desafio confirmado, em
+        max(transaction_date, event_date), e so se a confirmacao ja tinha
+        acontecido no instante avaliado. Por isso o filtro nao pode ser so
+        `transaction_date > inicio`: um Pix antigo confirmado dentro da
+        janela entra nela, no instante da confirmacao.
 
-    def approved_credits_from_others(self, account_id: int, payer_document: str, moment, days: int) -> list:
+        Tres ramos por lado, cada um no indice que serve a ele: os dois
+        primeiros pela conta e data; o terceiro (Pix de antes da janela,
+        confirmado dentro dela) pelo indice parcial das confirmacoes. Os
+        ramos nao se sobrepoem: analise APPROVED nunca tem desafio. Devolve
+        (disponivel, id, lado, valor, documento e conta da outra ponta), em
+        ordem de (disponivel, id).
+        """
+        ramos = []
+        for lado, conta, documento, outra in (("in", "destination_account_id", "source_document", "source_account_id"),
+                                              ("out", "source_account_id", "destination_document",
+                                               "destination_account_id")):
+            colunas = f"'{lado}', a.amount, a.{documento}, a.{outra}"
+            ramos += [
+                f"SELECT a.transaction_date, a.id, {colunas} FROM pix_analysis a "
+                f"WHERE a.{conta} = :conta AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+                f"AND a.status_id = {_APPROVED_STATUS}",
+                f"SELECT greatest(a.transaction_date, c.event_date), a.id, {colunas} FROM pix_analysis a "
+                "JOIN pix_challenge_result c ON c.analysis_id = a.id AND c.result = 'approved_by_client' "
+                f"WHERE a.{conta} = :conta AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
+                "AND c.event_date <= :fim",
+                f"SELECT c.event_date, a.id, {colunas} FROM pix_challenge_result c "
+                "JOIN pix_analysis a ON a.id = c.analysis_id "
+                "WHERE c.result = 'approved_by_client' AND c.event_date > :inicio AND c.event_date <= :fim "
+                f"AND a.{conta} = :conta AND a.transaction_date <= :inicio",
+            ]
+        return self._remember(("flow", account_id, moment, minutes), lambda: self._all(
+            " UNION ALL ".join(ramos) + " ORDER BY 1, 2",
+            conta=account_id, inicio=moment - timedelta(minutes=minutes), fim=moment,
+        ))
+
+    def approved_credits_from_others(self, account_id: int, payer_document: str, day_start, days: int) -> list:
         """(valor, data, pagador) dos creditos aprovados na conta, de quem nao e o pagador de agora.
 
-        E a regua de ticket do recebedor. O proprio pagador fica de fora: o
-        que ele costuma pagar ali e o par do PERFIL, e contaria duas vezes.
+        E a regua de ticket do recebedor, congelada no inicio do dia. O
+        proprio pagador fica de fora: o que ele costuma pagar ali e o par do
+        PERFIL, e contaria duas vezes.
         """
-        return self._remember(("credits_from_others", account_id, payer_document, days), lambda: self._all(
+        return self._remember(("credits_from_others", account_id, payer_document, day_start, days), lambda: self._all(
             f"SELECT a.amount, a.transaction_date, a.source_document FROM pix_analysis a "
             f"WHERE a.destination_account_id = :conta AND a.source_document <> :pagador "
-            f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim AND {APPROVED}",
-            conta=account_id, pagador=payer_document, inicio=moment - timedelta(days=days), fim=moment,
+            f"AND a.transaction_date > :inicio AND a.transaction_date < :fim AND {approved_as_of('a', 'fim')}",
+            conta=account_id, pagador=payer_document, inicio=day_start - timedelta(days=days), fim=day_start,
         ))
 
     # ------------------------------------------------------------------
@@ -334,9 +418,9 @@ class HistoryRepository:
     # ------------------------------------------------------------------
 
     def outgoing_events(self, account_id: int, start, end) -> list:
-        """(data, valor, aprovado) de cada saida da conta no periodo, em ordem."""
+        """(data, valor, aprovado ate `end`) de cada saida da conta no periodo, em ordem."""
         return [(item[0], int(item[1]), bool(item[2])) for item in self._all(
-            f"SELECT a.transaction_date, a.amount, {APPROVED} FROM pix_analysis a "
+            f"SELECT a.transaction_date, a.amount, {approved_as_of('a', 'fim')} FROM pix_analysis a "
             "WHERE a.source_account_id = :conta AND a.transaction_date >= :inicio AND a.transaction_date < :fim "
             "ORDER BY a.transaction_date",
             conta=account_id, inicio=start, fim=end,
@@ -352,12 +436,13 @@ class HistoryRepository:
         )]
 
     def network_path(self, anchors: set, destination_document: str, moment, days: int, min_amount: int = 1):
-        """O caminho de ate dois saltos de uma ancora ate o destino, por Pix aprovados.
+        """O caminho de ate dois saltos de uma ancora ate o destino, por Pix aprovados ate o instante.
 
         Um salto: a ancora pagou o destino. Dois: a ancora pagou alguem que
         pagou o destino. So as ancoras espalham suspeita; o vizinho nao vira
-        ancora nova, e a suspeita nao se propaga sem fim. Devolve (saltos,
-        caminho) ou None.
+        ancora nova, e a suspeita nao se propaga sem fim. As duas arestas
+        (`a`, a que chega no destino, e `b`, a que sai da ancora) precisam
+        ser dinheiro no instante do Pix. Devolve (saltos, caminho) ou None.
 
         Aresta abaixo de `min_amount` nao conta: sem o corte, uma ancora que
         e cliente da casa contaminava qualquer conta com um Pix de R$ 0,01.
@@ -368,7 +453,7 @@ class HistoryRepository:
         um_salto = self._all(
             f"SELECT a.source_document FROM pix_analysis a WHERE a.source_document = ANY(:ancoras) "
             f"AND a.destination_document = :destino AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
-            f"AND a.amount >= :minimo AND {APPROVED} LIMIT 1",
+            f"AND a.amount >= :minimo AND {approved_as_of('a', 'fim')} LIMIT 1",
             ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if um_salto:
@@ -380,7 +465,7 @@ class HistoryRepository:
             f"AND a.transaction_date > :inicio AND a.transaction_date <= :fim "
             f"AND b.transaction_date > :inicio AND b.transaction_date <= a.transaction_date "
             f"AND a.amount >= :minimo AND b.amount >= :minimo "
-            f"AND {APPROVED} AND {APPROVED.replace('a.', 'b.')} LIMIT 1",
+            f"AND {approved_as_of('a', 'fim')} AND {approved_as_of('b', 'fim')} LIMIT 1",
             ancoras=list(anchors), destino=destination_document, inicio=inicio, fim=fim, minimo=min_amount,
         )
         if dois_saltos:
@@ -419,13 +504,14 @@ class HistoryRepository:
             pagadores, recebido = self.session.execute(text(
                 f"SELECT count(DISTINCT e.source_document), coalesce(sum(e.amount), 0) FROM pix_analysis e "
                 f"WHERE e.destination_document = :doc AND e.source_document NOT IN (:doc, :ancora) "
-                f"AND e.transaction_date > :inicio AND e.transaction_date < :fim AND {APPROVED.replace('a.', 'e.')} "
+                f"AND e.transaction_date > :inicio AND e.transaction_date < :fim AND {approved_as_of('e', 'corte')} "
                 "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = e.source_document "
-                f"AND b.destination_document = :doc AND b.transaction_date <= :inicio AND {APPROVED.replace('a.', 'b.')}) "
+                f"AND b.destination_document = :doc AND b.transaction_date <= :inicio AND {approved_as_of('b', 'corte')}) "
                 "AND NOT EXISTS (SELECT 1 FROM pix_analysis b WHERE b.source_document = :doc "
                 f"AND b.destination_document = e.source_document AND b.transaction_date <= :inicio "
-                f"AND {APPROVED.replace('a.', 'b.')})"
-            ), {"doc": document, "ancora": ancora, "inicio": data - timedelta(hours=hours), "fim": data}).first()
+                f"AND {approved_as_of('b', 'corte')})"
+            ), {"doc": document, "ancora": ancora, "inicio": data - timedelta(hours=hours), "fim": data,
+                "corte": moment}).first()
             if pagadores >= min_payers and recebido >= share * int(enviado):
                 return ancora, int(pagadores), int(recebido), int(enviado)
         return None

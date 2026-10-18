@@ -1,0 +1,14 @@
+# Sobreposicao do compose so para medir a antifraud-api com 4 processos.
+#
+#   docker compose -f docker-compose.yml -f tools/escala/compose.escala.yml \
+#       -f tools/escala/compose.processos.yml up -d --build --wait db antifraud-api
+#
+# O compose da entrega sobe um processo so, com --reload, como o Base
+# Service: a API recarrega quando um arquivo muda. O uvicorn nao junta
+# --reload com --workers, entao este arquivo troca um pelo outro, e vale
+# so para a medicao de escala (docs/testes/antifraude-escala.md). A API
+# nao guarda estado na memoria entre requisicoes, e as travas moram no
+# Postgres: com 4 processos, a contagem continua certa.
+services:
+  antifraud-api:
+    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --workers 4

@@ -129,9 +129,7 @@ INSERT INTO fraud_policy (version, parameters) VALUES (1, '{
         "long": {"windows_hours": [24, 168], "min_new_payers": 6, "min_amount": 300000, "min_average": 20000,
                  "multiple": 3, "history_days": 30, "points_new": 60, "points_old": 25}
     },
-    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}],
-                       "share": 0.8, "points": 60, "inconclusive_points": 20, "cumulative": true,
-                       "hard_block": true, "hard_block_max_destination_days": 90},
+    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}], "share": 0.8, "points": 60, "inconclusive_points": 20},
     "COORDENACAO_ENTRE_CONTAS": {"window_minutes": 10, "min_documents": 3, "destination_max_days": 7, "points": 40},
     "REDE_SUSPEITA": {"days": 30, "points": 30, "min_edge_amount": 1000, "points_by_hops": {"1": 60, "2": 30},
                       "reverse": {"hours": 24, "min_payers": 2, "share": 0.5, "points": 60}},
@@ -311,6 +309,12 @@ CREATE TABLE pix_challenge_result(
     event_date TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- O fluxo do repasse (history_repository.flow_events) procura o Pix antigo
+-- confirmado dentro da janela pela data da confirmacao. Sem este indice,
+-- esse ramo varreria todo o historico da conta.
+CREATE INDEX pix_challenge_result_approved_event ON pix_challenge_result (event_date)
+    WHERE result = 'approved_by_client';
 
 CREATE TRIGGER pix_challenge_result_is_append_only
     BEFORE UPDATE OR DELETE ON pix_challenge_result

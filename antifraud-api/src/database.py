@@ -97,14 +97,18 @@ from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
 
-from constants import DATABASE_URL, APP_ENV
+from constants import DATABASE_URL
 
-if APP_ENV == "local":
-    engine = create_engine(DATABASE_URL, poolclass=NullPool)
-else:
-    engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
+# Pool de conexoes em todo ambiente, inclusive no local. O Base Service usa
+# NullPool no local (APP_ENV=local), e ai cada requisicao abria conexao nova
+# com o Postgres: 2 por Pix, cada uma um processo novo no banco, que comeca
+# sem nada em memoria sobre as tabelas. Medido em 18/10/2026, com o
+# psycopg2: a ponta do Pix caiu de 115 para 80 ms, o motor de 70 para 51 ms,
+# e o planejamento das consultas de 14,7 para 9,3 ms por Pix
+# (docs/testes/antifraude-escala.md). O pool_pre_ping refaz a conexao se o
+# banco reiniciar.
+engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 

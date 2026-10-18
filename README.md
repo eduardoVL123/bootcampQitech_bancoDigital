@@ -8,7 +8,7 @@ Uma API que recebe um Pix e decide, antes de o dinheiro sair, se ele **aprova**,
 |---|---|
 | `POST /pix/transaction` | Analisa o Pix (contrato da seção 3.1 do desafio) e devolve `key`, `status` e `metadata`. `201` na primeira vez; `200` se o mesmo `id` chegar de novo com o mesmo conteúdo |
 | `GET /pix/transaction/{id}` | Devolve a análise gravada, pelo `id` do Pix |
-| `PATCH /pix/transaction/{id}` | O cliente informa o resultado da verificação pedida (`approved_by_client` ou `reproved_by_client`), como no fluxo de desafio da API Pix da QI. A análise original não muda |
+| `PATCH /pix/transaction/{id}` | O cliente informa o resultado da verificação pedida (`approved_by_client` ou `reproved_by_client`), como no fluxo de desafio da API Pix da QI. A análise original não muda. Repetir o mesmo resultado devolve a resposta original (`200`); o resultado oposto é `409`; resposta anterior ao Pix ou no futuro é `422` |
 
 Todas pedem o cabeçalho `INTERNAL-TOKEN`, como os outros serviços do repositório.
 
@@ -18,14 +18,19 @@ Cada Pix passa por **33 regras**. Nenhuma decide sozinha, com exceções explíc
 
 1. **O replay vem antes de tudo.** O mesmo `id` é o mesmo Pix: devolve a análise gravada e não conta como tentativa nova. O mesmo `id` com outro conteúdo é `409`.
 2. **Dado impossível não é risco, é erro.** Data que não existe (mês 13, 30 de fevereiro, fuso +25:00) volta `400`; data mais de 5 minutos no futuro, ou anterior à abertura de uma das contas, volta `422`. Nos dois casos, sem ser analisada.
-3. **O histórico é lido com travas.** As duas contas são criadas em ordem fixa (a da chave única), e só então a análise trava o pagador, o recebedor e o aparelho com travas consultivas do Postgres (`pg_advisory_xact_lock`), sempre na mesma ordem. Oito Pix simultâneos da mesma conta veem a contagem certa (1, 2, ..., 8), e dois Pix cruzados (A → B e B → A) não travam um ao outro, inclusive entre duas contas da casa que o motor nunca viu (antes da ordem fixa, os INSERTs das contas fechavam um deadlock em 2 de 10 rodadas). O IP fica de fora das travas: atrás de um CGNAT de operadora, milhares de clientes dividem o mesmo IP. Há teste para cada caso, e a mutação que tira a trava faz os testes ficarem vermelhos.
-4. **As regras rodam** contra o Pix e o histórico. Toda janela de tempo é ancorada na `transaction_date` do Pix, nunca no relógio do servidor, e a hora local é sempre a de São Paulo (o mesmo instante escrito com outro fuso dá o mesmo resultado).
-5. **A decisão** combina as pontuações (próxima seção) e o **cenário** dá nome ao que o motor acha que está acontecendo (`conta_laranja`, `conta_tomada`, `pagamento_recorrente`...). O cenário só explica: não soma pontos.
-6. **Tudo é gravado** numa linha só por Pix: o `metadata` da análise traz cada regra que disparou ou não pôde ser avaliada, com pontos, eixo e motivo, e o código das que não dispararam (`rules_not_triggered`). As tabelas de análise recusam `UPDATE` e `DELETE` por trigger: o GET de um Pix antigo devolve exatamente o que foi decidido, com a versão da política que valia.
+3. **A conta é uma só.** Agência, número e participante identificam a conta, e o titular e a abertura que o motor viu primeiro valem para sempre: a mesma conta não pode ser CPF num pedido e CNPJ no outro, nem ter a idade calculada por uma abertura que a validação não conferiu. Pedido que descreve uma conta conhecida com outro titular ou outra abertura volta `409` (`QIT006007`), sem gravar nada, nem a outra conta, se o pedido a tinha criado. Máscara, letra minúscula no CNPJ e outro fuso para o mesmo instante não são divergência. Inconsistência de entrada não vira `rejected`: não é decisão de fraude. Nenhuma conta antiga é atualizada.
+4. **O histórico é lido com travas.** As duas contas são criadas em ordem fixa (a da chave única), e só então a análise trava o pagador, o recebedor, as duas contas e o aparelho com travas consultivas do Postgres (`pg_advisory_xact_lock`), sempre na mesma ordem. A chave da conta é a mesma como origem e como destino, e o `PATCH` do desafio pede as mesmas travas, montadas pela mesma função, a partir da análise gravada. Oito Pix simultâneos da mesma conta veem a contagem certa (1, 2, ..., 8), e dois Pix cruzados (A → B e B → A) não travam um ao outro, inclusive entre duas contas da casa que o motor nunca viu (antes da ordem fixa, os INSERTs das contas fechavam um deadlock em 2 de 10 rodadas). O IP fica de fora das travas: atrás de um CGNAT de operadora, milhares de clientes dividem o mesmo IP. Há teste para cada caso, e a mutação que tira a trava faz os testes ficarem vermelhos.
+5. **As regras rodam** contra o Pix e o histórico. Toda janela de tempo é ancorada na `transaction_date` do Pix, nunca no relógio do servidor, e a hora local é sempre a de São Paulo (o mesmo instante escrito com outro fuso dá o mesmo resultado).
+6. **A decisão** combina as pontuações (próxima seção) e o **cenário** dá nome ao que o motor acha que está acontecendo (`conta_laranja`, `conta_tomada`, `pagamento_recorrente`...). O cenário só explica: não soma pontos.
+7. **Tudo é gravado** numa linha só por Pix: o `metadata` da análise traz cada regra que disparou ou não pôde ser avaliada, com pontos, eixo e motivo, e o código das que não dispararam (`rules_not_triggered`). As tabelas de análise recusam `UPDATE` e `DELETE` por trigger: o GET de um Pix antigo devolve exatamente o que foi decidido, com a versão da política que valia.
 
 **Os parâmetros não estão no código.** Cortes, pesos e janelas moram na tabela `fraud_policy`, em JSON, com versão. Mudar um parâmetro é gravar uma política nova; cada análise guarda a versão que usou.
 
-**"Aprovado" é dinheiro que saiu.** `two_factor_required` não aconteceu (resposta da organização), então não entra em montante, perfil nem familiaridade, até o cliente confirmar a verificação pelo `PATCH`. Já as **tentativas** contam todos os status: quem leva 2FA ou recusa e insiste é exatamente o sinal.
+**"Aprovado" é dinheiro que saiu, a partir de quando saiu.** `two_factor_required` não aconteceu (resposta da organização), então não entra em montante, perfil nem familiaridade, até o cliente confirmar a verificação pelo `PATCH`, e só a partir da `event_date` da confirmação. O Pix das 10h confirmado às 10h05 era, numa análise das 10h03, um desafio pendente: ainda não era dinheiro, e ainda era uma decisão restritiva para a `SONDAGEM_DE_LIMITE`, mesmo que a confirmação já esteja gravada quando a consulta roda. Nas regras, o corte é o instante do Pix analisado; nas réguas congeladas no início do dia (perfil, calendário, totais diários, tíquete do recebedor, régua adaptativa), é o início do dia em São Paulo, com o Pix de treino estritamente antes dele: o Pix da meia-noite e a confirmação feita hoje entram só na régua de amanhã. O mesmo corte vale para o cadastro do aparelho e para as duas arestas da `REDE_SUSPEITA`. As janelas continuam contadas pela `transaction_date`; o corte só decide se a confirmação já existia. Já as **tentativas** contam todos os status: quem leva 2FA ou recusa e insiste é exatamente o sinal.
+
+**Corte de eventos não é snapshot.** A régua congelada usa só o que aconteceu antes do corte, mas é recalculada a cada consulta: um Pix histórico gravado depois (com data antiga) ainda muda a amostra das próximas análises. Resolver a ingestão tardia por completo fica fora deste protótipo. As análises já gravadas não mudam.
+
+**Movimentação é premissa da simulação.** No protótipo, a aprovação direta e o desafio confirmado são tratados como dinheiro que saiu. É uma premissa para o histórico, não prova de liquidação: o motor não vê o SPI.
 
 **A régua de cada cliente.** As regras de ritmo, montante e concentração comparam o cliente com ele mesmo quando há histórico: para cada dia com movimento nos 30 dias anteriores, o motor guarda o pico da janela (por exemplo, o máximo de tentativas em 5 minutos naquele dia) e calcula a mediana `m` e a dispersão robusta `s = MAD / 0,6745`. O corte vira `max(mínimo, ⌈2m⌉, ⌈m + 3s⌉)`. A régua é congelada no início do dia (o ataque de hoje não entra na régua de hoje), dias sem movimento ficam de fora (nunca viram zero), e sem 7 dias ativos e 20 eventos a regra usa uma régua de reserva **firme**, porque conta nova ou pouco usada é exatamente o perfil da conta laranja e da conta recém-tomada.
 
@@ -55,7 +60,7 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 | Regra | Lógica | Parâmetros | Por quê |
 |---|---|---|---|
 | `APARELHO_NOVO` | `device_id` nunca usado pelo titular, que tem ≥ 3 tentativas | +20 | Troca de aparelho é o momento da conta tomada |
-| `APARELHO_NAO_CADASTRADO` | pelo app ou pela web, aparelho que não é o do primeiro Pix do titular nem foi confirmado numa verificação (`PATCH approved_by_client`) | > R$ 200 no Pix ou > R$ 1.000 no dia nesse aparelho: **0 pontos** e piso facial | A regra do Banco Central para aparelho não cadastrado (Res. BCB 403/2024): acima desses valores, o aparelho precisa ser cadastrado, e a facial faz esse papel. O contrato não traz cadastro de aparelho, então "cadastrado" é uma aproximação |
+| `APARELHO_NAO_CADASTRADO` | pelo app ou pela web, aparelho que não é o do primeiro Pix do titular nem foi confirmado numa verificação (`PATCH approved_by_client`) antes deste Pix | > R$ 200 no Pix ou > R$ 1.000 no dia nesse aparelho: **0 pontos** e piso facial | A regra do Banco Central para aparelho não cadastrado (Res. BCB 403/2024): acima desses valores, o aparelho precisa ser cadastrado, e a facial faz esse papel. O contrato não traz cadastro de aparelho, então "cadastrado" é uma aproximação |
 | `VIAGEM_IMPOSSIVEL` | distância (Haversine) entre este Pix e o último ponto conhecido do titular, dividida pelo tempo. O ponto é o GPS; sem GPS, o lugar do IP | > 900 km/h e > 100 km (GPS) ou > 500 km (IP): +40. Com aparelho novo junto: piso facial+documento | 900 km/h é o cruzeiro de um avião comercial. Com IP, o piso de distância sobe porque IP é impreciso |
 | `GEO_IP_DIVERGENTE` | GPS e lugar do IP a mais de 500 km | +30 | GPS forjado ou aparelho operado de longe. 500 km cobrem a operadora que sai para a internet por outro estado |
 | `AMBIENTE_INCOERENTE` | GPS ou IP fora do retângulo do Brasil | +20 | Brasileiro viaja, então só soma |
@@ -73,13 +78,26 @@ Valores em reais só para leitura; no banco e no código são centavos. **Bloque
 | `CONTRAPARTE_INEDITA` | primeiro pagamento aprovado deste titular para aquele titular | valor > R$ 1.000: +15 | Todo aluguel um dia foi o primeiro: só soma com outros sinais |
 | `TICKET_DO_RECEBEDOR` | o valor contra o que se costuma pagar ao recebedor. **Com régua** (≥ 10 créditos aprovados de ≥ 3 outros clientes da casa, em 3 dias, nos 90 dias até ontem): mediana e MAD, como no `PERFIL`. **Sem régua**, se é PJ: o teto de tíquete da atividade, pelo CNAE do mock de cadastro | desvio moderado ou acima do teto: +20 · desvio alto ou mais de 5× o teto: +40 · 0 se o pagador já pagou esse valor, ou mais, a esse recebedor | A doceria não recebe R$ 20 mil de uma vez. Só dificulta (2FA): encomenda grande existe, e a reprovação só vem se outro eixo concordar. O próprio pagador fica fora da régua, porque o que ele paga ali já é o par do `PERFIL` |
 | `CONTA_LARANJA` | titulares diferentes pagando a mesma conta, de qualquer status, em duas janelas: a última hora e as últimas 24 h; vale a que pontuar mais | **Com régua do recebedor:** ≥ moderado +40 · ≥ alto +60 (mínimos 5 e 10 em 1 h, 10 e 20 em 24 h). **Reserva em 1 h:** conta < 30 dias, ≥ 5 +40, ≥ 10 +60; conta antiga, ≥ 5 +20, ≥ 10 +30. **Reserva em 24 h:** os mesmos pesos com 10 e 20 pagadores | Concentração. A loja que sempre recebe de 30 clientes por hora não é laranja; a conta laranja típica é nova e sem histórico. A janela de 24 h pega a laranja que espalha as vítimas ao longo do dia |
-| `REPASSE_RAPIDO` | a conta recebeu de ≥ 3 titulares na última hora (ou de ≥ 5 nas últimas 24 h) e este Pix leva ≥ 80% do que entrou, para outro titular | +60 se o destino é novo para ela ou há desvio de perfil · 0 se é o fornecedor de sempre com perfil e ritmo normais · +20 se inconclusivo | Dispersão: o lado de saída da conta laranja. A janela de 24 h pega a laranja que espera horas para repassar |
+| `REPASSE_RAPIDO` | o dinheiro de terceiros que entrou na conta está saindo: na última hora (≥ 3 titulares ainda expostos) ou nas últimas 24 h (≥ 5), o escoamento **acumulado** chega a 80% da base líquida, contando este Pix, e este Pix escoa parte do que entrou. Devolução só até o crédito que quem pagou ainda tem na conta (ver abaixo) | +60 se o destino é novo para ela ou há desvio de perfil · 0 se é o fornecedor de sempre com perfil e ritmo normais · +20 se inconclusivo. As duas janelas são avaliadas e vale a de mais pontos; no empate, a mais curta | Dispersão: o lado de saída da conta laranja. Três saídas de R$ 1.000 depois de três entradas de R$ 1.000 são o mesmo repasse que uma saída de R$ 3.000, e o centavo que o destino mandou antes não transforma o dinheiro das vítimas em devolução. A janela de 24 h pega a laranja que espera horas para repassar |
 | `COORDENACAO_ENTRE_CONTAS` | um aparelho, ≥ 3 titulares pagadores, a mesma conta destino com menos de 7 dias, em 10 min | +40 e piso facial. Zera o `APARELHO_COMPARTILHADO` dos mesmos titulares | Várias contas operadas juntas para escoar para uma conta nova. O mesmo fato não conta duas vezes |
 | `REDE_SUSPEITA` | o destino está a até dois saltos de uma conta com evidência qualificada (a âncora pagou o destino, ou pagou quem pagou), por Pix aprovados de pelo menos R$ 10 em 30 dias, e o pagador ainda não paga esse destino | +30, com o caminho no `metadata` | Vínculos de 1º e 2º grau, por SQL, sem banco de grafos. O vizinho não vira âncora nova, e a suspeita não se propaga sem fim. Sem o corte de valor, uma âncora que é cliente da casa contaminava qualquer conta com um Pix de R$ 0,01 |
 | `REPUTACAO_EXTERNA` | contadores do **mock** de reputação no formato do `destination_statistics` da API Pix da QI (`mule_accounts`, `scammer_accounts`, `distinct_fraud_reporters`, `open_reports`... em 90 dias, 12 meses, 60 meses) | **bloqueio** com golpe ou laranja em 90 dias · +40 com denúncia aberta ou ocorrência em 12 meses · fraude de cadastro: +40 se a conta destino tem menos de 90 dias, **bloqueio** se é do próprio pagador e tem menos de 30 dias, 0 para a conta antiga · papel de vítima: 0 | `mule_accounts` e `scammer_accounts` são marcações de fraude, que só existem depois de a instituição do recebedor analisar e confirmar: uma basta. Denúncia sem análise é `open_reports`, e essa só soma. Quem teve a identidade roubada é a vítima, não o fraudador, mas a conta NOVA no CPF dela pode ser a que o fraudador abriu: é o golpe da "conta segura". O mock é fictício, determinístico e marcado `is_mock` |
 | `REPUTACAO_INTERNA` | documento destino ou aparelho na lista interna vigente | documento com fraude confirmada: **bloqueio** · "não fui eu" do titular e aparelho: +40 | Casos confirmados (semeados) e o "não fui eu" do titular depois de um desafio. Contra conta que a casa já sabe que é de golpe, 2FA não protege: quem paga é a vítima, e ela passa na facial. O "não fui eu" é a palavra de um cliente só, e por isso soma sem bloquear. **Nunca** a decisão do próprio motor: uma rejeição por limite não diz nada sobre o recebedor, e alimentar a lista com ela geraria falsos positivos em cadeia |
 | `MESMA_TITULARIDADE` | mesmo documento nos dois lados | redutor até −10 | Transferir entre os próprios bancos é o Pix de menor risco. Desconta só da família de valor: contas do mesmo dono também podem ser tomadas |
 | `DESTINO_CONFIAVEL` | ≥ 3 pagamentos aprovados a este titular, em 3 dias diferentes, o primeiro há ≥ 7 dias, e o valor de agora ≤ o maior já pago | redutor até −10 | A regra do aluguel. Um Pix de R$ 10 não "aquece" o destino para um de R$ 2.500 |
+
+### Como o `REPASSE_RAPIDO` conta o repasse
+
+A regra não compara o Pix sozinho com o que entrou: ela refaz, a cada Pix, a projeção do dinheiro de terceiros que passou pela conta na janela, a partir das análises e confirmações que o motor já tem (`controllers/engine/flow.py`). Nada novo é gravado: não é um ledger.
+
+- **O que entra:** só o que virou dinheiro no instante avaliado. Aprovação direta fica disponível na `transaction_date`; desafio confirmado, em `max(transaction_date, event_date)`, e só se a confirmação já tinha acontecido. Um Pix antigo confirmado dentro da janela entra nela, no instante da confirmação, nunca antes. Recusado, rejeitado e desafio pendente não movimentam nada (continuam contando nas regras de tentativas). Empate de instante se desfaz pelo id, e o Pix em análise entra por último, uma vez só, como saída candidata: nada é consumido antes de ele virar dinheiro, e o replay não conta de novo.
+- **Lotes em fila (FIFO):** cada entrada de outro titular vira um lote, numa fila global e na lista daquele titular. Entrada do próprio titular não é dinheiro de terceiros, e Pix da conta para ela mesma não move nada.
+- **Devolução até o crédito:** uma saída para quem pagou é devolução só até o crédito que ele ainda tem na conta, e consome esse crédito. Estar entre os pagadores não basta: o destino que mandou R$ 0,01 tem R$ 0,01 de devolução. Crédito usado numa devolução não justifica outra.
+- **Escoamento:** o resto da saída consome os lotes de terceiros mais antigos. Lote consumido não volta, e saída anterior a uma entrada não a consome. Mandar para outra conta do mesmo titular escoa como qualquer outra saída: não há isenção automática para "conta própria" financiada por vítimas.
+- **As contas, em centavos inteiros:** `I` é o que entrou de terceiros; `R`, as devoluções reconhecidas; `E`, o escoamento coberto por lotes de terceiros (os dois com o Pix atual); `B = I − R`, a base líquida. Titular exposto é quem recebeu de volta menos do que pagou (o lote escoado continua sendo exposição dele). O repasse aparece com titulares expostos suficientes, `B > 0`, `E / B ≥ 80%` (comparado sem ponto flutuante: `5·E ≥ 4·B`) e o Pix atual escoando alguma parte do pool. Uma devolução integral legítima não herda o alerta das saídas anteriores.
+- **Exemplo:** quatro pessoas pagam R$ 1.000 e a conta manda R$ 3.500 para uma delas. São R$ 1.000 de devolução e R$ 2.500 de escoamento, sobre uma base de R$ 3.000 e três pagadores ainda expostos: 83%, repasse.
+
+O `metadata` da regra traz a janela, `incoming`, `refunded`, `outflow`, `base`, a parte do Pix atual (`current_refund`, `current_outflow`), `qualified_payers` e `attribution: "fifo_heuristic"`. **FIFO é uma atribuição heurística**, porque dinheiro é fungível: ela não prova que uma saída devolve um Pix específico. E a projeção só enxerga o que passou pelo motor dentro da janela: dinheiro de antes dela, ou que chegou por outro banco, não aparece. A consulta é uma só por Pix (os eventos das 24 h, em lote, nos índices por conta e data e num índice parcial das confirmações), e a projeção é uma varredura linear.
 
 **Sinais sem pontos** (em `metadata.signals`): PF ou PJ de cada ponta, dígito verificador dos documentos (um CPF inventado numa massa de teste não vira fraude), idade das contas, fuso do horário, de onde veio a localização do IP.
 
@@ -134,6 +152,30 @@ Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta d
 }
 ```
 
+## O `PATCH` do desafio e os erros
+
+O cliente responde o desafio uma vez. A ordem do `PATCH`:
+
+1. **A data precisa existir.** 30 de fevereiro é `400`, inclusive quando o pedido repete uma resposta já gravada.
+2. **A análise precisa ter pedido o desafio** (`404` se não existe, `409 QIT006005` se não pediu).
+3. **As travas são as da própria análise:** as mesmas chaves do `POST`, montadas a partir dos dados gravados. A resposta espera o Pix da mesma conta que está sendo analisado, e duas respostas do mesmo desafio esperam uma a outra.
+4. **Com as travas, o resultado é relido.** O mesmo resultado devolve `200` com o registro original: a `event_date` não muda, a denúncia não se repete e a análise não é refeita. O oposto é `409 QIT006006`. Respostas simultâneas gravam uma vez só: iguais dão todas `200`, opostas dão uma vencedora e `409` para as outras, nunca `500`.
+5. **Só a primeira resposta passa pela cronologia:** `transaction_date ≤ event_date ≤ agora + 5 min` (a mesma folga do `POST`). Anterior ao Pix é `422 QIT006008`; no futuro, `422 QIT006002`. Responder no mesmo instante do Pix vale, e não há prazo máximo: a confirmação de anos atrás vale para a simulação daquela época.
+6. **O resultado e a lista interna são gravados juntos.** O "não fui eu" põe o aparelho na lista por 30 dias e o documento destino em cautelar (+40) por 24 horas. Vira fraude confirmada, por 30 dias, com uma segunda fonte independente: outro titular, nos 30 dias, ou a reputação externa. Tudo vale a partir da `event_date` validada, nunca antes dela: uma análise de um instante anterior à denúncia não a enxerga, como não enxerga a confirmação de 2FA futura.
+
+| Código | HTTP | Quando acontece |
+|---|---|---|
+| `QIT006001` | 404 | não existe análise para esse `id` |
+| `QIT006002` | 422 | data mais de 5 minutos à frente do relógio do servidor (a do Pix, ou a resposta do desafio) |
+| `QIT006003` | 422 | o Pix é anterior à abertura de uma das contas |
+| `QIT006004` | 409 | o mesmo `id` com outro conteúdo |
+| `QIT006005` | 409 | resposta de desafio para uma análise que não pediu desafio |
+| `QIT006006` | 409 | o desafio já tem o resultado oposto |
+| `QIT006007` | 409 | a conta já é conhecida com outro titular ou outra data de abertura |
+| `QIT006008` | 422 | a resposta do desafio é anterior ao Pix |
+
+Os erros de formato e de token são os comuns a todas as APIs do repositório (`QIT000…`, na seção 7 da fase 1).
+
 ## Como rodar e testar
 
 ```bash
@@ -161,6 +203,12 @@ pip install -r requirements-dev.txt
 pytest tests/antifraud_api -v
 ```
 
+A matemática da projeção do repasse (consumo dos lotes, ordem, fronteira do corte) tem testes de unidade, que importam `src` e rodam sem banco nem API. Ficam fora de `tests/`, que é caixa-preta, e o CI não os roda:
+
+```bash
+pytest antifraud-api/tests
+```
+
 A massa de cenários por mutação, que imprime a tabela da próxima seção:
 
 ```bash
@@ -177,7 +225,12 @@ docker compose -f docker-compose.yml -f tools/escala/compose.escala.yml up -d --
 python tools/escala_antifraude.py
 ```
 
-> **Mudou o `database/antifraud.sql`?** O banco nasce de uma imagem que *copia* o arquivo. Recriar só o volume não basta: `docker compose down -v && docker compose up -d --build --wait`. Sem o `--build`, o banco sobe com a política antiga.
+Os números do documento de escala são da versão **anterior** às correções de 18/10/2026 (repasse acumulado, identidade da conta, cortes das confirmações e `PATCH`), e não foram medidos de novo. A consulta nova do repasse foi medida à parte, no ambiente local (Windows, Postgres 18 sem Docker), com uma conta concentrada semeada por SQL num banco de 371 mil Pix. A conta tinha 56 mil entradas em 90 dias e 8.000 eventos de dinheiro nas últimas 24 h, entre eles 1.000 desafios confirmados, metade de Pix anteriores à janela:
+
+- A consulta (`EXPLAIN ANALYZE`) levou 50 ms em série e 93 a 99 ms com os dois workers paralelos que o Postgres escolheu: no Windows, subir worker custa cerca de 50 ms. Os ramos usam os índices por conta e data. O ramo "Pix antigo confirmado na janela" usa o índice parcial das confirmações quando elas são uma fração pequena da tabela, e a projeção das 24 h levou 21 ms.
+- Na API, no mesmo banco, comparada com a versão anterior: o Pix dessa conta foi de 350 a 400 ms para 510 a 610 ms de motor (`latency_ms`). O Pix de um pagador comum ficou igual, em 42 a 55 ms.
+
+> **Mudou o `database/antifraud.sql`?** O banco nasce de uma imagem que *copia* o arquivo. Recriar só o volume não basta: `docker compose down -v && docker compose up -d --build --wait`. Sem o `--build`, o banco sobe com a política antiga. As correções de 18/10/2026 acrescentaram um índice (`pix_challenge_result_approved_event`).
 
 ## Resultado na massa sintética
 
@@ -225,13 +278,16 @@ A ferramenta cria pessoas fictícias com histórico gerado pela própria API (at
 - Legitimos aprovados sem friccao: 9 de 12
 - Fraudes retidas (2FA ou rejeicao): 15 de 15
 - Cenarios no resultado esperado: 27 de 27
-- Latencia do motor em 77 analises: p50 64 ms, p95 78 ms (contra a API no Docker, em 18/10/2026)
+- Latencia do motor em 77 analises: p50 45 ms, p95 49 ms (depois das correções de 18/10/2026, no ambiente local: Windows, Postgres 18 sem Docker. A medição anterior, no Docker e antes das correções, deu p50 44 ms e p95 50 ms)
 
 Dos três legítimos que não passaram direto, nenhum foi reprovado: a transferência de R$ 3.000 para a própria conta, num cliente que só gasta pouco, pede a facial; o primeiro aluguel, 30 vezes o gasto típico do cliente, pede facial e documento; e o payload do desafio pede a facial, como o exemplo de saída do próprio documento.
 
 ## O que o motor não resolve
 
-- **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas.
+- **Só enxerga o que passa por ele.** Uma conta só "repassa" para o motor se aparecer primeiro como destino e depois como origem; num banco de verdade, os recebimentos viriam também do extrato. Quem recebe salário por outro banco aparece sem entradas, e dinheiro de antes da janela do `REPASSE_RAPIDO` fica fora da projeção. A atribuição FIFO é heurística: diz qual dinheiro de terceiros uma saída consumiu, não qual Pix ela devolve.
+- **Aprovar é movimentar só na simulação.** A aprovação direta e o desafio confirmado contam como dinheiro que saiu, sem liquidação, SPI, DICT ou MED de verdade.
+- **O histórico não é um snapshot.** As réguas congeladas cortam os eventos no início do dia, mas um Pix histórico gravado depois, com data antiga, ainda muda a amostra das próximas consultas.
+- **A conta guarda o primeiro titular e a primeira abertura.** Uma correção cadastral legítima (troca de titularidade, abertura informada errada) precisaria de um fluxo próprio; hoje ela volta `409`.
 - **Reputação, cadastro de CNPJ e localização de IP são mocks.** O mock de reputação segue o formato do `destination_statistics` da QI, e as faixas de IP são faixas de documentação com lugares fictícios. Em produção, a mesma tabela `ip_range_location` receberia uma base real (por exemplo a DB-IP City Lite, CC BY 4.0), sem mudar o motor. O CNAE do `TICKET_DO_RECEBEDOR` vem de um mock com dois CNPJs fictícios (uma doceria e uma concessionária); em produção, dos dados abertos do CNPJ da Receita, pelo documento que o DICT devolve, e os tetos de tíquete por atividade sairiam de dados reais de liquidação.
 - **O limite que o cliente escolhe é da plataforma (BaaS).** O motor não o aplica, não recusa Pix acima dele e não guarda os pedidos de mudança. O roteiro de pedir aumento e esvaziar a conta fica com quem aplica o limite e com as regras de ritmo e de acesso.
 - **A verificação é pedida, não executada.** O motor diz `facial` ou `facial_document`; o app executa e devolve o resultado pelo `PATCH`.
@@ -248,6 +304,8 @@ Dos três legítimos que não passaram direto, nenhum foi reprovado: a transfer�
 - **Grafo offline num worker:** descartado porque conta laranja se monta e se esvazia em minutos, e um grafo recalculado a cada hora veria a rede depois de o dinheiro sair. As relações de até dois saltos saem por SQL, na hora. Ganharia com relações de três saltos ou mais.
 - **Geolocalização obrigatória no schema:** descartada porque o contrato a marca como opcional e a banca pode mandar Pix sem ela; recusar com `400` um pedido válido quebraria o contrato. A ausência pesa como sinal.
 - **Alimentar a lista interna com as rejeições do motor:** descartado porque transforma um falso positivo em vários.
+- **Um ledger de créditos gravado para o repasse:** descartado porque duplicaria o estado que as análises e as confirmações já têm, e precisaria ser corrigido a cada confirmação tardia. A projeção refeita a cada Pix custa uma consulta em lote e uma varredura linear. Ganharia se a janela de uma conta chegasse a centenas de milhares de eventos.
+- **Comparar cada saída sozinha com o que entrou** (a versão anterior do `REPASSE_RAPIDO`): descartado porque três saídas de R$ 1.000 escapavam, e qualquer saída para alguém que tivesse pagado a conta, nem que fosse R$ 0,01, contava como devolução.
 - **`SELECT ... FOR UPDATE` nas contas:** descartado porque a chave estrangeira da análise pega `KEY SHARE` na conta do outro lado, e dois Pix cruzados fechariam um deadlock (a lição de 07/10 da fase 1). As travas consultivas não tocam em linha nenhuma.
 - **Análise manual (`in_manual_analysis`, que a API da QI tem):** descartada porque o desafio diz que no Pix não cabe análise manual, e o contrato só tem três status.
 - **A regra de quebra do padrão mensal (`PADRAO_MENSAL`):** retirada. Quando o valor fugia do padrão, o `PERFIL` já pontuava (ele compara com a fase do mês do calendário do cliente) e ela valia 0; sobrava um piso de facial num caso estreito, e quem faz um pagamento grande por mês nem formava padrão. O calendário continua, como referência do `PERFIL`.
