@@ -43,3 +43,10 @@ def test_a_versao_2_tem_o_bloco_de_toda_regra():
 def test_a_versao_1_continua_sem_os_blocos_novos():
     assert "DISPERSAO_DE_SAIDA" not in _versao_1()
     assert "window_hours" not in _versao_1()["CONTA_REATIVADA"]
+
+
+def test_a_versao_2_traz_a_base_minima_do_repasse():
+    repasse = {**_versao_1(), **_diferenca()}["REPASSE_RAPIDO"]
+
+    assert repasse["min_base"] == 10000
+    assert {chave: valor for chave, valor in repasse.items() if chave != "min_base"} == _versao_1()["REPASSE_RAPIDO"]

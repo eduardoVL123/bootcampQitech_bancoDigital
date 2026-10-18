@@ -20,7 +20,8 @@ SELECT 2, parameters || '{
     "CONTA_REATIVADA": {"min_account_age_days": 30, "idle_days": 60, "window_hours": 24, "burst_count": 3, "window_amount": 200000, "min_amount": 500000, "points": 30, "floor": "facial"},
     "NOTURNO": {"start_hour": 20, "end_hour": 6, "min_amount": 100000, "points": 25, "new_legal_person_days": 90},
     "APARELHO_NAO_CADASTRADO": {"per_pix": 20000, "per_day": 100000, "channels": ["app", "web"], "natural_person_channels": ["api"]},
-    "DESTINO_NOVO": {"days": 30, "points": 20, "very_new_hours": 24, "very_new_points": 30, "very_new_floor": "facial", "very_new_floor_min_amount": 20000}
+    "DESTINO_NOVO": {"days": 30, "points": 20, "very_new_hours": 24, "very_new_points": 30, "very_new_floor": "facial", "very_new_floor_min_amount": 20000},
+    "REPASSE_RAPIDO": {"windows": [{"minutes": 60, "min_payers": 3}, {"minutes": 1440, "min_payers": 5}], "share": 0.8, "points": 60, "inconclusive_points": 20, "min_base": 10000}
 }'::jsonb
 FROM fraud_policy WHERE version = 1
 ON CONFLICT (version) DO NOTHING;

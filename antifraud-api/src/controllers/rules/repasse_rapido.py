@@ -25,8 +25,14 @@ class RepasseRapido(Rule):
       receberam de volta);
     - o escoamento acumulado E chega a `share` da base liquida B (o que
       entrou de terceiros menos o que voltou para eles), com o Pix atual;
-    - e o Pix atual escoa alguma parte do pool. Uma devolucao integral nao
-      herda o alerta das saidas anteriores.
+    - o Pix atual escoa alguma parte do pool. Uma devolucao integral nao
+      herda o alerta das saidas anteriores;
+    - e a base liquida da janela chega a `min_base` (politica versao 2).
+      Sem isso, tres creditos de R$ 0,01 de titulares diferentes faziam a
+      saida comum seguinte pedir facial e documento: terceiros causavam
+      friccao por quase nada. O minimo e da janela, nao de cada Pix, entao
+      fracionar a entrada ou a saida nao escapa, e os creditos pequenos
+      continuam na projecao.
 
     Depois disso, o destino decide quanto pesa: repassar para o fornecedor
     de sempre, com o perfil e o ritmo normais, nao e o mesmo que repassar
@@ -41,6 +47,7 @@ class RepasseRapido(Rule):
     def evaluate(self, ctx, params):
         p = params[self.code]
         corte = Fraction(str(p["share"]))
+        base_minima = p.get("min_base", 0)
         maior = max(janela["minutes"] for janela in p["windows"])
         eventos = ctx.history.flow_events(ctx.source_account.id, ctx.moment, maior)
         atual = (ctx.amount, ctx.destination_document, ctx.destination_account.id)
@@ -50,7 +57,7 @@ class RepasseRapido(Rule):
             inicio = ctx.moment - timedelta(minutes=janela["minutes"])
             fluxo = project([evento for evento in eventos if evento[0] > inicio], ctx.source_account.id,
                             ctx.source_document, atual)
-            if fluxo.identifies(janela["min_payers"], corte):
+            if fluxo.identifies(janela["min_payers"], corte, base_minima):
                 avaliacoes.append(self._avalia(ctx, params, p, janela["minutes"], fluxo))
         if not avaliacoes:
             return self.not_triggered()
