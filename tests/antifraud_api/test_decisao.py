@@ -7,7 +7,7 @@ pessoas novas, entao nenhum historico de outro teste entra na conta.
 from datetime import datetime, timedelta, timezone
 
 from tests.utils.pix import (
-    AntifraudApi, Pagador, Recebedor, analisa, disparou, nova_base, pix, pontos, regra,
+    RECEBEDOR_NA_WATCHLIST, AntifraudApi, Pagador, Recebedor, analisa, disparou, nova_base, pix, pontos, regra,
 )
 
 
@@ -189,3 +189,36 @@ def test_regras_ficam_no_get_iguais_ao_post():
 
     assert lido["metadata"]["rules"] == criado["metadata"]["rules"]
     assert lido["metadata"]["risk_score"] == criado["metadata"]["risk_score"]
+
+
+# O eixo da rejeicao: quando o Pix e rejeitado, o metadata diz qual dos tres
+# eixos (movimentacao, acesso, destino) pesou mais. No bloqueio, e o eixo da
+# regra que bloqueou; na soma, o eixo com mais pontos.
+
+def test_rejeicao_pela_soma_diz_o_eixo_que_mais_pontuou():
+    # limite 40 + noturno 25 em movimentacao, contra 20 de acesso (sem GPS).
+    corpo = analisa(pix(Pagador(), Recebedor(), 2500000, _dia(23).isoformat(), gps=None))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "movimentacao"
+
+
+def test_bloqueio_pelo_teto_diz_o_eixo_da_regra_que_bloqueou():
+    corpo = analisa(pix(Pagador(), Recebedor(), 15000000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "movimentacao"
+
+
+def test_bloqueio_pelo_recebedor_diz_o_eixo_destino():
+    corpo = analisa(pix(Pagador(), Recebedor(documento=RECEBEDOR_NA_WATCHLIST), 5000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "rejected"
+    assert corpo["metadata"]["rejection_axis"] == "destino"
+
+
+def test_pix_que_nao_foi_rejeitado_nao_tem_eixo_de_rejeicao():
+    corpo = analisa(pix(Pagador(), Recebedor(), 2500000, _dia(14).isoformat()))
+
+    assert corpo["status"] == "two_factor_required"
+    assert corpo["metadata"]["rejection_axis"] is None

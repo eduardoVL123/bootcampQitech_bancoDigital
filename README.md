@@ -104,6 +104,8 @@ O score é a soma das contribuições efetivas, de 0 a 100. **Ele não é probab
 
 **Por que a rejeição exige dois eixos.** Um sinal sozinho, por mais forte, pode ter explicação legítima: uma loja recebe de muita gente, uma família divide o celular, um cliente viaja. Quando o risco alto está concentrado num eixo só, o motor pede a verificação reforçada em vez de reprovar. Bloquear cliente bom também é prejuízo. Quando o dinheiro, o acesso e o destino estranham juntos, aí reprova. A exceção é a evidência **confirmada** do recebedor: ela bloqueia sozinha, porque a verificação só responde "é o dono da conta mesmo?", e no golpe quem paga é o próprio dono, enganado (Res. BCB 501/2025: recusar pagamento para conta com fundada suspeita de fraude). O eixo **destino** com 80 ou mais também reprova sozinho, mas só com mais um fato, porque concentração em conta nova é ambígua: pode ser a loja lançando um produto ou a conta laranja recebendo das vítimas. O primeiro fato é alguém já ter denunciado o recebedor: o alerta do mock externo (denúncia aberta) ou o "não fui eu" de outro cliente. Loja de verdade não junta denúncia na primeira semana, e ali a verificação não protege: quem faz a selfie é o pagador enganado, e ele passa. O segundo é o teto da conta nova (`TETO_DESTINO_NOVO`): na primeira semana, antes de a conta ter a régua dela, o Pix acima de R$ 200 reprova. A loja vende o tíquete pequeno, e a laranja não recebe o valor alto; é o teto que reprova o repasse da conta laranja para uma conta de 3 horas. Fora disso, vale a tabela: dez clientes numa hora para uma conta de 10 dias pedem facial e documento. O aparelho de quem paga na lista interna não conta como denúncia do recebedor: é risco do pagador, e contra ele a facial funciona. Tirar `reject_destination_alone` da política desliga o ramo.
 
+**Qual eixo pesou na rejeição.** Todo Pix rejeitado traz `metadata.rejection_axis`, com `movimentacao`, `acesso` ou `destino`. No bloqueio, é o eixo da regra que bloqueou (o teto é movimentação; a fraude confirmada do recebedor é destino). Na rejeição pela soma, é o eixo com mais pontos, e no empate fica o eixo da regra que explica a decisão (`reason`). Nos outros status, `rejection_axis` vem `null`.
+
 **Quando pede 2FA, e qual.** O status público é sempre um dos três do contrato. O nível vai no `metadata`: `facial` para a dúvida moderada (40 a 59 pontos, ou piso facial), `facial_document` para a forte (60 ou mais num eixo, ou piso reforçado). O motor **pede** a verificação; quem a executa é o app do cliente, e o resultado volta pelo `PATCH`.
 
 Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta destino com 7 dias):
@@ -115,6 +117,7 @@ Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta d
   "metadata": {
     "risk_score": 45,
     "risk_axes": {"movimentacao": 25, "acesso": 0, "destino": 20},
+    "rejection_axis": null,
     "reason": "NOTURNO",
     "reason_description": "R$ 1.500,00 as 22:15 (Sao Paulo), de pessoa fisica para outra pessoa fisica.",
     "authentication": {"level": "facial", "required_checks": ["facial"], "execution": "required_not_executed"},
@@ -124,6 +127,7 @@ Exemplo, o payload da seção 3.1 do desafio (Pix de R$ 1.500 às 22:15, conta d
       {"rule": "DESTINO_NOVO", "evaluation": "triggered", "raw_points": 20, "effective_points": 20, "...": "..."},
       {"rule": "CONTRAPARTE_INEDITA", "evaluation": "triggered", "raw_points": 15, "effective_points": 0, "correlated": true, "...": "..."}
     ],
+    "rules_not_triggered": ["PERFIL", "LIMITE_POR_PIX", "VELOCITY", "..."],
     "reputation": {"provider": "mock_bureau", "is_mock": true, "signal": "not_found"},
     "latency_ms": 55
   }

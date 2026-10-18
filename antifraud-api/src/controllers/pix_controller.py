@@ -242,6 +242,7 @@ class PixController(BaseController):
             "policy_version": policy.version,
             "risk_score": decisao.score,
             "risk_axes": decisao.axes,
+            "rejection_axis": decisao.rejection_axis,
             "reason": decisao.reason,
             "reason_description": decisao.reason_description,
             "authentication": {

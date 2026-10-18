@@ -2,7 +2,7 @@
 
 A ordem dos passos e a politica, e cada um responde a uma pergunta:
 
-1. Ha bloqueio prioritario? Teto operacional ou marcacao critica do
+1. Ha bloqueio prioritario? Teto operacional ou evidencia confirmada do
    recebedor rejeitam sozinhos, e nada os desfaz. (O limite que o cliente
    escolhe e aplicado pela plataforma, nao aqui.)
 2. Quanto vale cada familia? Regras da mesma familia medem o mesmo fato
@@ -27,8 +27,11 @@ A ordem dos passos e a politica, e cada um responde a uma pergunta:
    Sem a chave na politica, o ramo nao existe.
 6. Os pisos: uma regra pode exigir um nivel minimo de verificacao sem
    somar pontos. Piso nunca reduz a decisao.
+7. Na rejeicao, o eixo que pesou mais: o da regra que bloqueou, ou o eixo
+   com mais pontos. Empate fica com o eixo da regra que explica a decisao.
 """
 from dataclasses import dataclass
+from typing import Optional
 
 from controllers.engine.context import AXES, DESTINO, FACIAL, FACIAL_DOCUMENT, LEVELS, MOVIMENTACAO, NONE
 from models import PixStatus
@@ -53,6 +56,7 @@ class Decision:
     level: str
     reason: str
     reason_description: str
+    rejection_axis: Optional[str] = None
 
 
 def _strongest_floor(floors) -> str:
@@ -128,7 +132,8 @@ def decide(results: list, params: dict) -> Decision:
     motivo = _reason(bloqueios, disparadas, piso, nivel)
     return Decision(status=status, score=score, axes=eixos, level=nivel,
                     reason=motivo.rule if motivo else "SEM_ALERTA",
-                    reason_description=motivo.detail if motivo else "Nenhuma regra com pontos efetivos.")
+                    reason_description=motivo.detail if motivo else "Nenhuma regra com pontos efetivos.",
+                    rejection_axis=_rejection_axis(status, bloqueios, eixos, motivo))
 
 
 def _destination_rejects_alone(eixos, disparadas, regras) -> bool:
@@ -144,6 +149,19 @@ def _destination_rejects_alone(eixos, disparadas, regras) -> bool:
     denuncias = set(regras.get("destination_corroboration", []))
     return any((r.rule in denuncias and r.extra.get("kind") != "device") or r.rule == NEW_DESTINATION_CAP
                for r in disparadas)
+
+
+def _rejection_axis(status, bloqueios, eixos, motivo) -> Optional[str]:
+    """O eixo que mais pesou numa rejeicao (passo 7), ou None se nao rejeitou."""
+    if status != PixStatus.REJECTED:
+        return None
+    if bloqueios and bloqueios[0].axis in eixos:
+        return bloqueios[0].axis
+    maior = max(eixos.values())
+    empatados = [eixo for eixo in AXES if eixos[eixo] == maior]
+    if motivo is not None and motivo.axis in empatados:
+        return motivo.axis
+    return empatados[0]
 
 
 def _reason(bloqueios, disparadas, piso, nivel):
