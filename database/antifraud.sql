@@ -199,7 +199,11 @@ CREATE INDEX pix_analysis_source_document ON pix_analysis (source_document, tran
 CREATE INDEX pix_analysis_destination_document ON pix_analysis (destination_document, transaction_date DESC);
 CREATE INDEX pix_analysis_device ON pix_analysis (device_id, transaction_date DESC);
 CREATE INDEX pix_analysis_ip ON pix_analysis (ip, transaction_date DESC);
-CREATE INDEX pix_analysis_ip_network ON pix_analysis (ip_network, transaction_date DESC);
+-- So os Pix com GPS, e ja com latitude e longitude: e o indice do lugar
+-- aprendido de um IP fora da tabela de faixas (ip_location_repository.learned),
+-- que le os pontos mais novos da /24 sem passar pela tabela.
+CREATE INDEX pix_analysis_ip_network ON pix_analysis (ip_network, transaction_date DESC)
+    INCLUDE (latitude, longitude) WHERE latitude IS NOT NULL;
 
 CREATE TRIGGER pix_analysis_is_append_only
     BEFORE UPDATE OR DELETE ON pix_analysis
